@@ -1,5 +1,6 @@
 import io
 import re
+import datetime
 import pandas as pd
 from pypdf import PdfReader
 from docx import Document
@@ -54,8 +55,38 @@ def parse_uploaded_file(uploaded_file):
 
     return f"=== 파일명: {uploaded_file.name} ===\n{text_content}\n\n"
 
+def sanitize_filename(text):
+    """파일명으로 사용할 수 없는 문자를 제거합니다."""
+    text = re.sub(r'[\\/*?:"<>|]', "", text)
+    return text.strip()[:30] # 너무 길면 자름
+
+def generate_filename_from_content(content_text, default_name="Investment_Report"):
+    """
+    내용을 분석하여 적절한 파일명을 생성합니다.
+    예: 첫 번째 헤더(#) 내용을 가져오거나, '대상 기업:' 문구 등을 찾습니다.
+    """
+    try:
+        lines = content_text.split('\n')
+        
+        # 1. '# 1. 기업명' 패턴 찾기
+        for line in lines[:10]:
+            if line.startswith('# '):
+                # "# 1. Executive Summary" 같은 건 제외하고 기업명만 있는 경우 등 고려
+                clean_header = line.replace('#', '').strip()
+                # 헤더가 너무 길지 않으면 사용 (30자 이내)
+                if len(clean_header) > 0 and len(clean_header) < 30:
+                    return f"{sanitize_filename(clean_header)}.docx"
+        
+        # 2. 내용 중 '기업명', 'Target' 키워드 찾기 (단순화)
+        # (구현 복잡도를 낮추기 위해 우선 헤더 기반 혹은 타임스탬프로 처리)
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+        return f"{default_name}_{timestamp}.docx"
+    except:
+        return f"{default_name}.docx"
+
 def create_docx(markdown_text):
-    """Markdown 텍스트를 Word 파일로 변환합니다 (표 처리 포함)."""
+    """Markdown 텍스트를 Word 파일로 변환합니다 (표 및 목록 스타일 처리)."""
     doc = Document()
     
     lines = markdown_text.split('\n')
@@ -76,45 +107,69 @@ def create_docx(markdown_text):
             
         # 2. 표(Table) 처리
         elif line.startswith('|'):
-            # 표 데이터 수집
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i].strip())
                 i += 1
             
-            # Markdown Table 파싱
-            if len(table_lines) >= 2: # 최소 헤더 + 구분선
-                # 구분선 제거 (---|---)
+            if len(table_lines) >= 2:
                 headers = [c.strip() for c in table_lines[0].split('|') if c.strip()]
                 data_rows = []
                 for row_line in table_lines[1:]:
                     if '---' in row_line: continue
-                    row_data = [c.strip() for c in row_line.split('|') if c.strip() or c == ""]
-                    # 빈 셀 처리 보정
-                    if row_line.startswith('|') and row_line.endswith('|'):
-                        row_data = [c.strip() for c in row_line.split('|')[1:-1]]
-                    if row_data:
+                    # 빈 셀 포함하여 파싱
+                    parts = row_line.split('|')
+                    if len(parts) >= 2:
+                        row_data = [c.strip() for c in parts[1:-1]]
                         data_rows.append(row_data)
 
                 if headers:
                     table = doc.add_table(rows=1, cols=len(headers))
                     table.style = 'Table Grid'
                     
-                    # 헤더 입력
                     hdr_cells = table.rows[0].cells
                     for idx, text in enumerate(headers):
                         if idx < len(hdr_cells):
                             hdr_cells[idx].text = text
                             hdr_cells[idx].paragraphs[0].runs[0].bold = True
                     
-                    # 데이터 입력
                     for row_data in data_rows:
                         row_cells = table.add_row().cells
                         for idx, text in enumerate(row_data):
                             if idx < len(row_cells):
-                                row_cells[idx].text = text.replace('**', '') # 볼드 마크 제거
+                                # 셀 내부 텍스트 처리
+                                row_cells[idx].text = text.replace('**', '')
         
-        # 3. 일반 텍스트 (Bold 처리)
+        # 3. 목록(List) 처리 (요청사항 반영)
+        elif line.startswith('- ') or line.startswith('* '):
+            # Bullet List 스타일 적용
+            clean_text = line[2:]
+            p = doc.add_paragraph(style='List Bullet')
+            # 내부 Bold 처리
+            parts = re.split(r'(\*\*.*?\*\*)', clean_text)
+            for part in parts:
+                if part.startswith('**') and part.endswith('**'):
+                    run = p.add_run(part[2:-2])
+                    run.bold = True
+                else:
+                    p.add_run(part)
+            i += 1
+            
+        elif re.match(r'^\d+\.\s', line):
+            # Numbered List 스타일 적용
+            match = re.match(r'^\d+\.\s', line)
+            clean_text = line[match.end():]
+            p = doc.add_paragraph(style='List Number')
+            parts = re.split(r'(\*\*.*?\*\*)', clean_text)
+            for part in parts:
+                if part.startswith('**') and part.endswith('**'):
+                    run = p.add_run(part[2:-2])
+                    run.bold = True
+                else:
+                    p.add_run(part)
+            i += 1
+
+        # 4. 일반 텍스트
         else:
             if line:
                 p = doc.add_paragraph()
@@ -146,7 +201,7 @@ def create_excel(markdown_text):
     
     bio = io.BytesIO()
     if data:
-        df = pd.DataFrame(data[1:], columns=data[0]) # 첫 줄을 헤더로
+        df = pd.DataFrame(data[1:], columns=data[0])
         with pd.ExcelWriter(bio, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='RFI_List')
     
