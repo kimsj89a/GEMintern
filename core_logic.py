@@ -162,7 +162,7 @@ def extract_structure(api_key, structure_file):
         """
         
         resp = client.models.generate_content(
-            model="gemini-3-flash-preview", # HTML 로직: 구조 추출은 Flash 사용
+            model="gemini-3-flash-preview", 
             contents=prompt
         )
         return resp.text
@@ -187,12 +187,12 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     
     if is_rfi:
         system_instruction = PROMPTS['rfi_system']
-        # 파일 목록 문자열 생성 (업로드된 파일 기준)
         uploaded_list = [f.name for f in inputs['uploaded_files']] if inputs['uploaded_files'] else []
         file_list_str = "\n".join([f"- {name}" for name in uploaded_list])
         
+        # [수정됨] .toUpperCase() -> .upper()
         main_prompt = f"""
-        [System: Thinking Level {thinking_level.toUpperCase() if isinstance(thinking_level, str) else 'HIGH'}]
+        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
         
         # [기존 RFI Copy & Paste]
         {inputs['rfi_existing']}
@@ -214,8 +214,9 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         if inputs['use_diagram']:
             system_instruction += "\n5. **도식화(Diagram)**: 설명 중 시각화가 필요한 프로세스나 구조가 있다면 **{{DIAGRAM: 설명}}** 태그를 삽입하세요."
 
+        # [수정됨] .toUpperCase() -> .upper()
         main_prompt = f"""
-        [System: Thinking Level {thinking_level.toUpperCase() if isinstance(thinking_level, str) else 'HIGH'}]
+        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
         
         [작성할 문서 구조]
         {inputs['structure_text']}
@@ -229,7 +230,6 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
     # 2. 툴 설정
     tools = []
-    # RFI가 아니고, 뉴스/동향 키워드가 있으면 검색 활성화
     if not is_rfi and ("뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text']):
         tools = [types.Tool(google_search=types.GoogleSearch())]
 
