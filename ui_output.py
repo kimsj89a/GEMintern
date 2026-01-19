@@ -2,12 +2,17 @@ import streamlit as st
 import utils
 import core_logic
 
-# 함수 정의에 inputs 파라미터가 반드시 있어야 합니다.
 def render_output_panel(container, settings, inputs):
     """결과 패널을 렌더링하고 스트리밍 출력 및 다운로드 기능을 처리합니다."""
     with container:
-        st.subheader("📄 결과물 (Result)")
-        
+        # 헤더 스타일 조정
+        c_head1, c_head2 = st.columns([2, 1])
+        with c_head1:
+             st.markdown("### ®️ 결과물 (Result)")
+        with c_head2:
+             # 이미지의 복사/편집 버튼 흉내 (기능은 추후 구현)
+             st.markdown('<div style="text-align: right; color: gray; font-size: 0.8rem;">📄 복사 | ✏️ 편집</div>', unsafe_allow_html=True)
+
         result_container = st.container(height=600, border=True)
         
         # 1. 생성 로직 (inputs 딕셔너리 사용)
