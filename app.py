@@ -64,8 +64,8 @@ with st.sidebar:
     
     api_key = st.text_input("Google API Key", type="password", help="브라우저 세션에만 저장됩니다.")
     model_name = st.selectbox("Model", [
-        "gemini-2.0-flash-exp", 
-        "gemini-1.5-pro", 
+        "gemini-3-pro-preview", 
+        "gemini-3-flash-preview", 
         "gemini-1.5-flash"
     ], index=0)
     
