@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import utils
+import utils_ppt  # [추가] PPT 유틸리티 임포트
 import core_logic
 
 def render_output_panel(container, settings, inputs):
@@ -13,7 +14,6 @@ def render_output_panel(container, settings, inputs):
 
         st.markdown('<div id="result_anchor"></div>', unsafe_allow_html=True)
 
-        # UI 분리
         status_placeholder = st.empty()
         result_container = st.container(height=600, border=True)
         
@@ -92,9 +92,10 @@ def render_output_panel(container, settings, inputs):
             col_d1, col_d2 = st.columns(2)
             is_rfi_mode = (inputs['template_option'] == 'rfi')
             
-            # [적용] 파일명 생성: 업로드 파일명 + 템플릿명 조합
+            # 파일명 생성
             file_name_docx = utils.generate_filename(inputs['uploaded_files'], inputs['template_option'])
             file_name_xlsx = file_name_docx.replace('.docx', '.xlsx')
+            file_name_pptx = file_name_docx.replace('.docx', '.pptx') # PPT 파일명
 
             with col_d1:
                 if is_rfi_mode:
@@ -117,4 +118,12 @@ def render_output_panel(container, settings, inputs):
                     )
             
             with col_d2:
-                st.button("📊 PPT로 저장 (구현 예정)", disabled=True, use_container_width=True)
+                # [수정됨] PPT 다운로드 활성화
+                ppt_data = utils_ppt.create_ppt(st.session_state.generated_text)
+                st.download_button(
+                    label=f"📊 PPT로 저장 ({file_name_pptx})", 
+                    data=ppt_data,
+                    file_name=file_name_pptx,
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    use_container_width=True
+                )
