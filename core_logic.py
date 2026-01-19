@@ -55,6 +55,84 @@ PROMPTS = {
 """
 }
 
+# [복구됨] 템플릿 기본 구조 정의
+TEMPLATE_STRUCTURES = {
+    'simple_review': """# 1. Executive Summary
+   - 대상 기업 요약
+   - 주요 투자 조건
+
+# 2. 회사 현황
+   - 설립 및 연혁
+   - 주요 사업 현황
+
+# 3. 주요 동향 및 이슈
+   - 최근 주요 계약
+   - 최근 주요 뉴스
+
+# 4. 재무 및 주가 분석
+   - 요약 재무상태 (최근 3년 매출/이익, 자산/부채 현황)
+   - (필요시) 주가 추이 및 거래량 분석
+
+# 5. 종합 의견
+   - 투자 리스크 점검
+   - 최종 의견""",
+    'rfi': "[RFI 모드] 보유 자료 목록 및 추가 질문을 기반으로 RFI 테이블을 생성합니다.",
+    'investment': """# 1. 투자내용 (Executive Summary)
+   - 투자개요 (딜 구조, 구주/신주, 사이즈)
+   - 투자조건 (Valuation, 금액, 단가)
+   - 주요 투자 조건 (RCPS, 만기, 배당, 상환/전환권)
+
+# 2. 회사현황 (Company Profile)
+   - 회사개요 (대표, 설립일, 주요사업)
+   - 재무현황 (최근 3~4년 요약 재무제표)
+
+# 3. 시장분석 (Market Analysis)
+   - 산업 트렌드 및 시장 규모
+   - 경쟁 현황
+
+# 4. 사업분석 (Business Analysis)
+   - 비즈니스 모델
+   - 핵심 경쟁력
+
+# 5. 투자 타당성 및 리스크
+   - Valuation 분석
+   - 주요 리스크 및 대응 방안
+
+# 6. 종합의견""",
+    'im': """# 1. Investment Highlights
+   - 핵심 투자 포인트
+
+# 2. Company Overview
+   - 기업 소개
+   - 연혁 및 비전
+
+# 3. Market Opportunity
+   - 시장의 문제점 (Pain Point)
+   - 해결책 (Solution)
+
+# 4. Product & Technology
+   - 주요 제품/서비스
+   - 기술 경쟁력
+
+# 5. Financial Plan
+   - 추정 손익계산서
+   - 자금 소요 계획""",
+    'management': """# 1. 운용 개요 (Fund Overview)
+   - 펀드 개황
+   - 운용 성과 요약
+
+# 2. 포트폴리오 주요 현황
+   - 피투자기업 실적 요약
+   - 주요 경영 활동
+
+# 3. 주요 이슈 및 점검 사항
+   - Risk 요인 점검
+   - 대응 방안
+
+# 4. 회수(Exit) 현황 및 계획""",
+    'custom': ""
+}
+
 def get_client(api_key):
     return genai.Client(api_key=api_key)
 
@@ -89,12 +167,8 @@ def parse_all_files(uploaded_files):
     return all_text, file_list_str
 
 def get_default_structure(template_key):
-    # (기존 코드 유지 - ui_input에서 사용됨)
-    # 간단하게 빈 문자열 반환하거나 필요하면 ui_input에서 TEMPLATE_STRUCTURES를 직접 참조해도 됨.
-    # 여기서는 호환성을 위해 ui_input의 로직을 core_logic에 두는 것이 일반적이지 않으므로 
-    # ui_input에 있는 TEMPLATE_STRUCTURES를 참조하는 편이 낫지만,
-    # 오류 방지를 위해 더미 반환 (ui_input에서 처리함)
-    return ""
+    # [수정됨] 딕셔너리에서 값 반환
+    return TEMPLATE_STRUCTURES.get(template_key, "")
 
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
     client = get_client(api_key)
