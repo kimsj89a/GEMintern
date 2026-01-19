@@ -86,10 +86,12 @@ def create_content_slide(prs, title_text):
     title.text_frame.paragraphs[0].font.color.rgb = COLOR_DARK
     title.text_frame.paragraphs[0].font.bold = True
     
-    # 본문 영역 위치 조정 (디자인 바와 겹치지 않게)
+    # 본문 영역 위치 조정 (디자인 바와 겹치지 않게, 제목 아래로)
     body = slide.placeholders[1]
     body.left = Inches(1.0) # 왼쪽 여백 확보
+    body.top = Inches(1.5)  # 제목 아래로 위치 조정
     body.width = Inches(8.5)
+    body.height = Inches(5.5) # 하단 여백 확보
     
     return slide, body.text_frame
 
