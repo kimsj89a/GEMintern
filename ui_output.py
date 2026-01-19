@@ -22,6 +22,9 @@ def render_output_panel(container, settings, inputs):
                     full_response = ""
                     
                     try:
+                        # [오류 해결] settings의 use_diagram 값을 inputs에 병합하여 core_logic으로 전달
+                        inputs['use_diagram'] = settings['use_diagram']
+
                         with st.status("🚀 분석 작업을 시작합니다...", expanded=True) as status:
                             st.write("📂 1. 파일을 읽고 텍스트를 추출합니다...")
                             file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'])
