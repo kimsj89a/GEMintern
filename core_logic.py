@@ -117,7 +117,7 @@ TEMPLATE_STRUCTURES = {
 # 5. Financial Plan
    - 추정 손익계산서
    - 자금 소요 계획""",
-    'management': """# 1. 운용 개요 (Fund Overview)
+    'management': """# 1. 운용 개요
    - 펀드 개황
    - 운용 성과 요약
 

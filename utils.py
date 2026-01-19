@@ -2,14 +2,15 @@ import io
 import re
 import datetime
 import pandas as pd
-from pypdf import PdfReader
+import fitz  # PyMuPDF (High-performance PDF parser)
 from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pptx import Presentation
 
 def parse_uploaded_file(uploaded_file):
-    """업로드된 파일의 타입에 따라 텍스트를 추출합니다."""
+    """
+    업로드된 파일의 타입에 따라 최적의 라이브러리로 텍스트를 추출합니다.
+    Performance: PyMuPDF(PDF) & Calamine(Excel) 적용
+    """
     if uploaded_file is None:
         return ""
         
@@ -17,18 +18,20 @@ def parse_uploaded_file(uploaded_file):
     text_content = ""
 
     try:
+        # [PDF] PyMuPDF (fitz) - 기존 pypdf 대비 10배 이상 고속
         if file_type == 'pdf':
-            reader = PdfReader(uploaded_file)
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    text_content += text + "\n"
+            # Streamlit의 UploadedFile을 bytes로 읽어서 처리
+            with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+                for page in doc:
+                    text_content += page.get_text() + "\n"
         
+        # [Word] python-docx (Standard)
         elif file_type in ['docx', 'doc']:
             doc = Document(uploaded_file)
             for para in doc.paragraphs:
                 text_content += para.text + "\n"
         
+        # [PPT] python-pptx (Standard)
         elif file_type in ['pptx', 'ppt']:
             prs = Presentation(uploaded_file)
             for slide in prs.slides:
@@ -36,13 +39,22 @@ def parse_uploaded_file(uploaded_file):
                     if hasattr(shape, "text"):
                         text_content += shape.text + "\n"
         
+        # [Excel] pandas + calamine (Rust-based, Ultra fast)
         elif file_type in ['xlsx', 'xls', 'csv']:
             if file_type == 'csv':
                 df = pd.read_csv(uploaded_file)
             else:
-                df = pd.read_excel(uploaded_file)
+                try:
+                    # 1순위: 고속 calamine 엔진 시도
+                    df = pd.read_excel(uploaded_file, engine='calamine')
+                except ImportError:
+                    # 2순위: fallback (openpyxl)
+                    uploaded_file.seek(0)
+                    df = pd.read_excel(uploaded_file)
+            
             text_content = df.to_string()
         
+        # [Text]
         elif file_type in ['txt', 'md']:
             stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
             text_content = stringio.read()
@@ -53,60 +65,74 @@ def parse_uploaded_file(uploaded_file):
     except Exception as e:
         return f"[파일 읽기 오류: {uploaded_file.name} - {str(e)}]"
 
+    # 포인터 초기화 (다른 로직에서 재사용 시 안전장치)
+    if hasattr(uploaded_file, 'seek'):
+        uploaded_file.seek(0)
+
     return f"=== 파일명: {uploaded_file.name} ===\n{text_content}\n\n"
 
 def sanitize_filename(text):
     """파일명으로 사용할 수 없는 문자를 제거합니다."""
     text = re.sub(r'[\\/*?:"<>|]', "", text)
-    return text.strip()[:30] # 너무 길면 자름
+    return text.strip()[:20]
 
-def generate_filename_from_content(content_text, default_name="Investment_Report"):
-    """
-    내용을 분석하여 적절한 파일명을 생성합니다.
-    예: 첫 번째 헤더(#) 내용을 가져오거나, '대상 기업:' 문구 등을 찾습니다.
-    """
+def generate_filename_from_content(content_text, doc_type="Report"):
+    """내용 기반 파일명 생성"""
+    company_name = "Company"
     try:
         lines = content_text.split('\n')
+        patterns = [r"대상\s*??기업\s*??[:\-\)]\s*(.*)", r"Target\s*??[:\-\)]\s*(.*)", r"Company\s*??[:\-\)]\s*(.*)"]
+        found = False
+        for line in lines[:20]:
+            for pat in patterns:
+                match = re.search(pat, line, re.IGNORECASE)
+                if match:
+                    extracted = match.group(1).split('(')[0].strip()
+                    if extracted:
+                        company_name = sanitize_filename(extracted)
+                        found = True
+                        break
+            if found: break
         
-        # 1. '# 1. 기업명' 패턴 찾기
-        for line in lines[:10]:
-            if line.startswith('# '):
-                # "# 1. Executive Summary" 같은 건 제외하고 기업명만 있는 경우 등 고려
-                clean_header = line.replace('#', '').strip()
-                # 헤더가 너무 길지 않으면 사용 (30자 이내)
-                if len(clean_header) > 0 and len(clean_header) < 30:
-                    return f"{sanitize_filename(clean_header)}.docx"
-        
-        # 2. 내용 중 '기업명', 'Target' 키워드 찾기 (단순화)
-        # (구현 복잡도를 낮추기 위해 우선 헤더 기반 혹은 타임스탬프로 처리)
-        
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-        return f"{default_name}_{timestamp}.docx"
+        if not found:
+            for line in lines[:10]:
+                if line.startswith('# '):
+                    clean = line.replace('#', '').strip()
+                    if 2 < len(clean) < 20: 
+                        company_name = sanitize_filename(clean)
+                        break
+        return f"{company_name}_{doc_type}.docx"
     except:
-        return f"{default_name}.docx"
+        return f"{company_name}_{doc_type}.docx"
+
+def set_list_level(paragraph, level):
+    pPr = paragraph._p.get_or_add_pPr()
+    numPr = pPr.get_or_add_numPr()
+    ilvl = numPr.get_or_add_ilvl()
+    ilvl.val = level
 
 def create_docx(markdown_text):
-    """Markdown 텍스트를 Word 파일로 변환합니다 (표 및 목록 스타일 처리)."""
+    """Markdown -> Word 변환 (최적화 버전)"""
     doc = Document()
     
     lines = markdown_text.split('\n')
     i = 0
     while i < len(lines):
-        line = lines[i].strip()
+        line = lines[i].rstrip()
         
-        # 1. 헤더 처리
-        if line.startswith('# '):
-            doc.add_heading(line.replace('# ', ''), level=1)
+        # 헤더
+        if line.strip().startswith('# '):
+            doc.add_heading(line.strip().replace('# ', ''), level=1)
             i += 1
-        elif line.startswith('## '):
-            doc.add_heading(line.replace('## ', ''), level=2)
+        elif line.strip().startswith('## '):
+            doc.add_heading(line.strip().replace('## ', ''), level=2)
             i += 1
-        elif line.startswith('### '):
-            doc.add_heading(line.replace('### ', ''), level=3)
+        elif line.strip().startswith('### '):
+            doc.add_heading(line.strip().replace('### ', ''), level=3)
             i += 1
-            
-        # 2. 표(Table) 처리
-        elif line.startswith('|'):
+        
+        # 표
+        elif line.strip().startswith('|'):
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i].strip())
@@ -117,67 +143,53 @@ def create_docx(markdown_text):
                 data_rows = []
                 for row_line in table_lines[1:]:
                     if '---' in row_line: continue
-                    # 빈 셀 포함하여 파싱
                     parts = row_line.split('|')
                     if len(parts) >= 2:
-                        row_data = [c.strip() for c in parts[1:-1]]
-                        data_rows.append(row_data)
+                        data_rows.append([c.strip() for c in parts[1:-1]])
 
                 if headers:
                     table = doc.add_table(rows=1, cols=len(headers))
                     table.style = 'Table Grid'
-                    
-                    hdr_cells = table.rows[0].cells
                     for idx, text in enumerate(headers):
-                        if idx < len(hdr_cells):
-                            hdr_cells[idx].text = text
-                            hdr_cells[idx].paragraphs[0].runs[0].bold = True
-                    
+                        if idx < len(table.rows[0].cells):
+                            table.rows[0].cells[idx].text = text
+                            table.rows[0].cells[idx].paragraphs[0].runs[0].bold = True
                     for row_data in data_rows:
                         row_cells = table.add_row().cells
                         for idx, text in enumerate(row_data):
                             if idx < len(row_cells):
-                                # 셀 내부 텍스트 처리
                                 row_cells[idx].text = text.replace('**', '')
-        
-        # 3. 목록(List) 처리 (요청사항 반영)
-        elif line.startswith('- ') or line.startswith('* '):
-            # Bullet List 스타일 적용
-            clean_text = line[2:]
-            p = doc.add_paragraph(style='List Bullet')
-            # 내부 Bold 처리
-            parts = re.split(r'(\*\*.*?\*\*)', clean_text)
-            for part in parts:
-                if part.startswith('**') and part.endswith('**'):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                else:
-                    p.add_run(part)
-            i += 1
-            
-        elif re.match(r'^\d+\.\s', line):
-            # Numbered List 스타일 적용
-            match = re.match(r'^\d+\.\s', line)
-            clean_text = line[match.end():]
-            p = doc.add_paragraph(style='List Number')
-            parts = re.split(r'(\*\*.*?\*\*)', clean_text)
-            for part in parts:
-                if part.startswith('**') and part.endswith('**'):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                else:
-                    p.add_run(part)
-            i += 1
 
-        # 4. 일반 텍스트
-        else:
-            if line:
-                p = doc.add_paragraph()
-                parts = re.split(r'(\*\*.*?\*\*)', line)
+        # 목록 (List)
+        elif re.match(r'^\s*([-*]|\d+\.)\s', line):
+            match = re.match(r'^(\s*)([-*]|\d+\.)\s+(.*)', line)
+            if match:
+                indent_str, marker, content = match.groups()
+                level = len(indent_str) // 2
+                style = 'List Bullet' if marker in ['-', '*'] else 'List Number'
+                
+                try:
+                    p = doc.add_paragraph(style=style)
+                    if level > 0: set_list_level(p, level)
+                except:
+                    p = doc.add_paragraph(style='List Paragraph')
+                
+                parts = re.split(r'(\*\*.*?\*\*)', content)
                 for part in parts:
                     if part.startswith('**') and part.endswith('**'):
-                        run = p.add_run(part[2:-2])
-                        run.bold = True
+                        p.add_run(part[2:-2]).bold = True
+                    else:
+                        p.add_run(part)
+            i += 1
+
+        # 일반 텍스트
+        else:
+            if line.strip():
+                p = doc.add_paragraph()
+                parts = re.split(r'(\*\*.*?\*\*)', line.strip())
+                for part in parts:
+                    if part.startswith('**') and part.endswith('**'):
+                        p.add_run(part[2:-2]).bold = True
                     else:
                         p.add_run(part)
             i += 1
@@ -187,22 +199,18 @@ def create_docx(markdown_text):
     return bio.getvalue()
 
 def create_excel(markdown_text):
-    """Markdown 표를 파싱하여 Excel 파일로 변환합니다 (RFI용)."""
+    """RFI Excel 생성"""
     data = []
     lines = markdown_text.split('\n')
-    
     for line in lines:
         line = line.strip()
         if line.startswith('|') and '---' not in line:
-            # | col1 | col2 | ...
             row = [c.strip().replace('**', '') for c in line.split('|')[1:-1]]
-            if row:
-                data.append(row)
+            if row: data.append(row)
     
     bio = io.BytesIO()
     if data:
         df = pd.DataFrame(data[1:], columns=data[0])
         with pd.ExcelWriter(bio, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='RFI_List')
-    
     return bio.getvalue()
