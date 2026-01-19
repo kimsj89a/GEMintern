@@ -2,6 +2,9 @@ import streamlit as st
 import utils
 import core_logic
 
+# [사용자 설정] 여기에 API Key를 입력하면 매번 입력할 필요가 없습니다.
+FIXED_API_KEY = ""  # 예: "AIzaSy..."
+
 # 템플릿 상수 정의
 TEMPLATES = {
     'simple_review': """# 1. Executive Summary
@@ -28,45 +31,61 @@ TEMPLATES = {
     'custom': ""
 }
 
-def render_sidebar():
-    """사이드바 설정 UI를 렌더링하고 설정값을 반환합니다."""
-    with st.sidebar:
-        st.header("⚙️ 설정 (Settings)")
+def render_settings():
+    """상단 설정 영역(Expander)을 렌더링하고 설정값을 반환합니다."""
+    
+    # 이미지와 같은 스타일의 Expander
+    with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
+        # 4개의 컬럼으로 분할 (API Key, Model, Thinking, Diagram)
+        c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         
-        api_key = st.text_input("Google API Key", type="password", help="브라우저 세션에만 저장됩니다.")
-        model_name = st.selectbox("Model", [
-            "gemini-3-flash-preview", 
-            "gemini-3-pro-preview", 
-            "gemini-1.5-flash"
-        ], index=0)
-        
-        thinking_level = st.selectbox("Thinking Level", ["High", "Low"], index=0)
-        
-        st.info("💡 **가이드**\n\n- **약식 검토**: 5pg 내외 요약\n- **RFI**: 자료 요청 리스트\n- **Grounding**: 뉴스 챕터 작성 시 자동 검색")
-        st.caption("Powered by Gemini 2.0 | Converted to Streamlit")
-        
-        return {
-            "api_key": api_key,
-            "model_name": model_name,
-            "thinking_level": thinking_level
-        }
+        with c1:
+            # 고정 키가 있으면 기본값으로 사용
+            default_key = FIXED_API_KEY if FIXED_API_KEY else ""
+            api_key = st.text_input("Google API Key", value=default_key, type="password", placeholder="Enter Key...")
+            
+        with c2:
+            model_name = st.selectbox("사용할 모델 (Model)", [
+                "gemini-3-pro-preview",
+                "gemini-3-flash-preview", 
+                "gemini-1.5-flash"
+            ], index=0)
+            
+        with c3:
+            thinking_level = st.selectbox("사고 수준 (Thinking)", ["High (추론 깊이 극대화)", "Low (속도 우선)"], index=0)
+            
+        with c4:
+            st.write("") # 줄맞춤용 공백
+            st.write("") 
+            use_diagram = st.checkbox("🎨 도식화 이미지 생성", value=False)
+
+        # 하단 가이드 배너 (이미지 스타일)
+        st.info("💡 **약식 검토**: 5pg 내외 요약 (자동압축)  |  **RFI 작성**: 자료 요청 리스트 (엑셀)  |  **뉴스 검색**: '뉴스/동향' 작성 시 Google 검색")
+
+    return {
+        "api_key": api_key,
+        "model_name": model_name,
+        "thinking_level": "High" if "High" in thinking_level else "Low",
+        "use_diagram": use_diagram
+    }
 
 def render_input_panel(container, settings):
-    """입력 패널 UI를 렌더링하고 사용자 입력 데이터를 반환합니다."""
+    """왼쪽 입력 패널 UI"""
     with container:
-        st.subheader("📥 입력 (Input)")
+        st.markdown("### 1️⃣ 입력 (Input)")
         
         # 1. 템플릿 선택
         template_keys = list(TEMPLATES.keys())
         template_option = st.selectbox(
-            "1. 문서 구조 / 템플릿", 
+            "문서 구조 / 템플릿 선택", 
             template_keys, 
             format_func=lambda x: {
                 'simple_review': '1. 약식 투자검토 (요약)',
                 'rfi': '2. RFI 작성 (실사 자료 요청)',
                 'investment': '3. 투자심사보고서 (표준)',
                 'custom': '4. 직접 입력'
-            }.get(x, x)
+            }.get(x, x),
+            label_visibility="collapsed"
         )
         
         # 구조 추출 기능 (옵션)
@@ -86,7 +105,7 @@ def render_input_panel(container, settings):
                             st.session_state['structure_input'] = extracted_structure
                             st.rerun()
 
-        # 구조 입력창 (기본값 vs 추출값)
+        # 구조 입력창
         default_structure = TEMPLATES[template_option]
         if 'structure_input' in st.session_state and template_option == 'custom':
             default_structure = st.session_state['structure_input']
@@ -100,14 +119,15 @@ def render_input_panel(container, settings):
 
         # 2. 데이터 업로드
         st.markdown("##### 2. 분석할 데이터 (Raw Data)")
-        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True)
+        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
         
         # 3. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락 (Context)")
         context_text = st.text_area(
             "추가 질문 및 상황 설명", 
             placeholder="예: 기업명, 핵심 제품, 주요 우려 사항 등...",
-            height=100
+            height=100,
+            label_visibility="collapsed"
         )
 
         # RFI 전용
@@ -116,6 +136,7 @@ def render_input_panel(container, settings):
             st.markdown("##### 5. 기존 RFI 목록 (선택)")
             rfi_existing = st.text_area("기존 목록 붙여넣기", height=100)
 
+        st.markdown("---")
         generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary")
 
         return {

@@ -3,21 +3,41 @@ import ui_input
 import ui_output
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v5.0 (Py)", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v4.7", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
 <style>
+    /* 전체 여백 조정 */
     .reportview-container .main .block-container {
-        padding-top: 2rem;
+        padding-top: 1rem;
         padding-bottom: 5rem;
     }
+    /* 타이틀 스타일 */
+    .title-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .badge {
+        background-color: #f0f2f6;
+        color: #31333F;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        border: 1px solid #d6d6d8;
+    }
+    .badge-blue {
+        background-color: #e6f0ff;
+        color: #0068c9;
+        border: 1px solid #b3d1ff;
+    }
+    /* 텍스트 줄바꿈 */
     p, li, div {
         word-break: keep-all;
         overflow-wrap: break-word;
-    }
-    @media (max-width: 640px) {
-        .stTextArea textarea { font-size: 16px !important; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -29,16 +49,28 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def main():
-    # 1. 사이드바 설정 로드
-    settings = ui_input.render_sidebar()
+    # 1. 헤더 (이미지 스타일)
+    st.markdown("""
+        <div class="title-container">
+            <h1>💎 GEM Intern</h1>
+            <span class="badge">v4.7</span>
+            <span class="badge badge-blue">Mobile Fix</span>
+        </div>
+        <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
+    """, unsafe_allow_html=True)
+
+    # 2. 상단 설정 영역 (기존 사이드바 -> 메인 상단)
+    settings = ui_input.render_settings()
     
-    # 2. 메인 레이아웃 (2단)
-    col1, col2 = st.columns([1, 1])
+    st.markdown("---")
+
+    # 3. 메인 레이아웃 (2단)
+    col1, col2 = st.columns([1, 1.2]) # 오른쪽 결과창을 조금 더 넓게
     
-    # 3. 왼쪽 패널 (입력)
+    # 4. 왼쪽 패널 (입력)
     inputs = ui_input.render_input_panel(col1, settings)
     
-    # 4. 오른쪽 패널 (결과)
+    # 5. 오른쪽 패널 (결과)
     ui_output.render_output_panel(col2, settings, inputs)
 
 if __name__ == "__main__":
