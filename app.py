@@ -3,7 +3,7 @@ import ui_input
 import ui_output
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v4.8", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v4.9", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -49,12 +49,12 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def main():
-    # 1. 헤더
+    # 1. 헤더 (버전 v4.9 적용)
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v4.8</span>
-            <span class="badge badge-blue">Vertical Layout</span>
+            <span class="badge">v4.9</span>
+            <span class="badge badge-blue">Auto-Scroll & List Style</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)
@@ -65,14 +65,11 @@ def main():
     st.markdown("---")
 
     # 3. 메인 레이아웃 (상하 배치)
-    # 기존 col1, col2 = st.columns(...) 제거 -> 순차 렌더링
-    
-    # [입력 패널]
     inputs = ui_input.render_input_panel(st.container(), settings)
     
-    st.markdown("<br>", unsafe_allow_html=True) # 간격 추가
+    st.markdown("<br>", unsafe_allow_html=True) 
 
-    # [결과 패널] - 입력값(버튼 클릭 등) 전달
+    # [결과 패널]
     ui_output.render_output_panel(st.container(), settings, inputs)
 
 if __name__ == "__main__":
