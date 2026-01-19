@@ -13,13 +13,12 @@ def render_output_panel(container, settings, inputs):
 
         st.markdown('<div id="result_anchor"></div>', unsafe_allow_html=True)
 
-        # UI 분리: 상태창(Status) / 결과창(Result)
+        # UI 분리
         status_placeholder = st.empty()
         result_container = st.container(height=600, border=True)
         
         # 생성 로직
         if inputs['generate_btn']:
-            # 스크롤 이동
             components.html("""
                 <script>
                     window.parent.document.getElementById('result_anchor').scrollIntoView({behavior: 'smooth'});
@@ -93,7 +92,7 @@ def render_output_panel(container, settings, inputs):
             col_d1, col_d2 = st.columns(2)
             is_rfi_mode = (inputs['template_option'] == 'rfi')
             
-            # [변경] 파일명 생성 로직: 업로드된 파일명 기반 + 템플릿명
+            # [적용] 파일명 생성: 업로드 파일명 + 템플릿명 조합
             file_name_docx = utils.generate_filename(inputs['uploaded_files'], inputs['template_option'])
             file_name_xlsx = file_name_docx.replace('.docx', '.xlsx')
 

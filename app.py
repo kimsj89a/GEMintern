@@ -3,7 +3,7 @@ import ui_input
 import ui_output
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v4.9", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v5.0", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -49,12 +49,12 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def main():
-    # 1. 헤더 (버전 v4.9 적용)
+    # 1. 헤더 (버전 v5.0)
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v4.9</span>
-            <span class="badge badge-blue">Auto-Scroll & List Style</span>
+            <span class="badge">v5.0</span>
+            <span class="badge badge-blue">Auto-Naming & Multi-Level List</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)

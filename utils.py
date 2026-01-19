@@ -4,9 +4,6 @@ import os
 import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
-from docx.shared import Pt, Inches
-from docx.oxml.ns import qn
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pptx import Presentation
 
 def parse_uploaded_file(uploaded_file):
@@ -61,6 +58,7 @@ def parse_uploaded_file(uploaded_file):
     except Exception as e:
         return f"[파일 읽기 오류: {uploaded_file.name} - {str(e)}]"
 
+    # 파일 포인터 초기화
     if hasattr(uploaded_file, 'seek'):
         uploaded_file.seek(0)
 
@@ -96,23 +94,19 @@ def generate_filename(uploaded_files, template_option):
 def set_list_level(paragraph, level):
     """
     Word 목록의 들여쓰기 수준(Level)을 강제로 설정합니다.
-    level 0: ●
-    level 1: ○
-    level 2: ■
+    level 0: ●, level 1: ○, level 2: ■ ... (Word 스타일에 따름)
     """
     pPr = paragraph._p.get_or_add_pPr()
     numPr = pPr.get_or_add_numPr()
     
-    # 1. NumId 설정 (기본 불렛 목록 ID 사용 시도)
-    # python-docx에서 새 목록 스타일을 정의하는 것은 복잡하므로,
-    # 기존 'List Paragraph' 스타일에 들여쓰기(ilvl)만 조정하는 방식을 사용합니다.
+    # 레벨 설정 (ilvl)
     ilvl = numPr.get_or_add_ilvl()
     ilvl.val = level
     
-    # numId가 없으면 추가 (워드 기본 불렛 연결)
+    # numId가 없으면 추가 (워드 기본 불렛 리스트 연결 시도)
     if numPr.numId is None:
         numId = numPr.get_or_add_numId()
-        numId.val = 1  # 통상적으로 1번이 기본 불렛 리스트
+        numId.val = 1 
 
 def create_docx(markdown_text):
     """Markdown -> Word 변환 (Bullet Level 완벽 지원)"""
@@ -151,7 +145,6 @@ def create_docx(markdown_text):
                     if '---' in row_line: continue
                     parts = row_line.split('|')
                     if len(parts) >= 2:
-                         # 빈 셀도 포함해서 데이터 추출
                         row_data = [c.strip() for c in parts[1:-1]]
                         data_rows.append(row_data)
 
@@ -164,7 +157,6 @@ def create_docx(markdown_text):
                     for idx, text in enumerate(headers):
                         if idx < len(hdr_cells):
                             hdr_cells[idx].text = text
-                            # 헤더 볼드체
                             for run in hdr_cells[idx].paragraphs[0].runs:
                                 run.bold = True
                                 
@@ -176,17 +168,16 @@ def create_docx(markdown_text):
                                 row_cells[idx].text = text.replace('**', '')
 
         # 3. 목록 (Bullet/Numbering with Levels)
+        # 예: "- 항목", "  - 하위항목", "1. 항목"
         elif re.match(r'^\s*([-*]|\d+\.)\s', raw_line):
-            # 정규표현식으로 들여쓰기 공백, 마커(-, 1.), 내용 분리
             match = re.match(r'^(\s*)([-*]|\d+\.)\s+(.*)', raw_line)
             if match:
                 indent_str, marker, content = match.groups()
                 
-                # 들여쓰기 레벨 계산 (2칸 or 탭 = 1레벨)
-                # 0~1칸: Lv0, 2~3칸: Lv1, 4~5칸: Lv2 ...
-                spaces = indent_str.replace('\t', '  ') # 탭을 공백 2개로 치환
-                level = len(spaces) // 2 
-                if level > 8: level = 8 # Word 최대 레벨 제한
+                # 레벨 계산: 공백 2개당 1레벨 (탭은 2칸으로 간주)
+                spaces = indent_str.replace('\t', '  ')
+                level = len(spaces) // 2
+                if level > 8: level = 8 
 
                 # 스타일 선택
                 is_bullet = marker in ['-', '*']
@@ -196,13 +187,12 @@ def create_docx(markdown_text):
                 try:
                     p = doc.add_paragraph(style=style_name)
                 except:
-                    # 해당 스타일이 없을 경우 기본 스타일 사용 후 수동 설정 시도
-                    p = doc.add_paragraph()
+                    p = doc.add_paragraph() # Fallback
                 
-                # 레벨 적용 (핵심)
+                # 레벨 적용
                 set_list_level(p, level)
 
-                # 내용 작성 (Bold 처리 포함)
+                # 내용 작성 (Bold 처리)
                 parts = re.split(r'(\*\*.*?\*\*)', content)
                 for part in parts:
                     if part.startswith('**') and part.endswith('**'):
