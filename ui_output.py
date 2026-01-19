@@ -13,17 +13,13 @@ def render_output_panel(container, settings, inputs):
 
         st.markdown('<div id="result_anchor"></div>', unsafe_allow_html=True)
 
-        # [UI 분리] 진행 상태(Status)와 결과(Result)를 물리적으로 분리
-        # Status는 임시 컨테이너에 표시하고, 결과는 그 아래 영구 컨테이너에 표시
-        
-        # 1. 상태 표시 영역 (Progress Area)
+        # UI 분리: 상태창(Status) / 결과창(Result)
         status_placeholder = st.empty()
-        
-        # 2. 결과 표시 영역 (Result Area)
         result_container = st.container(height=600, border=True)
         
         # 생성 로직
         if inputs['generate_btn']:
+            # 스크롤 이동
             components.html("""
                 <script>
                     window.parent.document.getElementById('result_anchor').scrollIntoView({behavior: 'smooth'});
@@ -36,7 +32,6 @@ def render_output_panel(container, settings, inputs):
                 try:
                     inputs['use_diagram'] = settings['use_diagram']
 
-                    # 상태창은 status_placeholder 안에 생성
                     with status_placeholder.status("🚀 분석 작업을 시작합니다...", expanded=True) as status:
                         st.write("📂 1. 파일을 읽고 텍스트를 추출합니다...")
                         file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'])
@@ -52,7 +47,6 @@ def render_output_panel(container, settings, inputs):
                         
                         st.write("✍️ 3. 문서를 작성 중입니다 (스트리밍)...")
                         
-                        # [중요] 스트리밍 결과를 result_container (하단)에 출력
                         full_response = ""
                         with result_container:
                             response_placeholder = st.empty()
@@ -61,10 +55,8 @@ def render_output_panel(container, settings, inputs):
                                     full_response += chunk.text
                                     response_placeholder.markdown(full_response + "▌")
                             
-                            # 스트리밍 완료 후 커서 제거
                             response_placeholder.markdown(full_response)
                         
-                        # 완료 상태 업데이트
                         status.update(label="✅ 작성이 완료되었습니다!", state="complete", expanded=False)
                         st.session_state.generated_text = full_response
                         
@@ -72,15 +64,13 @@ def render_output_panel(container, settings, inputs):
                     st.error(f"생성 중 오류 발생: {e}")
 
         elif st.session_state.generated_text:
-            # 이미 생성된 텍스트가 있으면 결과 컨테이너에 표시
             with result_container:
                 st.markdown(st.session_state.generated_text)
 
-        # 하단 액션 (수정 및 다운로드)
+        # 하단 액션
         if st.session_state.generated_text:
             st.markdown("---")
             
-            # 수정 요청
             refine_query = st.chat_input("결과물 수정/보완 요청 (Enter로 전송)")
             if refine_query:
                 if not settings['api_key']:
@@ -102,10 +92,10 @@ def render_output_panel(container, settings, inputs):
             # 다운로드 버튼
             col_d1, col_d2 = st.columns(2)
             is_rfi_mode = (inputs['template_option'] == 'rfi')
-
-            # [동적 파일명 생성]
-            file_name_docx = utils.generate_filename_from_content(st.session_state.generated_text, "Investment_Report")
-            file_name_xlsx = utils.generate_filename_from_content(st.session_state.generated_text, "RFI_List").replace('.docx', '.xlsx')
+            
+            # [변경] 파일명 생성 로직: 업로드된 파일명 기반 + 템플릿명
+            file_name_docx = utils.generate_filename(inputs['uploaded_files'], inputs['template_option'])
+            file_name_xlsx = file_name_docx.replace('.docx', '.xlsx')
 
             with col_d1:
                 if is_rfi_mode:
