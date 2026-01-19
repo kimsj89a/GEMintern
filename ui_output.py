@@ -1,19 +1,31 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import utils
 import core_logic
 
 def render_output_panel(container, settings, inputs):
     with container:
+        # [수정됨] 아이콘 변경 ®️ -> 📄
         c_head1, c_head2 = st.columns([2, 1])
         with c_head1:
-             st.markdown("### ®️ 결과물 (Result)")
+             st.markdown("### 📄 결과물 (Result)")
         with c_head2:
              st.markdown('<div style="text-align: right; color: gray; font-size: 0.8rem;">📄 복사 | ✏️ 편집</div>', unsafe_allow_html=True)
+
+        # [추가] 자동 스크롤용 앵커
+        st.markdown('<div id="result_anchor"></div>', unsafe_allow_html=True)
 
         result_container = st.container(height=600, border=True)
         
         # 생성 로직
         if inputs['generate_btn']:
+            # [추가] 생성 버튼 클릭 시 결과창으로 스크롤 이동 (JS 주입)
+            components.html("""
+                <script>
+                    window.parent.document.getElementById('result_anchor').scrollIntoView({behavior: 'smooth'});
+                </script>
+            """, height=0)
+
             if not settings['api_key']:
                 st.error("설정 패널에서 API Key를 입력해주세요.")
             else:
@@ -22,7 +34,6 @@ def render_output_panel(container, settings, inputs):
                     full_response = ""
                     
                     try:
-                        # [오류 해결] settings의 use_diagram 값을 inputs에 병합하여 core_logic으로 전달
                         inputs['use_diagram'] = settings['use_diagram']
 
                         with st.status("🚀 분석 작업을 시작합니다...", expanded=True) as status:
@@ -85,7 +96,6 @@ def render_output_panel(container, settings, inputs):
 
             with col_d1:
                 if is_rfi_mode:
-                    # RFI 모드: Excel 다운로드
                     excel_data = utils.create_excel(st.session_state.generated_text)
                     st.download_button(
                         label="📉 RFI 엑셀(Excel)로 저장",
@@ -95,7 +105,6 @@ def render_output_panel(container, settings, inputs):
                         use_container_width=True
                     )
                 else:
-                    # 일반 모드: Word 다운로드
                     docx_data = utils.create_docx(st.session_state.generated_text)
                     st.download_button(
                         label="📄 Word로 저장",
@@ -106,5 +115,4 @@ def render_output_panel(container, settings, inputs):
                     )
             
             with col_d2:
-                # PPT는 아직 미구현 (Placeholder)
                 st.button("📊 PPT로 저장 (구현 예정)", disabled=True, use_container_width=True)

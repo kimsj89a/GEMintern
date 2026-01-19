@@ -3,7 +3,7 @@ import ui_input
 import ui_output
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v4.7", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v4.8", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -49,29 +49,31 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def main():
-    # 1. 헤더 (이미지 스타일)
+    # 1. 헤더
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v4.7</span>
-            <span class="badge badge-blue">Mobile Fix</span>
+            <span class="badge">v4.8</span>
+            <span class="badge badge-blue">Vertical Layout</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)
 
-    # 2. 상단 설정 영역 (기존 사이드바 -> 메인 상단)
+    # 2. 상단 설정 영역
     settings = ui_input.render_settings()
     
     st.markdown("---")
 
-    # 3. 메인 레이아웃 (2단)
-    col1, col2 = st.columns([1, 1.2]) # 오른쪽 결과창을 조금 더 넓게
+    # 3. 메인 레이아웃 (상하 배치)
+    # 기존 col1, col2 = st.columns(...) 제거 -> 순차 렌더링
     
-    # 4. 왼쪽 패널 (입력)
-    inputs = ui_input.render_input_panel(col1, settings)
+    # [입력 패널]
+    inputs = ui_input.render_input_panel(st.container(), settings)
     
-    # 5. 오른쪽 패널 (결과)
-    ui_output.render_output_panel(col2, settings, inputs)
+    st.markdown("<br>", unsafe_allow_html=True) # 간격 추가
+
+    # [결과 패널] - 입력값(버튼 클릭 등) 전달
+    ui_output.render_output_panel(st.container(), settings, inputs)
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@ import streamlit as st
 import utils
 import core_logic
 
-# 템플릿 상수 정의 (HTML 버전과 동기화)
+# 템플릿 상수 정의
 TEMPLATES = {
     'simple_review': '1. 약식 투자검토 (요약)',
     'rfi': '2. RFI 작성 (실사 자료 요청)',
@@ -15,7 +15,6 @@ TEMPLATES = {
 def render_settings():
     """상단 설정 영역(Expander)을 렌더링하고 설정값을 반환합니다."""
     
-    # URL 쿼리 파라미터에서 API Key 읽기
     query_params = st.query_params
     cached_key = query_params.get("api_key", "")
     if isinstance(cached_key, list): cached_key = cached_key[0]
@@ -60,7 +59,8 @@ def render_settings():
 def render_input_panel(container, settings):
     """왼쪽 입력 패널 UI"""
     with container:
-        st.markdown("### 1️⃣ 입력 (Input)")
+        # [수정됨] 아이콘 변경 1️⃣ -> 📝
+        st.markdown("### 📝 입력 (Input)")
         
         # 1. 템플릿 선택
         template_option = st.selectbox(
@@ -87,12 +87,10 @@ def render_input_panel(container, settings):
                             st.session_state['structure_input'] = extracted_structure
                             st.rerun()
 
-        # 기본 구조 텍스트 로드
         default_structure = core_logic.get_default_structure(template_option)
         if 'structure_input' in st.session_state and template_option == 'custom':
             default_structure = st.session_state['structure_input']
             
-        # RFI 모드일 때는 구조 입력창 비활성화
         is_rfi = (template_option == 'rfi')
         
         structure_text = st.text_area(
@@ -106,7 +104,7 @@ def render_input_panel(container, settings):
         st.markdown("##### 2. 분석할 데이터 (Raw Data)")
         uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
         
-        # 3. 컨텍스트 (RFI 모드일 경우 라벨 변경)
+        # 3. 컨텍스트
         context_label = "3. 대상 기업 및 맥락 (Context)" if not is_rfi else "3. 추가 질문 및 확인 사항 (Questions)"
         st.markdown(f"##### {context_label}")
         context_text = st.text_area(
@@ -116,7 +114,7 @@ def render_input_panel(container, settings):
             label_visibility="collapsed"
         )
 
-        # RFI 전용: 기존 RFI 입력
+        # RFI 전용
         rfi_existing = ""
         if is_rfi:
             st.markdown("##### 5. 기존 RFI 목록 (선택)")
