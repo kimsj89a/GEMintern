@@ -3,6 +3,8 @@ import re
 import pandas as pd
 from pypdf import PdfReader
 from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pptx import Presentation
 
 def parse_uploaded_file(uploaded_file):
@@ -53,43 +55,99 @@ def parse_uploaded_file(uploaded_file):
     return f"=== 파일명: {uploaded_file.name} ===\n{text_content}\n\n"
 
 def create_docx(markdown_text):
-    """
-    Markdown 텍스트를 Word 파일로 변환합니다.
-    Header(#) 및 Bold(**) 처리를 지원합니다.
-    """
+    """Markdown 텍스트를 Word 파일로 변환합니다 (표 처리 포함)."""
     doc = Document()
     
-    # 빈 줄 제외하고 처리
-    lines = [line for line in markdown_text.split('\n') if line.strip() != '']
-    
-    for line in lines:
-        line = line.strip()
+    lines = markdown_text.split('\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
         
         # 1. 헤더 처리
         if line.startswith('# '):
             doc.add_heading(line.replace('# ', ''), level=1)
+            i += 1
         elif line.startswith('## '):
             doc.add_heading(line.replace('## ', ''), level=2)
+            i += 1
         elif line.startswith('### '):
             doc.add_heading(line.replace('### ', ''), level=3)
-        
-        # 2. 본문 및 Bold 처리
-        else:
-            p = doc.add_paragraph()
-            # 정규표현식으로 **...** 패턴 분리 (캡처 그룹 사용으로 구분자도 포함됨)
-            parts = re.split(r'(\*\*.*?\*\*)', line)
+            i += 1
             
-            for part in parts:
-                if part.startswith('**') and part.endswith('**'):
-                    # 굵게 적용 (앞뒤 ** 제거)
-                    text = part[2:-2]
-                    run = p.add_run(text)
-                    run.bold = True
-                else:
-                    # 일반 텍스트
-                    if part: # 빈 문자열 제외
+        # 2. 표(Table) 처리
+        elif line.startswith('|'):
+            # 표 데이터 수집
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                table_lines.append(lines[i].strip())
+                i += 1
+            
+            # Markdown Table 파싱
+            if len(table_lines) >= 2: # 최소 헤더 + 구분선
+                # 구분선 제거 (---|---)
+                headers = [c.strip() for c in table_lines[0].split('|') if c.strip()]
+                data_rows = []
+                for row_line in table_lines[1:]:
+                    if '---' in row_line: continue
+                    row_data = [c.strip() for c in row_line.split('|') if c.strip() or c == ""]
+                    # 빈 셀 처리 보정
+                    if row_line.startswith('|') and row_line.endswith('|'):
+                        row_data = [c.strip() for c in row_line.split('|')[1:-1]]
+                    if row_data:
+                        data_rows.append(row_data)
+
+                if headers:
+                    table = doc.add_table(rows=1, cols=len(headers))
+                    table.style = 'Table Grid'
+                    
+                    # 헤더 입력
+                    hdr_cells = table.rows[0].cells
+                    for idx, text in enumerate(headers):
+                        if idx < len(hdr_cells):
+                            hdr_cells[idx].text = text
+                            hdr_cells[idx].paragraphs[0].runs[0].bold = True
+                    
+                    # 데이터 입력
+                    for row_data in data_rows:
+                        row_cells = table.add_row().cells
+                        for idx, text in enumerate(row_data):
+                            if idx < len(row_cells):
+                                row_cells[idx].text = text.replace('**', '') # 볼드 마크 제거
+        
+        # 3. 일반 텍스트 (Bold 처리)
+        else:
+            if line:
+                p = doc.add_paragraph()
+                parts = re.split(r'(\*\*.*?\*\*)', line)
+                for part in parts:
+                    if part.startswith('**') and part.endswith('**'):
+                        run = p.add_run(part[2:-2])
+                        run.bold = True
+                    else:
                         p.add_run(part)
+            i += 1
     
     bio = io.BytesIO()
     doc.save(bio)
+    return bio.getvalue()
+
+def create_excel(markdown_text):
+    """Markdown 표를 파싱하여 Excel 파일로 변환합니다 (RFI용)."""
+    data = []
+    lines = markdown_text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if line.startswith('|') and '---' not in line:
+            # | col1 | col2 | ...
+            row = [c.strip().replace('**', '') for c in line.split('|')[1:-1]]
+            if row:
+                data.append(row)
+    
+    bio = io.BytesIO()
+    if data:
+        df = pd.DataFrame(data[1:], columns=data[0]) # 첫 줄을 헤더로
+        with pd.ExcelWriter(bio, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='RFI_List')
+    
     return bio.getvalue()
