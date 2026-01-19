@@ -2,9 +2,6 @@ import streamlit as st
 import utils
 import core_logic
 
-# [사용자 설정] 여기에 API Key를 입력하면 매번 입력할 필요가 없습니다.
-FIXED_API_KEY = ""  # 예: "AIzaSy..."
-
 # 템플릿 상수 정의
 TEMPLATES = {
     'simple_review': """# 1. Executive Summary
@@ -34,21 +31,37 @@ TEMPLATES = {
 def render_settings():
     """상단 설정 영역(Expander)을 렌더링하고 설정값을 반환합니다."""
     
-    # 이미지와 같은 스타일의 Expander
+    # URL 쿼리 파라미터에서 API Key 읽기 (브라우저 캐시)
+    query_params = st.query_params
+    cached_key = query_params.get("api_key", "")
+    
+    # 리스트로 반환될 경우 첫 번째 값 사용
+    if isinstance(cached_key, list):
+        cached_key = cached_key[0] if cached_key else ""
+
     with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
         # 4개의 컬럼으로 분할 (API Key, Model, Thinking, Diagram)
         c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         
         with c1:
-            # 고정 키가 있으면 기본값으로 사용
-            default_key = FIXED_API_KEY if FIXED_API_KEY else ""
-            api_key = st.text_input("Google API Key", value=default_key, type="password", placeholder="Enter Key...")
+            # 기본값으로 캐시된 키 사용
+            api_key = st.text_input("Google API Key", value=cached_key, type="password", placeholder="Enter Key...")
+            
+            # 브라우저(URL) 저장 옵션
+            save_to_url = st.checkbox("🔑 브라우저(URL)에 키 저장", value=bool(cached_key), help="체크 시 URL에 키가 저장되어 새로고침 후에도 유지됩니다.")
+            
+            # 체크박스 상태에 따라 URL 업데이트
+            if save_to_url and api_key:
+                st.query_params["api_key"] = api_key
+            elif not save_to_url:
+                if "api_key" in st.query_params:
+                    del st.query_params["api_key"]
             
         with c2:
+            # [수정됨] 요청하신 모델 리스트로 통일
             model_name = st.selectbox("사용할 모델 (Model)", [
                 "gemini-3-pro-preview",
-                "gemini-3-flash-preview", 
-                "gemini-1.5-flash"
+                "gemini-3-flash-preview"
             ], index=0)
             
         with c3:
@@ -59,7 +72,7 @@ def render_settings():
             st.write("") 
             use_diagram = st.checkbox("🎨 도식화 이미지 생성", value=False)
 
-        # 하단 가이드 배너 (이미지 스타일)
+        # 하단 가이드 배너
         st.info("💡 **약식 검토**: 5pg 내외 요약 (자동압축)  |  **RFI 작성**: 자료 요청 리스트 (엑셀)  |  **뉴스 검색**: '뉴스/동향' 작성 시 Google 검색")
 
     return {

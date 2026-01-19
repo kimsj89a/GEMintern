@@ -34,7 +34,7 @@ def build_prompt(inputs, all_file_text, thinking_level):
     if inputs['template_option'] == 'simple_review':
         system_instruction += "\n**중요: 결과물은 절대 10페이지 분량을 넘지 않도록 핵심만 요약하세요.**"
     
-    # Grounding 툴 사용 여부 힌트 (실제 툴 설정은 stream 함수에서)
+    # Grounding 툴 사용 여부 힌트
     if "뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text']:
          system_instruction += "\n[Google Search]: 최신 시장 동향과 뉴스는 Google 검색을 통해 팩트를 확인하고 작성하세요."
 
@@ -59,6 +59,7 @@ def build_prompt(inputs, all_file_text, thinking_level):
 
 def generate_report_stream(api_key, model_name, inputs, thinking_level):
     """Gemini API를 호출하여 리포트를 스트리밍으로 생성합니다."""
+    # 클라이언트를 함수 범위 내에서 생성
     client = get_client(api_key)
     
     # 1. 파일 내용 파싱
@@ -70,23 +71,27 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level):
     # 2. 프롬프트 구성
     full_prompt, _ = build_prompt(inputs, all_file_text, thinking_level)
     
-    # 3. 툴 설정 (뉴스/동향 키워드가 있으면 검색 활성화)
+    # 3. 툴 설정
     tools = []
     if "뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text'] or inputs['template_option'] == 'simple_review':
         tools = [types.Tool(google_search=types.GoogleSearch())]
 
-    # 4. API 호출
+    # 4. API 호출 설정
     config = types.GenerateContentConfig(
         tools=tools,
         max_output_tokens=8192,
         temperature=0.7
     )
 
-    return client.models.generate_content_stream(
+    # [중요 수정] 스트림 객체를 바로 리턴하지 않고 yield로 순회하여 클라이언트 생명주기 유지
+    response_stream = client.models.generate_content_stream(
         model=model_name,
         contents=full_prompt,
         config=config
     )
+    
+    for chunk in response_stream:
+        yield chunk
 
 def refine_report(api_key, model_name, current_text, refine_query):
     """기존 리포트를 사용자 요청에 따라 수정합니다."""
