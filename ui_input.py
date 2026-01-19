@@ -2,14 +2,15 @@ import streamlit as st
 import utils
 import core_logic
 
-# 템플릿 상수 정의
+# 템플릿 상수 정의 (PPT 모드 추가)
 TEMPLATES = {
     'simple_review': '1. 약식 투자검토 (요약)',
     'rfi': '2. RFI 작성 (실사 자료 요청)',
     'investment': '3. 투자심사보고서 (표준)',
     'im': '4. IM (투자제안서)',
     'management': '5. 사후관리보고서',
-    'custom': '6. 직접 입력 (자동 구조화)'
+    'presentation': '6. 투자심의 발표자료 (PPT)', # [NEW]
+    'custom': '7. 직접 입력 (자동 구조화)'
 }
 
 def render_settings():
@@ -47,7 +48,7 @@ def render_settings():
             st.write("") 
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
 
-        st.info("💡 **약식 검토**: 5pg 내외 요약 | **RFI**: 자료 요청 리스트 (엑셀) | **뉴스 검색**: '뉴스/동향' 챕터 작성 시 자동 검색")
+        st.info("💡 **약식/보고서**: Word 최적화 서술 | **발표자료(PPT)**: 슬라이드별 개조식 요약 (PPT 다운로드 권장)")
 
     return {
         "api_key": api_key,
@@ -59,7 +60,6 @@ def render_settings():
 def render_input_panel(container, settings):
     """왼쪽 입력 패널 UI"""
     with container:
-        # [수정됨] 아이콘 변경 1️⃣ -> 📝
         st.markdown("### 📝 입력 (Input)")
         
         # 1. 템플릿 선택
@@ -87,6 +87,7 @@ def render_input_panel(container, settings):
                             st.session_state['structure_input'] = extracted_structure
                             st.rerun()
 
+        # 기본 구조 텍스트 로드
         default_structure = core_logic.get_default_structure(template_option)
         if 'structure_input' in st.session_state and template_option == 'custom':
             default_structure = st.session_state['structure_input']
@@ -118,7 +119,7 @@ def render_input_panel(container, settings):
         rfi_existing = ""
         if is_rfi:
             st.markdown("##### 5. 기존 RFI 목록 (선택)")
-            rfi_existing = st.text_area("기존 목록 붙여넣기", height=100, placeholder="기존에 작성된 RFI 표가 있다면 붙여넣으세요.")
+            rfi_existing = st.text_area("기존 목록 붙여넣기", height=100)
 
         st.markdown("---")
         generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary")

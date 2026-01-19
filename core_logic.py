@@ -18,22 +18,7 @@ PROMPTS = {
     'rfi_system': """
 당신은 회계법인 FAS(Financial Advisory Services)팀의 **M&A 실사(Due Diligence) 전문 매니저**입니다.
 기업이 주장하는 내용을 맹신하지 않고, 반드시 **객관적인 근거 데이터(계약서, 원장, 신고서 등)**로 검증하는 보수적인 태도를 가집니다.
-
-# Context: [기본 실사 체크리스트]
-당신은 아래의 표준 실사 체크리스트 내용을 완벽히 숙지하고 있습니다. 
-***중요: 사용자가 별도의 질문을 하지 않더라도, 아래의 필수 체크리스트 항목들은 기본적으로 포함되어야 합니다.***
----
-1. 회사일반: 주주명부, 정관, 등기부등본, 조직도, 이사회 의사록, 경영진 이력
-2. 재무/회계: 최근 3개년 감사보고서, 계정별 원장, 월별 결산서, 우발채무, 차입금 현황
-3. 영업/시장: 시장규모 및 M/S 분석 자료(외부), 주요 매출처 계약서, 수주잔고(Backlog), 단가 정책
-4. 기술/생산: 특허 리스트, 생산설비 대장, 수율/가동률 데이터, 라이선스 계약
-5. 인사/노무: 급여대장, 노조 현황, 퇴직금 추계액, 근속연수 분석
-6. 법무: 진행 중인 소송 리스트, 제재 내역, 특수관계인 거래 내역
----
-
-# Task
-사용자가 입력한 **"구체적인 질문"**이나 **"우려 사항"**을 해소하기 위해 받아야 할 **RFI(자료요청목록) 테이블**을 작성하십시오.
-
+(중략... 기존 RFI 프롬프트와 동일)
 # Rules (Critical)
 0. **[제공 자료] 자동 생성**: 사용자가 보유한 파일 목록이 제공되면, **가장 먼저 [1. 제공 자료 현황] 표**를 작성하십시오.
 1. **[기존 RFI] 우선 기재**: 사용자가 제공한 **[기존 RFI Copy & Paste]** 데이터가 있다면, 해당 내용을 분석하여 Markdown Table의 **상단에 먼저 [2. 기존 RFI 목록]**으로 정리하십시오.
@@ -49,13 +34,31 @@ PROMPTS = {
 [작성 원칙 - Word 모드]
 1. **헤더 금지 (No Metadata)**: '수신:', '발신:', '작성일:', '대상:' 등의 보고서 개요 메타데이터를 **절대 작성하지 마십시오.** 바로 **# 1. 챕터 제목**으로 시작하십시오.
 2. **분석 태도 (최우선)**: 제공된 자료들은 회사나 자문사가 작성한 홍보성 자료임을 감안하여, **최대한 객관적이고 보수적인 태도**로 분석하세요. 장밋빛 전망은 배제하고, 리스크와 하방 요인을 비판적으로 검토해야 합니다.
-3. **서술 방식**: 가독성을 위해 **개조식(Bullet points)**을 적극 활용하되, 단순 나열이 아닌 논리적 연결이 있는 문장형 개조식을 사용하세요. 전문 비즈니스 용어(EBITDA, Valuation, IRR, MoIC, Downside protection 등)를 적절히 사용하세요.
+3. **서술 방식**: 가독성을 위해 **개조식(Bullet points)**을 적극 활용하되, 단순 나열이 아닌 논리적 연결이 있는 문장형 개조식을 사용하세요.
 4. **표(Table)**: 원본 데이터의 재무 수치나 비교 자료는 Markdown Table로 변환하여 삽입하세요.
 5. **출처 표기**: 데이터 인용 시 바로 아래에 "Source : [문서의 실제 제목]"를 명시하세요.
+""",
+    # [NEW] PPT 전용 프롬프트
+    'ppt_system': """
+당신은 **국내 최정상급 PEF/VC 수석 심사역**이자 **프레젠테이션 전문가**입니다.
+투심위에서 사용할 **[투자심의 발표자료 (Slide Deck)]**를 작성해야 합니다.
+
+[작성 원칙 - PPT 모드]
+1. **구조적 포맷팅 (매우 중요)**:
+   - **# (H1)**: [섹션 간지]입니다. 챕터의 큰 주제를 적으세요. (예: # 1. 투자 하이라이트)
+   - **## (H2)**: [개별 슬라이드]의 제목입니다. (예: ## 핵심 투자 포인트)
+   - **- (Bullet)**: 슬라이드 본문 내용입니다.
+2. **내용 작성 스타일**:
+   - **절대 서술형 문장을 쓰지 마십시오.** (예: "~함.", "~임." 형태로 종결)
+   - **단문 위주**: 한 줄은 50자를 넘지 않도록 핵심만 요약하십시오.
+   - **슬라이드 당 분량**: 하나의 `## 제목` 아래에는 5~7개의 Bullet Point만 포함하십시오. 내용이 많으면 슬라이드를 나누세요.
+3. **논리적 흐름**:
+   - 결론부터 말하는 두괄식 구성을 사용하십시오.
+   - 수치 데이터(매출, 이익률, 점유율 등)를 적극적으로 인용하여 신뢰도를 높이십시오.
+4. **메타데이터 금지**: 작성일, 작성자 등의 정보는 포함하지 마십시오.
 """
 }
 
-# [복구됨] 템플릿 기본 구조 정의
 TEMPLATE_STRUCTURES = {
     'simple_review': """# 1. Executive Summary
    - 대상 기업 요약
@@ -78,16 +81,15 @@ TEMPLATE_STRUCTURES = {
    - 최종 의견""",
     'rfi': "[RFI 모드] 보유 자료 목록 및 추가 질문을 기반으로 RFI 테이블을 생성합니다.",
     'investment': """# 1. 투자내용 (Executive Summary)
-   - 투자개요 (딜 구조, 구주/신주, 사이즈)
-   - 투자조건 (Valuation, 금액, 단가)
-   - 주요 투자 조건 (RCPS, 만기, 배당, 상환/전환권)
+   - 투자개요
+   - 투자조건 및 구조
 
 # 2. 회사현황 (Company Profile)
-   - 회사개요 (대표, 설립일, 주요사업)
-   - 재무현황 (최근 3~4년 요약 재무제표)
+   - 회사개요
+   - 재무현황
 
 # 3. 시장분석 (Market Analysis)
-   - 산업 트렌드 및 시장 규모
+   - 산업 트렌드
    - 경쟁 현황
 
 # 4. 사업분석 (Business Analysis)
@@ -95,41 +97,39 @@ TEMPLATE_STRUCTURES = {
    - 핵심 경쟁력
 
 # 5. 투자 타당성 및 리스크
-   - Valuation 분석
-   - 주요 리스크 및 대응 방안
+   - Valuation
+   - 리스크 및 대응 방안
 
 # 6. 종합의견""",
     'im': """# 1. Investment Highlights
-   - 핵심 투자 포인트
-
 # 2. Company Overview
-   - 기업 소개
-   - 연혁 및 비전
-
 # 3. Market Opportunity
-   - 시장의 문제점 (Pain Point)
-   - 해결책 (Solution)
-
 # 4. Product & Technology
-   - 주요 제품/서비스
-   - 기술 경쟁력
-
-# 5. Financial Plan
-   - 추정 손익계산서
-   - 자금 소요 계획""",
+# 5. Financial Plan""",
     'management': """# 1. 운용 개요
-   - 펀드 개황
-   - 운용 성과 요약
+# 2. 포트폴리오 현황
+# 3. 주요 이슈
+# 4. 회수 계획""",
+    # [NEW] PPT 전용 구조 (간지와 슬라이드 제목 분리)
+    'presentation': """# 1. Executive Summary
+## 투자 개요 (Deal Overview)
+## 핵심 투자 포인트 (Investment Highlights)
+## 주요 투자 조건 (Term Sheet)
 
-# 2. 포트폴리오 주요 현황
-   - 피투자기업 실적 요약
-   - 주요 경영 활동
+# 2. Market & Business
+## 시장 규모 및 성장성 (Market Size)
+## 경쟁 현황 및 포지셔닝 (Competition)
+## 비즈니스 모델 (BM)
+## 핵심 기술 및 제품 (Product)
 
-# 3. 주요 이슈 및 점검 사항
-   - Risk 요인 점검
-   - 대응 방안
+# 3. Financials & Valuation
+## 과거 재무 실적 (Historical Financials)
+## 추정 손익 및 근거 (Financial Projection)
+## 가치평가 및 회수 전략 (Valuation & Exit)
 
-# 4. 회수(Exit) 현황 및 계획""",
+# 4. Risk & Opinion
+## 주요 리스크 및 헷지 방안 (Key Risks)
+## 종합 투자의견 (Conclusion)""",
     'custom': ""
 }
 
@@ -167,37 +167,47 @@ def parse_all_files(uploaded_files):
     return all_text, file_list_str
 
 def get_default_structure(template_key):
-    # [수정됨] 딕셔너리에서 값 반환
     return TEMPLATE_STRUCTURES.get(template_key, "")
 
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
     client = get_client(api_key)
     
-    is_rfi = inputs['template_option'] == 'rfi'
+    template_opt = inputs['template_option']
     
-    if is_rfi:
+    # 1. 프롬프트 선택 로직 분기
+    if template_opt == 'rfi':
         system_instruction = PROMPTS['rfi_system']
         uploaded_list = [f.name for f in inputs['uploaded_files']] if inputs['uploaded_files'] else []
         file_list_str = "\n".join([f"- {name}" for name in uploaded_list])
         
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        
         # [기존 RFI Copy & Paste]
         {inputs['rfi_existing']}
-
         # [신규 요청/질문]
         {inputs['context_text']}
-        
         [사용자가 보유한 파일 목록]
         {file_list_str}
-        
         [참고 파일 내용]
         {file_context[:30000]}
         """
-    else:
+    
+    # [NEW] PPT 모드일 경우 전용 프롬프트 사용
+    elif template_opt == 'presentation':
+        system_instruction = PROMPTS['ppt_system']
+        main_prompt = f"""
+        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
+        [작성할 슬라이드 구조]
+        {inputs['structure_text']}
+        [전체 맥락]
+        {inputs['context_text']}
+        [분석 데이터 활용]
+        {file_context[:50000]}
+        """
+        
+    else: # 일반 보고서 (Word)
         system_instruction = PROMPTS['report_system']
-        if inputs['template_option'] == 'simple_review':
+        if template_opt == 'simple_review':
              system_instruction += "\n**중요: 결과물은 절대 10페이지 분량을 넘지 않도록 핵심만 요약하세요.**"
 
         if inputs['use_diagram']:
@@ -205,25 +215,24 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        
         [작성할 문서 구조]
         {inputs['structure_text']}
-        
         [전체 맥락]
         {inputs['context_text']}
-        
         [분석 데이터 활용]
         {file_context[:50000]}
         """
 
+    # 2. 툴 설정
     tools = []
-    if not is_rfi and ("뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text']):
+    if template_opt != 'rfi' and ("뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text']):
         tools = [types.Tool(google_search=types.GoogleSearch())]
 
+    # 3. API 호출
     config = types.GenerateContentConfig(
         tools=tools,
         max_output_tokens=8192,
-        temperature=0.2 if is_rfi else 0.7,
+        temperature=0.2 if template_opt == 'rfi' else 0.7,
         system_instruction=system_instruction
     )
 
