@@ -5,6 +5,8 @@ python-pptx
 pandas
 openpyxl
 pypdf
+PyMuPDF
 XlsxWriter
 pymupdf
 python-calamine
+tabulate
