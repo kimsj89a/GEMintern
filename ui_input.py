@@ -1,6 +1,7 @@
 import streamlit as st
 import utils
 import core_logic
+import core_rfi # [NEW] 인덱싱 함수 호출용
 
 # 템플릿 상수 정의
 TEMPLATES = {
@@ -35,7 +36,7 @@ def render_settings():
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
             
-        st.info("💡 **RFI 모드**: '최근 RFI(엑셀)'을 기준으로 '수령 자료'를 자동 대사합니다. (파일 내용은 읽지 않고 빠르게 처리함)")
+        st.info("💡 **RFI 모드**: 업로드 없이 **로컬 폴더 경로**만 입력하면 파이썬이 자동으로 파일을 찾아 인덱싱합니다.")
     
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
@@ -57,8 +58,6 @@ def render_input_panel(container, settings):
         # -------------------------------------------------------------
         if is_rfi:
             st.markdown("##### 2. 최근 RFI 목록 (Basis)")
-            st.caption("📂 기준이 될 **기존 RFI 엑셀 파일**을 업로드하세요. (자동 파싱됨)")
-            
             uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 드래그 & 드롭", type=['xlsx', 'xls', 'csv'], key="rfi_basis")
             
             if uploaded_rfi_file:
@@ -88,13 +87,29 @@ def render_input_panel(container, settings):
             structure_text = st.text_area("문서 구조 편집", value=default_structure, height=200)
 
         # -------------------------------------------------------------
-        # 3. 데이터 업로드 (Raw Data / Received Data)
+        # 3. 데이터 입력 (RFI: 로컬 경로 / 일반: 업로드)
         # -------------------------------------------------------------
+        uploaded_files = []
+        rfi_file_list_input = ""
+
         if is_rfi:
-            st.markdown("##### 3. 수령한 전체 자료 (Received Files)")
-            st.caption("📂 받은 파일들을 **전부 드래그**해서 넣으세요. (내용은 읽지 않고 **파일명만 인덱싱**합니다)")
-            # [복귀] 표준 업로더 사용 (User Interaction 제거)
-            uploaded_files = st.file_uploader("수령 자료 드래그 & 드롭 (다중 선택 가능)", accept_multiple_files=True, label_visibility="collapsed", key="rfi_received")
+            st.markdown("##### 3. 수령 자료 폴더 스캔 (Local Indexing)")
+            st.caption("💻 PC에 저장된 자료 폴더의 **경로(Path)**를 입력하세요.")
+            
+            # [NEW] 로컬 경로 입력
+            local_path = st.text_input("폴더 경로 입력 (예: C:/Users/Admin/Project_A)", placeholder="경로 입력 후 엔터...")
+            
+            if local_path:
+                # 경로 입력 시 즉시 인덱싱 실행
+                with st.status("🔍 로컬 폴더 인덱싱 중...", expanded=True) as status:
+                    index_result = core_rfi.index_local_directory(local_path)
+                    status.update(label="✅ 인덱싱 완료!", state="complete", expanded=False)
+                
+                # 결과 표시 (수정 불가, 확인용)
+                rfi_file_list_input = st.text_area("스캔된 파일 목록 (자동 생성)", value=index_result, height=200)
+            else:
+                st.text_area("스캔된 파일 목록", placeholder="경로를 입력하면 파일 목록이 여기에 표시됩니다.", disabled=True)
+                
         else:
             st.markdown("##### 2. 분석할 데이터 (Raw Data)")
             uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
@@ -114,6 +129,7 @@ def render_input_panel(container, settings):
             "template_option": template_option,
             "structure_text": structure_text,
             "uploaded_files": uploaded_files,
+            "rfi_file_list_input": rfi_file_list_input, # 인덱싱된 텍스트 전달
             "context_text": context_text,
             "rfi_existing": rfi_existing,
             "generate_btn": generate_btn

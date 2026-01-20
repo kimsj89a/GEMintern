@@ -3,7 +3,7 @@ import ui_input
 import ui_output
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v5.7", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v5.8", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -23,8 +23,8 @@ def main():
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v5.7</span>
-            <span class="badge badge-blue">Seamless RFI Flow</span>
+            <span class="badge">v5.8</span>
+            <span class="badge badge-blue">Local OS Indexing</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)
