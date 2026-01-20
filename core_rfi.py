@@ -41,16 +41,29 @@ def get_client(api_key):
 
 def index_local_directory(start_path):
     """
-    [User Request] os.walk를 활용한 로컬 디렉토리 인덱싱
+    [Smart Indexing] 경로 보정 및 상세 에러 리포팅 적용
     """
-    if not os.path.exists(start_path):
-        return f"Error: 경로를 찾을 수 없습니다. ({start_path})"
+    # 1. 경로 보정 (따옴표 제거 및 정규화)
+    clean_path = start_path.strip().strip('"').strip("'")
+    clean_path = os.path.normpath(clean_path) # 윈도우/맥 경로 구분자 통일
+
+    # 2. 경로 존재 여부 체크 및 상세 진단
+    if not os.path.exists(clean_path):
+        parent = os.path.dirname(clean_path)
+        msg = f"❌ Error: 경로를 찾을 수 없습니다.\n입력값: {clean_path}\n"
+        
+        if os.path.exists(parent):
+            msg += f"👉 힌트: 상위 폴더인 '{parent}'는 존재합니다. 마지막 폴더명에 오타가 있는지 확인해주세요."
+        else:
+            msg += f"👉 힌트: 상위 경로인 '{parent}'조차 찾을 수 없습니다. 전체 경로를 다시 확인해주세요."
+            
+        return msg
 
     file_index_str = "| 파일명 | 경로 | 크기(KB) | 수정일 |\n|---|---|---|---|\n"
     count = 0
 
     try:
-        for dirpath, dirnames, filenames in os.walk(start_path):
+        for dirpath, dirnames, filenames in os.walk(clean_path):
             for filename in filenames:
                 full_path = os.path.join(dirpath, filename)
                 try:
@@ -58,8 +71,8 @@ def index_local_directory(start_path):
                     size_kb = round(stat_info.st_size / 1024, 1)
                     mtime = datetime.datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d')
                     
-                    # 절대 경로에서 입력된 시작 경로만큼 잘라내어 상대 경로처럼 표시 (가독성)
-                    display_path = full_path.replace(start_path, '').replace('\\', '/')
+                    # 상대 경로 표시 (가독성)
+                    display_path = full_path.replace(clean_path, '').replace('\\', '/')
                     if display_path.startswith('/'): display_path = display_path[1:]
 
                     file_index_str += f"| {filename} | {display_path} | {size_kb}KB | {mtime} |\n"
@@ -67,10 +80,10 @@ def index_local_directory(start_path):
                 except OSError:
                     continue
     except Exception as e:
-        return f"인덱싱 중 오류 발생: {str(e)}"
+        return f"❌ 인덱싱 중 시스템 오류 발생: {str(e)}"
 
     if count == 0:
-        return "해당 경로에 파일이 없습니다."
+        return f"⚠️ 해당 경로({clean_path})에 파일이 하나도 없습니다."
     
     return file_index_str
 
@@ -99,11 +112,20 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
     """RFI 생성 메인 로직 (스트리밍)"""
     client = get_client(api_key)
     
-    # 1. 파일 목록 (이미 UI에서 인덱싱된 텍스트를 받음)
+    # 1. 파일 목록 (UI에서 받은 값 사용)
     file_index_str = inputs.get('rfi_file_list_input', '')
     if not file_index_str:
         file_index_str = "(파일 인덱스 없음)"
     
+    # 2. 에러 메시지가 인덱스 창에 있다면 중단
+    if "Error:" in file_index_str:
+        yield types.GenerateContentResponse(
+            candidates=[types.Candidate(
+                content=types.Content(parts=[types.Part(text=f"🛑 **중단됨**: 파일 경로 오류를 먼저 해결해주세요.\n\n{file_index_str}")])
+            )]
+        )
+        return
+
     # UI 알림
     yield types.GenerateContentResponse(
         candidates=[types.Candidate(
@@ -111,7 +133,7 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
         )]
     )
     
-    # 2. Step 1: 인덱싱 (Flash)
+    # 3. Step 1: 인덱싱 (Flash)
     rfi_status_table = analyze_rfi_status(client, inputs['rfi_existing'], file_index_str)
     
     yield types.GenerateContentResponse(
@@ -120,7 +142,7 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
         )]
     )
 
-    # 3. Step 2: 최종 RFI 작성 (Main Model)
+    # 4. Step 2: 최종 RFI 작성 (Main Model)
     main_prompt = f"""
     [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
     

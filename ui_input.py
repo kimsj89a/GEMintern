@@ -1,7 +1,7 @@
 import streamlit as st
 import utils
 import core_logic
-import core_rfi # [NEW] 인덱싱 함수 호출용
+import core_rfi 
 
 # 템플릿 상수 정의
 TEMPLATES = {
@@ -36,7 +36,7 @@ def render_settings():
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
             
-        st.info("💡 **RFI 모드**: 업로드 없이 **로컬 폴더 경로**만 입력하면 파이썬이 자동으로 파일을 찾아 인덱싱합니다.")
+        st.info("💡 **RFI 모드**: '탐색기 경로 복사' 후 붙여넣기만 하면, 파이썬이 즉시 인덱싱합니다. (따옴표 자동 제거)")
     
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
@@ -94,18 +94,26 @@ def render_input_panel(container, settings):
 
         if is_rfi:
             st.markdown("##### 3. 수령 자료 폴더 스캔 (Local Indexing)")
-            st.caption("💻 PC에 저장된 자료 폴더의 **경로(Path)**를 입력하세요.")
+            st.caption("💻 윈도우 탐색기 주소창의 **폴더 경로**를 복사해서 붙여넣으세요.")
             
-            # [NEW] 로컬 경로 입력
-            local_path = st.text_input("폴더 경로 입력 (예: C:/Users/Admin/Project_A)", placeholder="경로 입력 후 엔터...")
+            # [NEW] 로컬 경로 입력 (상세 안내)
+            local_path = st.text_input("폴더 경로 입력 (예: C:\\Users\\Admin\\Desktop\\Project_A)", placeholder="경로 입력 후 엔터...")
             
             if local_path:
-                # 경로 입력 시 즉시 인덱싱 실행
-                with st.status("🔍 로컬 폴더 인덱싱 중...", expanded=True) as status:
+                with st.status("🔍 로컬 폴더 스캔 중...", expanded=True) as status:
+                    # Smart Indexing 호출
                     index_result = core_rfi.index_local_directory(local_path)
-                    status.update(label="✅ 인덱싱 완료!", state="complete", expanded=False)
+                    
+                    if "Error" in index_result:
+                        status.update(label="❌ 경로 오류 발생", state="error", expanded=True)
+                        st.error(index_result) # 상세 에러 메시지 출력
+                    elif "없습니다" in index_result:
+                        status.update(label="⚠️ 파일 없음", state="running", expanded=True)
+                        st.warning(index_result)
+                    else:
+                        status.update(label="✅ 인덱싱 완료!", state="complete", expanded=False)
                 
-                # 결과 표시 (수정 불가, 확인용)
+                # 결과 표시
                 rfi_file_list_input = st.text_area("스캔된 파일 목록 (자동 생성)", value=index_result, height=200)
             else:
                 st.text_area("스캔된 파일 목록", placeholder="경로를 입력하면 파일 목록이 여기에 표시됩니다.", disabled=True)
@@ -129,7 +137,7 @@ def render_input_panel(container, settings):
             "template_option": template_option,
             "structure_text": structure_text,
             "uploaded_files": uploaded_files,
-            "rfi_file_list_input": rfi_file_list_input, # 인덱싱된 텍스트 전달
+            "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
             "rfi_existing": rfi_existing,
             "generate_btn": generate_btn
