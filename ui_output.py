@@ -6,28 +6,21 @@ import core_logic
 
 def render_output_panel(container, settings, inputs):
     with container:
-        # --------------------------------------------------------
-        # 헤더 & 기능 버튼 (편집/복사)
-        # --------------------------------------------------------
         c_head1, c_head2 = st.columns([1, 1])
         with c_head1:
              st.markdown("### 📄 결과물 (Result)")
         
-        # [기능 구현] 편집 및 복사 버튼
         with c_head2:
             sub_c1, sub_c2, sub_c3 = st.columns([2, 1, 1])
             with sub_c2:
-                # 편집 모드 토글
                 if "is_editing" not in st.session_state:
                     st.session_state.is_editing = False
-                
                 edit_label = "✏️ 완료" if st.session_state.is_editing else "✏️ 편집"
                 if st.button(edit_label, key="btn_toggle_edit", use_container_width=True):
                     st.session_state.is_editing = not st.session_state.is_editing
                     st.rerun()
 
             with sub_c3:
-                # 복사 기능 (st.code 활용)
                 if st.button("📋 복사", key="btn_copy_view", use_container_width=True):
                     st.toast("아래 코드를 클릭하여 복사하세요", icon="📋")
                     st.session_state.show_copy_code = True
@@ -37,20 +30,16 @@ def render_output_panel(container, settings, inputs):
 
         st.markdown('<div id="result_anchor"></div>', unsafe_allow_html=True)
 
-        # --------------------------------------------------------
-        # 결과 표시 영역
-        # --------------------------------------------------------
         status_placeholder = st.empty()
         result_container = st.container(height=600, border=True)
         
-        # [상태 관리] 모드 추적
         if "active_mode" not in st.session_state:
             st.session_state.active_mode = inputs['template_option']
 
         # 1. 생성 로직
         if inputs['generate_btn']:
             st.session_state.active_mode = inputs['template_option']
-            st.session_state.is_editing = False # 생성 시 편집모드 해제
+            st.session_state.is_editing = False
             st.session_state.show_copy_code = False
 
             components.html("""
@@ -64,9 +53,18 @@ def render_output_panel(container, settings, inputs):
             else:
                 try:
                     inputs['use_diagram'] = settings['use_diagram']
+                    
+                    # [수정] RFI 모드 여부 확인
+                    is_rfi_mode = (inputs['template_option'] == 'rfi')
+
                     with status_placeholder.status("🚀 분석 작업을 시작합니다...", expanded=True) as status:
-                        st.write("📂 1. 파일을 읽고 텍스트를 추출합니다...")
-                        file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'])
+                        if is_rfi_mode:
+                            st.write("📂 1. (Fast Mode) 파일 내용을 건너뛰고 파일명만 추출합니다...")
+                            file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=False)
+                        else:
+                            st.write("📂 1. 파일을 읽고 텍스트를 추출합니다...")
+                            file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True)
+                        
                         st.write(f"🧠 2. AI가 [{st.session_state.active_mode}] 페르소나로 분석을 시작합니다...")
                         stream = core_logic.generate_report_stream(
                             settings['api_key'], settings['model_name'], inputs, settings['thinking_level'], file_context
@@ -87,24 +85,16 @@ def render_output_panel(container, settings, inputs):
                 except Exception as e:
                     st.error(f"생성 중 오류 발생: {e}")
 
-        # 2. 결과 표시 (편집 모드 vs 뷰어 모드)
+        # 2. 결과 표시
         elif st.session_state.generated_text:
             with result_container:
-                # (A) 복사용 코드 블록 (잠깐 표시)
                 if st.session_state.get("show_copy_code"):
                     st.info("우측 상단의 복사 버튼을 누르세요. (닫으려면 '복사' 버튼 다시 클릭)")
                     st.code(st.session_state.generated_text, language="markdown")
                 
-                # (B) 편집 모드
                 if st.session_state.is_editing:
-                    new_text = st.text_area(
-                        "내용 편집", 
-                        value=st.session_state.generated_text, 
-                        height=550,
-                        label_visibility="collapsed"
-                    )
-                    st.session_state.generated_text = new_text # 실시간 반영
-                # (C) 뷰어 모드
+                    new_text = st.text_area("내용 편집", value=st.session_state.generated_text, height=550, label_visibility="collapsed")
+                    st.session_state.generated_text = new_text
                 else:
                     st.markdown(st.session_state.generated_text)
 
@@ -126,7 +116,9 @@ def render_output_panel(container, settings, inputs):
                             st.session_state.is_editing = False
 
                             with status_placeholder.status("🔄 PPT 스타일로 변환 중...", expanded=True) as status:
-                                file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'])
+                                # PPT 변환 시에는 기존 데이터를 재활용 (파일 다시 읽을 필요 X)
+                                # 하지만 file_context가 필요하므로 다시 파싱 (이미 로컬 캐시되어 빠름)
+                                file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True)
                                 stream = core_logic.generate_report_stream(
                                     settings['api_key'], settings['model_name'], ppt_inputs, settings['thinking_level'], file_context
                                 )

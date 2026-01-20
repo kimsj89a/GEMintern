@@ -10,13 +10,13 @@ PROMPTS = {
 당신은 문서 구조 분석 전문가입니다.
 제공된 파일의 내용을 분석하여 **문서의 목차(Table of Contents)**와 **핵심 구조**를 Markdown 형식으로 추출하십시오.
 """,
-    # [Step 1] Flash 모델용: 파일 매칭 및 상태 판별
+    # [Step 1] Flash 모델용: 파일명 기반 매칭
     'rfi_indexing': """
 당신은 자료 관리 및 인덱싱 전문가입니다.
 [기존 요청 자료 목록(RFI)]과 [수령한 파일 목록]을 대조하여 제출 현황을 점검하십시오.
 
 # Task
-1. 사용자가 제출한 파일명들을 분석하여, 기존 RFI 항목 중 어느 것에 해당하는지 매칭하십시오.
+1. 사용자가 제출한 **파일명들을 분석**하여, 기존 RFI 항목 중 어느 것에 해당하는지 매칭하십시오.
 2. 각 항목의 제출 상태를 아래 기준으로 판별하십시오.
    - **O (제출됨)**: 파일명으로 보아 해당 자료가 명확히 포함됨.
    - **△ (확인 필요)**: 파일명이 모호하거나, 부분적으로만 포함된 것으로 추정됨.
@@ -138,20 +138,29 @@ def extract_structure(api_key, structure_file):
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files):
+# [수정됨] read_content 옵션 추가 (RFI용 고속 처리)
+def parse_all_files(uploaded_files, read_content=True):
     all_text = ""
     file_list_str = ""
     if uploaded_files:
         for file in uploaded_files:
-            parsed = utils.parse_uploaded_file(file)
-            all_text += parsed
+            # 파일 목록은 항상 생성
             file_list_str += f"- {file.name}\n"
+            
+            # 내용 읽기는 옵션에 따라 수행
+            if read_content:
+                parsed = utils.parse_uploaded_file(file)
+                all_text += parsed
+    
+    if not read_content:
+        all_text = "(RFI 모드: 속도를 위해 파일 내용 대신 파일명을 기준으로 분석합니다.)"
+        
     return all_text, file_list_str
 
 def get_default_structure(template_key):
     return TEMPLATE_STRUCTURES.get(template_key, "")
 
-# [New] RFI 1단계: 파일 인덱싱 및 대사 (Flash 모델 사용)
+# [RFI Step 1] Flash 모델용
 def analyze_rfi_status(api_key, existing_rfi, file_list_str):
     client = get_client(api_key)
     
@@ -166,9 +175,8 @@ def analyze_rfi_status(api_key, existing_rfi, file_list_str):
     """
     
     try:
-        # Flash 모델로 빠르고 저렴하게 처리
         resp = client.models.generate_content(
-            model="gemini-3.0-flash-preview", 
+            model="gemini-2.0-flash-exp", 
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.1)
         )
@@ -180,22 +188,19 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     client = get_client(api_key)
     template_opt = inputs['template_option']
     
-    # ---------------------------------------------------------
-    # [RFI Mode] 2-Step Process
-    # ---------------------------------------------------------
     if template_opt == 'rfi':
+        # RFI 모드에서는 파일 목록 문자열을 다시 생성 (parse_all_files에서 받았어도 로직상 한번 더 정리)
         uploaded_list = [f.name for f in inputs['uploaded_files']] if inputs['uploaded_files'] else []
         file_list_str = "\n".join([f"- {name}" for name in uploaded_list])
         
-        # 1. UI에 진행상황 알림 (Yield)
+        # 1. UI 알림
         yield types.GenerateContentResponse(
             candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text="📂 [Step 1] 수령 자료 인덱싱 및 대사 작업 중... (Gemini Flash)\n\n")])
+                content=types.Content(parts=[types.Part(text="📂 [Step 1] 파일명 기반 자동 대사(Indexing) 진행 중... (Fast Scan)\n\n")])
             )]
         )
         
-        # 2. Step 1: 상태 판별 (Blocking Call)
-        # 기존 RFI가 없으면 생략 가능하지만, 빈칸이라도 체크하도록 함
+        # 2. Step 1: 상태 판별 (Flash)
         rfi_status_table = analyze_rfi_status(api_key, inputs['rfi_existing'], file_list_str)
         
         yield types.GenerateContentResponse(
@@ -204,30 +209,24 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
             )]
         )
 
-        # 3. Step 2: 최종 RFI 생성 (Streaming)
+        # 3. Step 2: 최종 RFI 생성 (Main Model)
         system_instruction = PROMPTS['rfi_finalizing']
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
         
-        [1차 자료 점검 결과 (Flash 분석)]
+        [1차 자료 점검 결과 (파일명 분석)]
         {rfi_status_table}
 
         [사용자 추가 질문/맥락]
         {inputs['context_text']}
-        
-        [참고: 파일 내용 일부]
-        {file_context[:30000]}
         """
         
         config = types.GenerateContentConfig(
             max_output_tokens=8192,
-            temperature=0.2, # 정교한 분석을 위해 낮음
+            temperature=0.2, 
             system_instruction=system_instruction
         )
 
-    # ---------------------------------------------------------
-    # [PPT Mode]
-    # ---------------------------------------------------------
     elif template_opt == 'presentation':
         system_instruction = PROMPTS['ppt_system']
         main_prompt = f"""
@@ -242,9 +241,6 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
             system_instruction=system_instruction
         )
 
-    # ---------------------------------------------------------
-    # [Word Report Mode]
-    # ---------------------------------------------------------
     else:
         system_instruction = PROMPTS['report_system']
         if template_opt == 'simple_review':
@@ -259,7 +255,6 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         [데이터] {file_context[:50000]}
         """
         
-        # Tools setup (Search)
         tools = []
         if "뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text']:
             tools = [types.Tool(google_search=types.GoogleSearch())]
@@ -271,7 +266,6 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
             system_instruction=system_instruction
         )
 
-    # Common Generation Call
     response_stream = client.models.generate_content_stream(
         model=model_name,
         contents=main_prompt,
