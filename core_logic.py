@@ -1,55 +1,14 @@
 from google import genai
 from google.genai import types
 import utils
-import datetime
+import core_rfi  # [NEW] RFI 전용 모듈 임포트
 
-# --- PROMPTS ---
+# --- PROMPTS (보고서/PPT 전용) ---
 PROMPTS = {
     'structure_extraction': """
 [System: Thinking Level MINIMAL]
 당신은 문서 구조 분석 전문가입니다.
 제공된 파일의 내용을 분석하여 **문서의 목차(Table of Contents)**와 **핵심 구조**를 Markdown 형식으로 추출하십시오.
-""",
-    # [Step 1] Flash 모델용: 파일명 기반 매칭
-    'rfi_indexing': """
-당신은 자료 관리 및 인덱싱 전문가입니다.
-[기존 요청 자료 목록(RFI)]과 [수령한 파일 목록]을 대조하여 제출 현황을 점검하십시오.
-
-# Task
-1. 사용자가 제출한 **파일명들을 분석**하여, 기존 RFI 항목 중 어느 것에 해당하는지 매칭하십시오.
-2. 각 항목의 제출 상태를 아래 기준으로 판별하십시오.
-   - **O (제출됨)**: 파일명으로 보아 해당 자료가 명확히 포함됨.
-   - **△ (확인 필요)**: 파일명이 모호하거나, 부분적으로만 포함된 것으로 추정됨.
-   - **X (미제출)**: 해당 내용을 유추할 수 있는 파일이 없음.
-3. 결과는 반드시 **Markdown Table** 형식으로만 출력하십시오. 설명은 필요 없습니다.
-
-# Output Table Format
-| No. | 구분 | 기존 요청 자료 | 매칭된 파일명(없으면 -) | 상태(O/△/X) | 비고 |
-| --- | --- | --- | --- | --- | --- |
-""",
-    # [Step 2] Main 모델용: 최종 RFI 생성
-    'rfi_finalizing': """
-당신은 회계법인 FAS팀의 **M&A 실사(Due Diligence) 전문 매니저**입니다.
-[1차 자료 점검 결과]를 바탕으로, 부족한 자료를 파악하고 **최종 RFI(자료요청목록)**를 작성하십시오.
-
-# Context: [기본 실사 체크리스트]
-아래 필수 항목들이 누락되었다면 반드시 추가 요청해야 합니다.
-1. 회사일반: 주주명부, 정관, 등기부등본, 조직도
-2. 재무/회계: 최근 3개년 감사보고서, 계정별 원장, 월별 결산서
-3. 영업/시장: 주요 매출처 계약서, 수주잔고, 시장 M/S 자료
-4. 인사/노무: 급여대장, 퇴직금 추계액, 조직도
-5. 법무: 소송 현황, 제재 내역
-
-# Task
-1. **[1. 기존 자료 제출 현황]**: 앞서 생성된 '점검 결과 표'를 다듬어서 출력하십시오. (상태가 X인 항목 강조)
-2. **[2. 추가 요청 사항]**: 
-   - 상태가 **X** 또는 **△**인 항목을 다시 요청 리스트에 포함하십시오.
-   - [기본 실사 체크리스트] 중 아예 언급되지 않은 필수 자료를 추가하십시오.
-   - 사용자의 [추가 질문/맥락]을 반영하여 구체적인 자료를 요청하십시오.
-
-# Output Style
-- 표 형식을 사용하여 깔끔하게 정리하십시오.
-- 불필요한 서론/결론 없이 표와 핵심 코멘트 위주로 작성하십시오.
 """,
     'report_system': """
 당신은 **국내 최정상급 PEF/VC 수석 심사역**입니다. 
@@ -138,96 +97,42 @@ def extract_structure(api_key, structure_file):
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-# [수정됨] read_content 옵션 추가 (RFI용 고속 처리)
 def parse_all_files(uploaded_files, read_content=True):
     all_text = ""
     file_list_str = ""
     if uploaded_files:
         for file in uploaded_files:
-            # 파일 목록은 항상 생성
             file_list_str += f"- {file.name}\n"
-            
-            # 내용 읽기는 옵션에 따라 수행
             if read_content:
                 parsed = utils.parse_uploaded_file(file)
                 all_text += parsed
     
     if not read_content:
-        all_text = "(RFI 모드: 속도를 위해 파일 내용 대신 파일명을 기준으로 분석합니다.)"
+        all_text = "(RFI 모드: 내용을 읽지 않음)"
         
     return all_text, file_list_str
 
 def get_default_structure(template_key):
     return TEMPLATE_STRUCTURES.get(template_key, "")
 
-# [RFI Step 1] Flash 모델용
-def analyze_rfi_status(api_key, existing_rfi, file_list_str):
-    client = get_client(api_key)
-    
-    prompt = f"""
-    {PROMPTS['rfi_indexing']}
-    
-    [기존 요청 자료 목록(RFI)]
-    {existing_rfi}
-    
-    [수령한 파일 목록 (폴더 인덱스)]
-    {file_list_str}
-    """
-    
-    try:
-        resp = client.models.generate_content(
-            model="gemini-2.0-flash-exp", 
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.1)
-        )
-        return resp.text
-    except Exception as e:
-        return f"인덱싱 오류: {str(e)}"
-
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
     client = get_client(api_key)
     template_opt = inputs['template_option']
     
+    # ---------------------------------------------------------
+    # [RFI Mode] Delegate to core_rfi
+    # ---------------------------------------------------------
     if template_opt == 'rfi':
-        # RFI 모드에서는 파일 목록 문자열을 다시 생성 (parse_all_files에서 받았어도 로직상 한번 더 정리)
-        uploaded_list = [f.name for f in inputs['uploaded_files']] if inputs['uploaded_files'] else []
-        file_list_str = "\n".join([f"- {name}" for name in uploaded_list])
-        
-        # 1. UI 알림
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text="📂 [Step 1] 파일명 기반 자동 대사(Indexing) 진행 중... (Fast Scan)\n\n")])
-            )]
-        )
-        
-        # 2. Step 1: 상태 판별 (Flash)
-        rfi_status_table = analyze_rfi_status(api_key, inputs['rfi_existing'], file_list_str)
-        
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=f"{rfi_status_table}\n\n---\n🧠 [Step 2] 부족 자료 분석 및 최종 RFI 작성 중... ({model_name})\n\n")])
-            )]
-        )
+        # RFI 모드는 별도 파일에서 처리 (Uploaded File 읽기 없음)
+        stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level)
+        for chunk in stream:
+            yield chunk
+        return
 
-        # 3. Step 2: 최종 RFI 생성 (Main Model)
-        system_instruction = PROMPTS['rfi_finalizing']
-        main_prompt = f"""
-        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        
-        [1차 자료 점검 결과 (파일명 분석)]
-        {rfi_status_table}
-
-        [사용자 추가 질문/맥락]
-        {inputs['context_text']}
-        """
-        
-        config = types.GenerateContentConfig(
-            max_output_tokens=8192,
-            temperature=0.2, 
-            system_instruction=system_instruction
-        )
-
-    elif template_opt == 'presentation':
+    # ---------------------------------------------------------
+    # [PPT Mode]
+    # ---------------------------------------------------------
+    if template_opt == 'presentation':
         system_instruction = PROMPTS['ppt_system']
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
@@ -241,6 +146,9 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
             system_instruction=system_instruction
         )
 
+    # ---------------------------------------------------------
+    # [Report Mode]
+    # ---------------------------------------------------------
     else:
         system_instruction = PROMPTS['report_system']
         if template_opt == 'simple_review':
