@@ -35,17 +35,29 @@ def parse_uploaded_file(uploaded_file):
                     if hasattr(shape, "text"):
                         text_content += shape.text + "\n"
         
-        # [Excel] pandas + calamine
+        # [Excel] pandas (가장 쉽고 강력함)
         elif file_type in ['xlsx', 'xls', 'csv']:
-            if file_type == 'csv':
-                df = pd.read_csv(uploaded_file)
-            else:
-                try:
-                    df = pd.read_excel(uploaded_file, engine='calamine')
-                except:
-                    uploaded_file.seek(0)
-                    df = pd.read_excel(uploaded_file)
-            text_content = df.to_string()
+            try:
+                # 1. 파일 읽기 (CSV vs Excel)
+                if file_type == 'csv':
+                    df = pd.read_csv(uploaded_file)
+                else:
+                    # 엑셀은 첫 번째 시트만 읽거나, sheet_name=None으로 전체를 읽을 수 있음
+                    # 여기서는 가장 첫 번째 시트만 빠르게 읽는 것을 권장
+                    df = pd.read_excel(uploaded_file, sheet_name=0)
+                
+                # 2. 전처리: 데이터가 너무 많으면 AI 토큰 제한에 걸리므로 상위 100행만 끊기 (선택사항)
+                # df = df.head(100) 
+
+                # 3. 빈값(NaN) 처리: 빈칸은 비워두기 ("")
+                df = df.fillna("")
+
+                # 4. [핵심] Markdown 표로 변환 (AI가 가장 좋아하는 포맷)
+                # index=False: 불필요한 행 번호(0, 1, 2...) 제거
+                text_content = f"### [파일명: {uploaded_file.name}]\n" + df.to_markdown(index=False)
+
+            except Exception as e:
+                text_content = f"[엑셀 읽기 오류: {str(e)}]"
         
         # [Text]
         elif file_type in ['txt', 'md']:
