@@ -3,7 +3,7 @@ import ui_input
 import ui_output
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v5.9", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v5.11", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -18,13 +18,14 @@ st.markdown("""
 
 # --- 상태 초기화 ---
 if "generated_text" not in st.session_state: st.session_state.generated_text = ""
+if "local_path_input" not in st.session_state: st.session_state.local_path_input = ""
 
 def main():
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v5.9</span>
-            <span class="badge badge-blue">Smart Path Indexing</span>
+            <span class="badge">v5.11</span>
+            <span class="badge badge-blue">Format Cloning Mode</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)

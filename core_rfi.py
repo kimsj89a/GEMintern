@@ -41,21 +41,31 @@ def get_client(api_key):
 
 def index_local_directory(start_path):
     """
-    [Smart Indexing] 경로 보정 및 상세 에러 리포팅 적용
+    [Smart Indexing] 경로 보정 및 스마트 에러 진단
     """
-    # 1. 경로 보정 (따옴표 제거 및 정규화)
+    # 1. 경로 보정
     clean_path = start_path.strip().strip('"').strip("'")
-    clean_path = os.path.normpath(clean_path) # 윈도우/맥 경로 구분자 통일
+    clean_path = os.path.normpath(clean_path)
 
-    # 2. 경로 존재 여부 체크 및 상세 진단
+    # 2. 경로 존재 여부 체크 및 진단
     if not os.path.exists(clean_path):
         parent = os.path.dirname(clean_path)
-        msg = f"❌ Error: 경로를 찾을 수 없습니다.\n입력값: {clean_path}\n"
+        msg = f"❌ Error: 경로를 찾을 수 없습니다.\n입력값: {clean_path}\n\n"
         
+        # 상위 폴더 추적
         if os.path.exists(parent):
-            msg += f"👉 힌트: 상위 폴더인 '{parent}'는 존재합니다. 마지막 폴더명에 오타가 있는지 확인해주세요."
+            msg += f"👉 **진단 결과**: 상위 폴더인 '{parent}'는 존재합니다.\n"
+            msg += f"해당 위치에 있는 폴더 목록:\n"
+            try:
+                subdirs = [d for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
+                for d in subdirs[:5]: # 최대 5개만 예시로 보여줌
+                    msg += f"- {d}\n"
+                if len(subdirs) > 5: msg += "...(생략)\n"
+                msg += "\n위 목록 중 하나인지 확인해보세요."
+            except:
+                pass
         else:
-            msg += f"👉 힌트: 상위 경로인 '{parent}'조차 찾을 수 없습니다. 전체 경로를 다시 확인해주세요."
+            msg += f"👉 **진단 결과**: 상위 경로인 '{parent}'조차 찾을 수 없습니다. 드라이브명(C:, D:)이나 전체 경로를 다시 확인해주세요."
             
         return msg
 
@@ -71,7 +81,6 @@ def index_local_directory(start_path):
                     size_kb = round(stat_info.st_size / 1024, 1)
                     mtime = datetime.datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d')
                     
-                    # 상대 경로 표시 (가독성)
                     display_path = full_path.replace(clean_path, '').replace('\\', '/')
                     if display_path.startswith('/'): display_path = display_path[1:]
 
@@ -109,31 +118,27 @@ def analyze_rfi_status(client, existing_rfi, file_index_str):
         return f"인덱싱 오류: {str(e)}"
 
 def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
-    """RFI 생성 메인 로직 (스트리밍)"""
+    """RFI 생성 메인 로직"""
     client = get_client(api_key)
     
-    # 1. 파일 목록 (UI에서 받은 값 사용)
     file_index_str = inputs.get('rfi_file_list_input', '')
     if not file_index_str:
         file_index_str = "(파일 인덱스 없음)"
     
-    # 2. 에러 메시지가 인덱스 창에 있다면 중단
     if "Error:" in file_index_str:
         yield types.GenerateContentResponse(
             candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=f"🛑 **중단됨**: 파일 경로 오류를 먼저 해결해주세요.\n\n{file_index_str}")])
+                content=types.Content(parts=[types.Part(text=f"🛑 **중단됨**: 파일 경로 오류를 해결해야 분석이 가능합니다.\n\n{file_index_str}")])
             )]
         )
         return
 
-    # UI 알림
     yield types.GenerateContentResponse(
         candidates=[types.Candidate(
             content=types.Content(parts=[types.Part(text="📂 [Step 1] 로컬 인덱스 기반 대사(Indexing) 진행 중...\n\n")])
         )]
     )
     
-    # 3. Step 1: 인덱싱 (Flash)
     rfi_status_table = analyze_rfi_status(client, inputs['rfi_existing'], file_index_str)
     
     yield types.GenerateContentResponse(
@@ -142,7 +147,6 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
         )]
     )
 
-    # 4. Step 2: 최종 RFI 작성 (Main Model)
     main_prompt = f"""
     [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
     

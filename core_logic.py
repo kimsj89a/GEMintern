@@ -1,14 +1,19 @@
 from google import genai
 from google.genai import types
 import utils
-import core_rfi  # [NEW] RFI 전용 모듈 임포트
+import core_rfi 
 
-# --- PROMPTS (보고서/PPT 전용) ---
+# --- PROMPTS ---
 PROMPTS = {
     'structure_extraction': """
 [System: Thinking Level MINIMAL]
 당신은 문서 구조 분석 전문가입니다.
 제공된 파일의 내용을 분석하여 **문서의 목차(Table of Contents)**와 **핵심 구조**를 Markdown 형식으로 추출하십시오.
+
+[요구사항]
+1. 문서의 계층 구조(#, ##, ###)를 원본과 최대한 동일하게 유지하십시오.
+2. 각 챕터의 제목을 그대로 살리십시오.
+3. 내용(본문)은 제외하고, 오직 **구조(뼈대)**만 출력하십시오.
 """,
     'report_system': """
 당신은 **국내 최정상급 PEF/VC 수석 심사역**입니다. 
@@ -18,9 +23,7 @@ PROMPTS = {
 1. **헤더 금지**: '수신:', '발신:', '작성일:', '대상:' 등의 보고서 개요 메타데이터를 절대 작성하지 마십시오.
 2. **분석 태도**: 객관적이고 보수적인 태도로 분석하세요.
 3. **서술 방식**: 논리적 연결이 있는 문장형 개조식(Bullet points)을 사용하세요.
-4. **결론 작성 규칙 (중요)**: 
-   - 종합 의견이나 결론 챕터 작성 시, **"[승인 권고]", "[조건부 승인]", "Recommendation:" 같은 라벨이나 말머리를 절대 붙이지 마십시오.**
-   - 바로 내용을 서술하십시오. (예: "본 건 투자는 ~한 이유로 타당하다고 판단됨." 처럼 작성)
+4. **결론 작성 규칙**: "[승인 권고]" 등의 라벨을 붙이지 말고 바로 내용을 서술하십시오.
 5. **표/출처**: Markdown Table 사용, 출처 명시.
 """,
     'ppt_system': """
@@ -29,6 +32,17 @@ PROMPTS = {
 1. **구조적 포맷팅**: # (간지), ## (슬라이드 제목), - (내용) 구조 준수.
 2. **내용 작성**: 서술형 금지, 핵심 키워드 위주의 단문(개조식) 작성.
 3. **분량**: 슬라이드당 5~7줄 이내.
+""",
+    # [NEW] Custom 모드 전용 (서식 복제)
+    'custom_system': """
+당신은 **문서 작성 및 편집 전문가**입니다.
+사용자가 제공한 **[문서 구조(Format)]**를 완벽하게 준수하면서, **[분석 데이터(Raw Data)]**의 내용으로 본문을 채워 넣으십시오.
+
+[작성 원칙 - Custom Mode]
+1. **구조 절대 준수**: 제공된 [문서 구조]의 목차(Header)와 순서를 **토씨 하나 바꾸지 말고 그대로 유지**하십시오. 임의로 목차를 추가하거나 삭제하는 것은 금지됩니다.
+2. **Context-Aware Filling**: 각 챕터 제목(Header)이 의도하는 바를 파악하고, [분석 데이터]에서 가장 적절한 내용을 찾아 서술하십시오.
+3. **빈칸 채우기**: 만약 데이터에 해당 챕터와 관련된 내용이 없다면, 억지로 지어내지 말고 "*(해당 내용 확인 불가)*"라고 표시하십시오.
+4. **스타일**: 원본 서식의 흐름을 따르되, 내용은 전문적이고 객관적인 비즈니스 톤으로 작성하십시오.
 """
 }
 
@@ -119,19 +133,14 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     client = get_client(api_key)
     template_opt = inputs['template_option']
     
-    # ---------------------------------------------------------
-    # [RFI Mode] Delegate to core_rfi
-    # ---------------------------------------------------------
+    # [RFI Mode]
     if template_opt == 'rfi':
-        # RFI 모드는 별도 파일에서 처리 (Uploaded File 읽기 없음)
         stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level)
         for chunk in stream:
             yield chunk
         return
 
-    # ---------------------------------------------------------
     # [PPT Mode]
-    # ---------------------------------------------------------
     if template_opt == 'presentation':
         system_instruction = PROMPTS['ppt_system']
         main_prompt = f"""
@@ -146,9 +155,28 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
             system_instruction=system_instruction
         )
 
-    # ---------------------------------------------------------
-    # [Report Mode]
-    # ---------------------------------------------------------
+    # [Custom Mode] - 서식 복제
+    elif template_opt == 'custom':
+        system_instruction = PROMPTS['custom_system']
+        main_prompt = f"""
+        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
+        
+        [목표 문서 구조 (반드시 준수)]
+        {inputs['structure_text']}
+        
+        [전체 맥락]
+        {inputs['context_text']}
+        
+        [본문 채우기용 분석 데이터]
+        {file_context[:50000]}
+        """
+        config = types.GenerateContentConfig(
+            max_output_tokens=8192,
+            temperature=0.5, # 구조 준수를 위해 약간 낮춤
+            system_instruction=system_instruction
+        )
+
+    # [Standard Report Mode]
     else:
         system_instruction = PROMPTS['report_system']
         if template_opt == 'simple_review':
