@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import utils
 import core_logic
 
@@ -13,113 +12,6 @@ TEMPLATES = {
     'presentation': '6. 투자심의 발표자료 (PPT)',
     'custom': '7. 직접 입력 (자동 구조화)'
 }
-
-# [HTML/JS] 폴더 재귀 스캔 드롭존
-HTML_DROPZONE = """
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-  #drop-zone { 
-    border: 2px dashed #cbd5e1; border-radius: 8px; padding: 30px 20px; 
-    text-align: center; color: #64748b; cursor: pointer; transition: all 0.2s; background: #f8fafc; 
-  }
-  #drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; color: #3b82f6; }
-  #file-list { 
-    width: 95%; height: 120px; margin-top: 15px; padding: 10px; 
-    border: 1px solid #e2e8f0; border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; 
-    background-color: #ffffff; color: #334155;
-  }
-  button { 
-    margin-top: 10px; background: #3b82f6; color: white; border: none; padding: 10px 20px; 
-    border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; font-size: 14px;
-    transition: background 0.2s;
-  }
-  button:hover { background: #2563eb; }
-  .icon { font-size: 24px; margin-bottom: 10px; display: block; }
-  .status { font-size: 12px; color: #94a3b8; margin-top: 5px; }
-</style>
-</head>
-<body>
-<div id="drop-zone">
-  <span class="icon">📂</span>
-  <div style="font-weight:600; font-size:15px; margin-bottom:4px;">폴더/파일을 이곳에 드래그하세요</div>
-  <div class="status" id="status-text">(하위 폴더까지 전부 스캔합니다)</div>
-</div>
-<textarea id="file-list" placeholder="스캔된 파일 목록이 표시됩니다." readonly></textarea>
-<button id="copy-btn" onclick="copyToClipboard()">📋 목록 복사하기 (Copy List)</button>
-
-<script>
-  const dropZone = document.getElementById('drop-zone');
-  const fileList = document.getElementById('file-list');
-  const copyBtn = document.getElementById('copy-btn');
-  const statusText = document.getElementById('status-text');
-  let foundFiles = [];
-
-  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-  dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-  
-  dropZone.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    statusText.innerText = "🔍 스캔 중...";
-    foundFiles = [];
-    const items = e.dataTransfer.items;
-    
-    if (items) {
-        const scanPromises = [];
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : items[i].getAsEntry();
-            if (item) scanPromises.push(scanEntry(item));
-        }
-        await Promise.all(scanPromises);
-    } else {
-        const files = e.dataTransfer.files;
-        for (let i = 0; i < files.length; i++) foundFiles.push("- " + files[i].name);
-    }
-    foundFiles.sort();
-    fileList.value = foundFiles.join('\\n');
-    statusText.innerText = `✅ 스캔 완료! (${foundFiles.length}개 파일)`;
-    copyBtn.innerText = `📋 ${foundFiles.length}개 목록 복사하기`;
-    copyBtn.style.background = "#3b82f6";
-  });
-
-  function scanEntry(entry) {
-    return new Promise((resolve) => {
-        if (entry.isFile) {
-            const path = entry.fullPath.startsWith('/') ? entry.fullPath.slice(1) : entry.fullPath;
-            foundFiles.push("- " + path);
-            resolve();
-        } else if (entry.isDirectory) {
-            const dirReader = entry.createReader();
-            const readAll = async () => {
-                let allEntries = [];
-                let keepReading = true;
-                while (keepReading) {
-                    const batch = await new Promise(res => dirReader.readEntries(res));
-                    if (batch.length === 0) keepReading = false;
-                    else allEntries = allEntries.concat(batch);
-                }
-                await Promise.all(allEntries.map(scanEntry));
-                resolve();
-            };
-            readAll();
-        } else { resolve(); }
-    });
-  }
-
-  function copyToClipboard() {
-    if (!fileList.value) return;
-    fileList.select();
-    document.execCommand('copy');
-    copyBtn.innerText = "✅ 복사 완료! 아래에 붙여넣으세요.";
-    copyBtn.style.background = "#22c55e";
-  }
-</script>
-</body>
-</html>
-"""
 
 def render_settings():
     """상단 설정 영역"""
@@ -143,7 +35,7 @@ def render_settings():
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
             
-        st.info("💡 **RFI 모드**: [최근 RFI 엑셀]을 기반으로 수령 자료를 자동 대사합니다.")
+        st.info("💡 **RFI 모드**: '최근 RFI(엑셀)'을 기준으로 '수령 자료'를 자동 대사합니다. (파일 내용은 읽지 않고 빠르게 처리함)")
     
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
@@ -153,15 +45,16 @@ def render_input_panel(container, settings):
         st.markdown("### 📝 입력 (Input)")
 
         # -------------------------------------------------------------
-        # [NEW] 1. 최근 RFI (엑셀) - RFI 모드의 최상위 기준
+        # 1. 템플릿 선택
         # -------------------------------------------------------------
-        # 템플릿 선택 먼저 보여주되, RFI 선택 시 UI 순서 재배치 효과를 위해 로직 분리
         template_option = st.selectbox("1. 문서 구조 / 템플릿 선택", list(TEMPLATES.keys()), format_func=lambda x: TEMPLATES[x])
         is_rfi = (template_option == 'rfi')
         
         rfi_existing = ""
         
-        # RFI 모드일 때만 '최근 RFI' 섹션을 최상단(템플릿 바로 아래)에 노출
+        # -------------------------------------------------------------
+        # 2. RFI 모드 전용 UI (Basis Excel)
+        # -------------------------------------------------------------
         if is_rfi:
             st.markdown("##### 2. 최근 RFI 목록 (Basis)")
             st.caption("📂 기준이 될 **기존 RFI 엑셀 파일**을 업로드하세요. (자동 파싱됨)")
@@ -169,7 +62,6 @@ def render_input_panel(container, settings):
             uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 드래그 & 드롭", type=['xlsx', 'xls', 'csv'], key="rfi_basis")
             
             if uploaded_rfi_file:
-                # 엑셀 파싱하여 텍스트로 변환 (AI에게 전달용)
                 with st.spinner("RFI 파일 파싱 중..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success(f"✅ RFI 로드 완료! ({uploaded_rfi_file.name})")
@@ -196,16 +88,13 @@ def render_input_panel(container, settings):
             structure_text = st.text_area("문서 구조 편집", value=default_structure, height=200)
 
         # -------------------------------------------------------------
-        # 3. 데이터 업로드 (RFI vs 일반)
+        # 3. 데이터 업로드 (Raw Data / Received Data)
         # -------------------------------------------------------------
-        uploaded_files = []
-        rfi_file_list_input = ""
-
         if is_rfi:
-            st.markdown("##### 3. 수령한 전체 자료 (Recursive Scan)")
-            components.html(HTML_DROPZONE, height=320)
-            st.markdown("⬇️ **위에서 복사한 목록을 아래에 붙여넣으세요:**")
-            rfi_file_list_input = st.text_area("파일명 목록 붙여넣기", height=150, placeholder="- 2024/재무제표.xlsx...")
+            st.markdown("##### 3. 수령한 전체 자료 (Received Files)")
+            st.caption("📂 받은 파일들을 **전부 드래그**해서 넣으세요. (내용은 읽지 않고 **파일명만 인덱싱**합니다)")
+            # [복귀] 표준 업로더 사용 (User Interaction 제거)
+            uploaded_files = st.file_uploader("수령 자료 드래그 & 드롭 (다중 선택 가능)", accept_multiple_files=True, label_visibility="collapsed", key="rfi_received")
         else:
             st.markdown("##### 2. 분석할 데이터 (Raw Data)")
             uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
@@ -225,8 +114,7 @@ def render_input_panel(container, settings):
             "template_option": template_option,
             "structure_text": structure_text,
             "uploaded_files": uploaded_files,
-            "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
-            "rfi_existing": rfi_existing, # 파싱된 텍스트 전달
+            "rfi_existing": rfi_existing,
             "generate_btn": generate_btn
         }

@@ -47,6 +47,17 @@ PROMPTS = {
 def get_client(api_key):
     return genai.Client(api_key=api_key)
 
+def extract_filenames_from_objects(uploaded_files):
+    """
+    Streamlit UploadedFile 객체 리스트에서 이름만 추출.
+    파일 내용(Bytes)은 절대 읽지 않으므로 서버 부하 없음.
+    """
+    if not uploaded_files:
+        return "(수령한 파일이 없습니다)"
+    
+    # 리스트 컴프리헨션으로 이름만 빠르게 추출
+    return "\n".join([f"- {f.name}" for f in uploaded_files])
+
 def analyze_rfi_status(client, existing_rfi, file_list_str):
     """Step 1: Flash 모델로 인덱싱"""
     prompt = f"""
@@ -55,7 +66,7 @@ def analyze_rfi_status(client, existing_rfi, file_list_str):
     [기존 요청 자료 목록(RFI)]
     {existing_rfi}
     
-    [수령한 파일 목록 (폴더 인덱스)]
+    [수령한 파일 목록 (파일명 인덱스)]
     {file_list_str}
     """
     try:
@@ -72,16 +83,13 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
     """RFI 생성 메인 로직 (스트리밍)"""
     client = get_client(api_key)
     
-    # 1. 파일 목록 준비 (HTML 드롭존에서 복사해온 텍스트 사용)
-    # 입력값이 없으면 안내 메시지 처리
-    file_list_str = inputs.get('rfi_file_list_input', '').strip()
-    if not file_list_str:
-        file_list_str = "(사용자가 파일 목록을 입력하지 않았습니다. 기존 RFI만 분석합니다.)"
+    # 1. 파일 목록 준비 (Standard Uploader -> Name Extraction)
+    file_list_str = extract_filenames_from_objects(inputs['uploaded_files'])
     
     # UI 알림
     yield types.GenerateContentResponse(
         candidates=[types.Candidate(
-            content=types.Content(parts=[types.Part(text="📂 [Step 1] 파일명 기반 자동 대사(Indexing) 진행 중... (No-Upload Scan)\n\n")])
+            content=types.Content(parts=[types.Part(text="📂 [Step 1] 업로드된 파일명 자동 대사(Indexing) 진행 중...\n\n")])
         )]
     )
     
