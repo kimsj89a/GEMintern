@@ -9,7 +9,7 @@ TEMPLATES = {
     'investment': '3. 투자심사보고서 (표준)',
     'im': '4. IM (투자제안서)',
     'management': '5. 사후관리보고서',
-    'presentation': '6. 투자심의 발표자료 (PPT)', # [NEW]
+    'presentation': '6. 투자심의 발표자료 (PPT)',
     'custom': '7. 직접 입력 (자동 구조화)'
 }
 
@@ -48,7 +48,7 @@ def render_settings():
             st.write("") 
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
 
-        st.info("💡 **약식/보고서**: Word 최적화 서술 | **발표자료(PPT)**: 슬라이드별 개조식 요약 (PPT 다운로드 권장)")
+        st.info("💡 **약식/보고서**: Word 최적화 서술 | **RFI**: 수령 자료 자동 대사(O/X) 후 추가 요청 | **PPT**: 슬라이드형 개조식")
 
     return {
         "api_key": api_key,
@@ -102,8 +102,9 @@ def render_input_panel(container, settings):
         )
 
         # 2. 데이터 업로드
-        st.markdown("##### 2. 분석할 데이터 (Raw Data)")
-        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
+        upload_label = "2. 수령한 전체 자료 (Received Data Folder)" if is_rfi else "2. 분석할 데이터 (Raw Data)"
+        st.markdown(f"##### {upload_label}")
+        uploaded_files = st.file_uploader("파일을 드래그하거나 선택하세요", accept_multiple_files=True, label_visibility="collapsed")
         
         # 3. 컨텍스트
         context_label = "3. 대상 기업 및 맥락 (Context)" if not is_rfi else "3. 추가 질문 및 확인 사항 (Questions)"
@@ -119,6 +120,7 @@ def render_input_panel(container, settings):
         rfi_existing = ""
         if is_rfi:
             st.markdown("##### 5. 기존 RFI 목록 (선택)")
+            st.caption("기존에 요청했던 RFI 목록이 있다면 붙여넣으세요. 수령한 자료와 자동으로 대사합니다.")
             rfi_existing = st.text_area("기존 목록 붙여넣기", height=100)
 
         st.markdown("---")
