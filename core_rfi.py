@@ -7,7 +7,7 @@ from google.genai import types
 PROMPTS = {
     'indexing': """
 당신은 자료 관리 및 인덱싱 전문가입니다.
-[기존 요청 자료 목록(RFI)]과 [수령한 파일 인덱스(Local Scan)]를 대조하여 제출 현황을 점검하십시오.
+[기존 요청 자료 목록(RFI)]과 [수령한 파일 인덱스]를 대조하여 제출 현황을 점검하십시오.
 
 # Task
 1. 사용자가 스캔한 **파일 경로 및 메타데이터**를 분석하여, 기존 RFI 항목 중 어느 것에 해당하는지 매칭하십시오.
@@ -18,7 +18,7 @@ PROMPTS = {
 3. 결과는 반드시 **Markdown Table** 형식으로만 출력하십시오. 설명은 필요 없습니다.
 
 # Output Table Format
-| No. | 구분 | 기존 요청 자료 | 매칭된 파일 정보(경로/크기/날짜) | 상태(O/△/X) | 비고 |
+| No. | 구분 | 기존 요청 자료 | 매칭된 파일 정보(경로) | 상태(O/△/X) | 비고 |
 | --- | --- | --- | --- | --- | --- |
 """,
     'finalizing': """
@@ -39,63 +39,6 @@ PROMPTS = {
 def get_client(api_key):
     return genai.Client(api_key=api_key)
 
-def index_local_directory(start_path):
-    """
-    [Smart Indexing] 경로 보정 및 스마트 에러 진단
-    """
-    # 1. 경로 보정
-    clean_path = start_path.strip().strip('"').strip("'")
-    clean_path = os.path.normpath(clean_path)
-
-    # 2. 경로 존재 여부 체크 및 진단
-    if not os.path.exists(clean_path):
-        parent = os.path.dirname(clean_path)
-        msg = f"❌ Error: 경로를 찾을 수 없습니다.\n입력값: {clean_path}\n\n"
-        
-        # 상위 폴더 추적
-        if os.path.exists(parent):
-            msg += f"👉 **진단 결과**: 상위 폴더인 '{parent}'는 존재합니다.\n"
-            msg += f"해당 위치에 있는 폴더 목록:\n"
-            try:
-                subdirs = [d for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
-                for d in subdirs[:5]: # 최대 5개만 예시로 보여줌
-                    msg += f"- {d}\n"
-                if len(subdirs) > 5: msg += "...(생략)\n"
-                msg += "\n위 목록 중 하나인지 확인해보세요."
-            except:
-                pass
-        else:
-            msg += f"👉 **진단 결과**: 상위 경로인 '{parent}'조차 찾을 수 없습니다. 드라이브명(C:, D:)이나 전체 경로를 다시 확인해주세요."
-            
-        return msg
-
-    file_index_str = "| 파일명 | 경로 | 크기(KB) | 수정일 |\n|---|---|---|---|\n"
-    count = 0
-
-    try:
-        for dirpath, dirnames, filenames in os.walk(clean_path):
-            for filename in filenames:
-                full_path = os.path.join(dirpath, filename)
-                try:
-                    stat_info = os.stat(full_path)
-                    size_kb = round(stat_info.st_size / 1024, 1)
-                    mtime = datetime.datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d')
-                    
-                    display_path = full_path.replace(clean_path, '').replace('\\', '/')
-                    if display_path.startswith('/'): display_path = display_path[1:]
-
-                    file_index_str += f"| {filename} | {display_path} | {size_kb}KB | {mtime} |\n"
-                    count += 1
-                except OSError:
-                    continue
-    except Exception as e:
-        return f"❌ 인덱싱 중 시스템 오류 발생: {str(e)}"
-
-    if count == 0:
-        return f"⚠️ 해당 경로({clean_path})에 파일이 하나도 없습니다."
-    
-    return file_index_str
-
 def analyze_rfi_status(client, existing_rfi, file_index_str):
     """Step 1: Flash 모델로 인덱싱"""
     prompt = f"""
@@ -104,7 +47,7 @@ def analyze_rfi_status(client, existing_rfi, file_index_str):
     [기존 요청 자료 목록(RFI)]
     {existing_rfi}
     
-    [수령한 파일 인덱스 (Local OS Scan)]
+    [수령한 파일 인덱스 (Browser Scan)]
     {file_index_str}
     """
     try:
@@ -121,21 +64,14 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
     """RFI 생성 메인 로직"""
     client = get_client(api_key)
     
+    # UI에서 복사/붙여넣기 한 텍스트 사용
     file_index_str = inputs.get('rfi_file_list_input', '')
     if not file_index_str:
-        file_index_str = "(파일 인덱스 없음)"
+        file_index_str = "(파일 인덱스 없음 - 사용자가 입력하지 않음)"
     
-    if "Error:" in file_index_str:
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=f"🛑 **중단됨**: 파일 경로 오류를 해결해야 분석이 가능합니다.\n\n{file_index_str}")])
-            )]
-        )
-        return
-
     yield types.GenerateContentResponse(
         candidates=[types.Candidate(
-            content=types.Content(parts=[types.Part(text="📂 [Step 1] 로컬 인덱스 기반 대사(Indexing) 진행 중...\n\n")])
+            content=types.Content(parts=[types.Part(text="📂 [Step 1] 파일 인덱스 기반 대사(Indexing) 진행 중...\n\n")])
         )]
     )
     

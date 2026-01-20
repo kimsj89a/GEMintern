@@ -1,10 +1,8 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import utils
 import core_logic
 import core_rfi
-import os
-import tkinter as tk
-from tkinter import filedialog
 
 # 템플릿 상수 정의
 TEMPLATES = {
@@ -14,19 +12,108 @@ TEMPLATES = {
     'im': '4. IM (투자제안서)',
     'management': '5. 사후관리보고서',
     'presentation': '6. 투자심의 발표자료 (PPT)',
-    'custom': '7. 직접 입력 (서식 복제 가능)' # [수정]
+    'custom': '7. 직접 입력 (서식 복제 가능)'
 }
 
-def open_folder_dialog():
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.wm_attributes('-topmost', 1)
-        folder_path = filedialog.askdirectory(master=root)
-        root.destroy()
-        return folder_path
-    except Exception as e:
-        return None
+# [HTML/JS] 브라우저 기반 폴더 스캐너 (서버 업로드 X)
+HTML_SCANNER = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; padding: 0; font-family: sans-serif; }
+  #drop-zone { 
+    border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; 
+    text-align: center; color: #64748b; cursor: pointer; background: #f8fafc; transition: 0.2s;
+  }
+  #drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; color: #3b82f6; }
+  #file-display {
+    width: 96%; height: 100px; margin-top: 10px; padding: 8px; font-size: 11px;
+    border: 1px solid #e2e8f0; border-radius: 4px; color: #334155; font-family: monospace;
+  }
+  button {
+    margin-top: 8px; width: 100%; padding: 8px; background: #3b82f6; color: white; border: none;
+    border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;
+  }
+  button:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+<div id="drop-zone">
+  <div style="font-size: 20px;">📂</div>
+  <div style="font-weight: 600; font-size: 14px;">여기에 자료 폴더를 드래그하세요</div>
+  <div style="font-size: 11px; color: #94a3b8; margin-top:2px;">(하위 폴더 포함 전체 스캔 / 업로드 없음)</div>
+</div>
+<textarea id="file-display" placeholder="스캔 결과가 여기에 나타납니다." readonly></textarea>
+<button id="copy-btn" onclick="copyList()">📋 목록 복사 (Click to Copy)</button>
+
+<script>
+  const dropZone = document.getElementById('drop-zone');
+  const fileDisplay = document.getElementById('file-display');
+  const copyBtn = document.getElementById('copy-btn');
+  let foundFiles = [];
+
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+  
+  dropZone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    copyBtn.innerText = "🔍 스캔 중...";
+    
+    foundFiles = [];
+    const items = e.dataTransfer.items;
+    
+    if (items) {
+        const promises = [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : items[i].getAsEntry();
+            if (item) promises.push(scanEntry(item));
+        }
+        await Promise.all(promises);
+    }
+    
+    foundFiles.sort();
+    fileDisplay.value = foundFiles.join('\\n');
+    copyBtn.innerText = `📋 ${foundFiles.length}개 파일 목록 복사하기`;
+    copyBtn.style.background = "#3b82f6";
+  });
+
+  function scanEntry(entry) {
+    return new Promise((resolve) => {
+        if (entry.isFile) {
+            const path = entry.fullPath.startsWith('/') ? entry.fullPath.slice(1) : entry.fullPath;
+            foundFiles.push("- " + path);
+            resolve();
+        } else if (entry.isDirectory) {
+            const dirReader = entry.createReader();
+            const readAll = async () => {
+                let allEntries = [];
+                let keepReading = true;
+                while (keepReading) {
+                    const batch = await new Promise(r => dirReader.readEntries(r));
+                    if (batch.length === 0) keepReading = false;
+                    else allEntries = allEntries.concat(batch);
+                }
+                await Promise.all(allEntries.map(scanEntry));
+                resolve();
+            };
+            readAll();
+        } else resolve();
+    });
+  }
+
+  function copyList() {
+    if (!fileDisplay.value) return;
+    fileDisplay.select();
+    document.execCommand('copy');
+    copyBtn.innerText = "✅ 복사 완료! 아래 빈칸에 붙여넣으세요.";
+    copyBtn.style.background = "#22c55e";
+  }
+</script>
+</body>
+</html>
+"""
 
 def render_settings():
     """상단 설정 영역"""
@@ -49,8 +136,6 @@ def render_settings():
         with c4:
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
-            
-        st.info("💡 **Custom 모드**: 기존 보고서 파일을 업로드하고 '구조 추출'을 누르면, 해당 양식 그대로 새 내용을 작성합니다.")
     
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
@@ -62,7 +147,6 @@ def render_input_panel(container, settings):
         # 1. 템플릿 선택
         template_option = st.selectbox("1. 문서 구조 / 템플릿 선택", list(TEMPLATES.keys()), format_func=lambda x: TEMPLATES[x])
         is_rfi = (template_option == 'rfi')
-        
         rfi_existing = ""
         
         # 2. RFI 모드 전용 UI
@@ -80,7 +164,6 @@ def render_input_panel(container, settings):
         # 구조 추출 및 편집
         structure_text = ""
         if not is_rfi:
-            # [수정] 라벨을 명확하게 변경
             upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
             uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'])
             
@@ -103,34 +186,21 @@ def render_input_panel(container, settings):
         rfi_file_list_input = ""
 
         if is_rfi:
-            st.markdown("##### 3. 수령 자료 폴더 스캔 (Local Indexing)")
+            st.markdown("##### 3. 수령 자료 폴더 스캔")
+            # 안내 문구
+            st.markdown("""
+            <div class="info-box">
+            <b>☁️ 클라우드/웹 환경 안내</b><br/>
+            웹 서버는 사용자의 PC(C:드라이브)를 직접 볼 수 없습니다. <br/>
+            아래 <b>드롭존에 폴더를 드래그</b>하면 브라우저가 파일명을 스캔해줍니다. <b>[복사]</b> 후 아래 칸에 <b>[붙여넣기]</b> 해주세요.
+            </div>
+            """, unsafe_allow_html=True)
             
-            col_path1, col_path2 = st.columns([3, 1])
-            with col_path2:
-                st.write(""); st.write("") 
-                if st.button("📂 폴더 찾기", use_container_width=True):
-                    selected_path = open_folder_dialog()
-                    if selected_path:
-                        st.session_state.local_path_input = selected_path.replace('/', '\\')
-                        st.rerun()
+            # HTML 스캐너
+            components.html(HTML_SCANNER, height=280)
             
-            with col_path1:
-                local_path = st.text_input("폴더 경로 (버튼을 눌러 선택하세요)", value=st.session_state.local_path_input, placeholder="C:\\Users\\...", key="path_input_box")
-                st.session_state.local_path_input = local_path
-            
-            if st.session_state.local_path_input:
-                with st.status("🔍 로컬 폴더 스캔 중...", expanded=True) as status:
-                    index_result = core_rfi.index_local_directory(st.session_state.local_path_input)
-                    if "Error" in index_result:
-                        status.update(label="❌ 경로 오류", state="error"); st.error(index_result)
-                    elif "없습니다" in index_result:
-                        status.update(label="⚠️ 파일 없음", state="running"); st.warning(index_result)
-                    else:
-                        status.update(label="✅ 인덱싱 완료!", state="complete", expanded=False)
-                rfi_file_list_input = st.text_area("스캔된 파일 목록", value=index_result, height=200)
-            else:
-                st.info("☝️ 오른쪽 '폴더 찾기' 버튼을 눌러 자료가 있는 폴더를 선택해주세요.")
-                
+            # 결과 입력창
+            rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...")
         else:
             st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
             uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
