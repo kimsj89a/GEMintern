@@ -14,7 +14,7 @@ TEMPLATES = {
     'custom': '7. 직접 입력 (자동 구조화)'
 }
 
-# [HTML/JS] 폴더 재귀 스캔 드롭존 (Recursive Scanning)
+# [HTML/JS] 폴더 재귀 스캔 드롭존
 HTML_DROPZONE = """
 <!DOCTYPE html>
 <html>
@@ -55,10 +55,8 @@ HTML_DROPZONE = """
   const fileList = document.getElementById('file-list');
   const copyBtn = document.getElementById('copy-btn');
   const statusText = document.getElementById('status-text');
-
   let foundFiles = [];
 
-  // Drag Events
   dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
   dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
   
@@ -66,72 +64,51 @@ HTML_DROPZONE = """
     e.preventDefault();
     dropZone.classList.remove('dragover');
     statusText.innerText = "🔍 스캔 중...";
-    
     foundFiles = [];
     const items = e.dataTransfer.items;
     
     if (items) {
-        // Modern API: Recursive Scan
         const scanPromises = [];
         for (let i = 0; i < items.length; i++) {
             const item = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : items[i].getAsEntry();
-            if (item) {
-                scanPromises.push(scanEntry(item));
-            }
+            if (item) scanPromises.push(scanEntry(item));
         }
         await Promise.all(scanPromises);
     } else {
-        // Fallback
         const files = e.dataTransfer.files;
-        for (let i = 0; i < files.length; i++) {
-             foundFiles.push("- " + files[i].name);
-        }
+        for (let i = 0; i < files.length; i++) foundFiles.push("- " + files[i].name);
     }
-    
-    // Sort and Display
     foundFiles.sort();
     fileList.value = foundFiles.join('\\n');
-    
     statusText.innerText = `✅ 스캔 완료! (${foundFiles.length}개 파일)`;
     copyBtn.innerText = `📋 ${foundFiles.length}개 목록 복사하기`;
     copyBtn.style.background = "#3b82f6";
   });
 
-  // Recursive Scanner
   function scanEntry(entry) {
     return new Promise((resolve) => {
         if (entry.isFile) {
-            // entry.fullPath includes the leading slash (e.g. /folder/file.txt)
-            // We remove it for cleaner output
             const path = entry.fullPath.startsWith('/') ? entry.fullPath.slice(1) : entry.fullPath;
             foundFiles.push("- " + path);
             resolve();
         } else if (entry.isDirectory) {
             const dirReader = entry.createReader();
-            
-            // readEntries needs to be called repeatedly
             const readAll = async () => {
                 let allEntries = [];
                 let keepReading = true;
-                
                 while (keepReading) {
                     const batch = await new Promise(res => dirReader.readEntries(res));
                     if (batch.length === 0) keepReading = false;
                     else allEntries = allEntries.concat(batch);
                 }
-                
-                // Recursively process children
                 await Promise.all(allEntries.map(scanEntry));
                 resolve();
             };
             readAll();
-        } else {
-            resolve();
-        }
+        } else { resolve(); }
     });
   }
 
-  // Copy Function
   function copyToClipboard() {
     if (!fileList.value) return;
     fileList.select();
@@ -166,7 +143,7 @@ def render_settings():
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
             
-        st.info("💡 **RFI 모드**: 폴더를 통째로 드래그하면 **하위 폴더 내용까지 전부 스캔**하여 인덱싱합니다. (서버 전송 없음)")
+        st.info("💡 **RFI 모드**: [최근 RFI 엑셀]을 기반으로 수령 자료를 자동 대사합니다.")
     
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
@@ -174,11 +151,35 @@ def render_input_panel(container, settings):
     """왼쪽 입력 패널 UI"""
     with container:
         st.markdown("### 📝 입력 (Input)")
-        
-        # 1. 템플릿 선택
-        template_option = st.selectbox("문서 구조 / 템플릿 선택", list(TEMPLATES.keys()), format_func=lambda x: TEMPLATES[x], label_visibility="collapsed")
-        is_rfi = (template_option == 'rfi')
 
+        # -------------------------------------------------------------
+        # [NEW] 1. 최근 RFI (엑셀) - RFI 모드의 최상위 기준
+        # -------------------------------------------------------------
+        # 템플릿 선택 먼저 보여주되, RFI 선택 시 UI 순서 재배치 효과를 위해 로직 분리
+        template_option = st.selectbox("1. 문서 구조 / 템플릿 선택", list(TEMPLATES.keys()), format_func=lambda x: TEMPLATES[x])
+        is_rfi = (template_option == 'rfi')
+        
+        rfi_existing = ""
+        
+        # RFI 모드일 때만 '최근 RFI' 섹션을 최상단(템플릿 바로 아래)에 노출
+        if is_rfi:
+            st.markdown("##### 2. 최근 RFI 목록 (Basis)")
+            st.caption("📂 기준이 될 **기존 RFI 엑셀 파일**을 업로드하세요. (자동 파싱됨)")
+            
+            uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 드래그 & 드롭", type=['xlsx', 'xls', 'csv'], key="rfi_basis")
+            
+            if uploaded_rfi_file:
+                # 엑셀 파싱하여 텍스트로 변환 (AI에게 전달용)
+                with st.spinner("RFI 파일 파싱 중..."):
+                    rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
+                st.success(f"✅ RFI 로드 완료! ({uploaded_rfi_file.name})")
+            else:
+                st.info("파일이 없으면 빈 목록에서 시작합니다.")
+
+        # -------------------------------------------------------------
+        # 구조 추출 및 편집 (RFI 아닐 때만)
+        # -------------------------------------------------------------
+        structure_text = ""
         if not is_rfi:
             uploaded_structure_file = st.file_uploader("📂 서식 파일 업로드 (구조 추출용)", type=['pdf', 'docx', 'txt', 'md'])
             if uploaded_structure_file and st.button("구조 추출 실행"):
@@ -188,38 +189,34 @@ def render_input_panel(container, settings):
                         ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
                         if ext: st.session_state['structure_input'] = ext; st.rerun()
 
-        default_structure = core_logic.get_default_structure(template_option)
-        if 'structure_input' in st.session_state and template_option == 'custom':
-            default_structure = st.session_state['structure_input']
-            
-        structure_text = st.text_area(
-            "문서 구조 편집" if not is_rfi else "문서 구조 (자동 설정)", 
-            value=default_structure, height=200 if not is_rfi else 50, disabled=is_rfi
-        )
+            default_structure = core_logic.get_default_structure(template_option)
+            if 'structure_input' in st.session_state and template_option == 'custom':
+                default_structure = st.session_state['structure_input']
+                
+            structure_text = st.text_area("문서 구조 편집", value=default_structure, height=200)
 
-        # 2. 데이터 업로드
+        # -------------------------------------------------------------
+        # 3. 데이터 업로드 (RFI vs 일반)
+        # -------------------------------------------------------------
         uploaded_files = []
         rfi_file_list_input = ""
 
         if is_rfi:
-            st.markdown("##### 2. 수령한 전체 자료 (Recursive Scan)")
+            st.markdown("##### 3. 수령한 전체 자료 (Recursive Scan)")
             components.html(HTML_DROPZONE, height=320)
-            
             st.markdown("⬇️ **위에서 복사한 목록을 아래에 붙여넣으세요:**")
-            rfi_file_list_input = st.text_area("파일명 목록 붙여넣기", height=150, placeholder="- 2024/재무제표/감사보고서.xlsx\n- 법무/소송현황.pdf\n...")
+            rfi_file_list_input = st.text_area("파일명 목록 붙여넣기", height=150, placeholder="- 2024/재무제표.xlsx...")
         else:
             st.markdown("##### 2. 분석할 데이터 (Raw Data)")
             uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed")
         
-        # 3. 컨텍스트
-        context_label = "3. 대상 기업 및 맥락" if not is_rfi else "3. 추가 질문 및 확인 사항"
+        # -------------------------------------------------------------
+        # 4. 컨텍스트
+        # -------------------------------------------------------------
+        context_label = "3. 대상 기업 및 맥락" if not is_rfi else "4. 추가 질문 및 확인 사항"
         st.markdown(f"##### {context_label}")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", 
-            placeholder="예: 기업명, 핵심 제품..." if not is_rfi else "예: 재고가 너무 많은 것 같은데 확인 필요...")
-
-        if is_rfi:
-            st.markdown("##### 5. 기존 RFI 목록 (선택)")
-            rfi_existing = st.text_area("기존 목록 붙여넣기", height=100)
+            placeholder="예: 기업명..." if not is_rfi else "예: 재고 관련 이슈 확인 필요...")
 
         st.markdown("---")
         generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary")
@@ -230,6 +227,6 @@ def render_input_panel(container, settings):
             "uploaded_files": uploaded_files,
             "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
-            "rfi_existing": rfi_existing,
+            "rfi_existing": rfi_existing, # 파싱된 텍스트 전달
             "generate_btn": generate_btn
         }
