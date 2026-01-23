@@ -11,3 +11,4 @@ pymupdf
 python-calamine
 tabulate
 openai
+pydub

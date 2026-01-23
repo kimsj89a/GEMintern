@@ -1,6 +1,7 @@
 import re
 import io
 from openai import OpenAI
+from pydub import AudioSegment
 
 def transcribe_audio(uploaded_file, api_key=None):
     """
@@ -38,14 +39,43 @@ def transcribe_audio(uploaded_file, api_key=None):
         if file_ext not in supported_formats:
             return f"[오류: 지원되지 않는 파일 형식입니다. 지원 형식: {', '.join(supported_formats)}]"
 
-        # BytesIO 객체로 변환하고 간단한 파일명 설정 (확장자만 명확하게)
+        # Apple 기기 m4a 파일 등 특수 코덱 처리
+        # m4a 파일의 경우 mp3로 변환 시도
+        if file_ext == 'm4a':
+            try:
+                # AudioSegment를 사용하여 m4a를 mp3로 변환
+                audio = AudioSegment.from_file(io.BytesIO(file_content), format="m4a")
+                mp3_buffer = io.BytesIO()
+                audio.export(mp3_buffer, format="mp3")
+                mp3_buffer.seek(0)
+                file_content = mp3_buffer.read()
+                file_ext = "mp3"
+            except Exception:
+                # 변환 실패 시 원본 파일 그대로 시도
+                pass
+
+        # BytesIO 객체로 변환하고 MIME type과 함께 파일명 설정
         audio_file = io.BytesIO(file_content)
         audio_file.name = f"audio.{file_ext}"  # 단순화된 파일명 사용
 
-        # Whisper API 호출
+        # MIME type 매핑
+        mime_types = {
+            'mp3': 'audio/mpeg',
+            'mp4': 'audio/mp4',
+            'm4a': 'audio/mp4',
+            'wav': 'audio/wav',
+            'webm': 'audio/webm',
+            'ogg': 'audio/ogg',
+            'flac': 'audio/flac',
+            'mpeg': 'audio/mpeg',
+            'mpga': 'audio/mpeg',
+            'oga': 'audio/ogg'
+        }
+
+        # Whisper API 호출 (파일을 튜플로 전달하여 MIME type 명시)
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
-            file=audio_file,
+            file=(audio_file.name, audio_file, mime_types.get(file_ext, 'audio/mpeg')),
             language="ko",  # 한국어 명시
             response_format="text"
         )
