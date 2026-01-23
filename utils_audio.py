@@ -1,7 +1,8 @@
 import re
 import io
+import tempfile
+import os
 from openai import OpenAI
-from pydub import AudioSegment
 
 def transcribe_audio(uploaded_file, api_key=None):
     """
@@ -21,13 +22,10 @@ def transcribe_audio(uploaded_file, api_key=None):
     if not api_key:
         return "[오류: OpenAI API 키가 필요합니다]"
 
+    temp_file_path = None
     try:
         # OpenAI 클라이언트 초기화
         client = OpenAI(api_key=api_key)
-
-        # 파일을 메모리에서 직접 전송
-        uploaded_file.seek(0)
-        file_content = uploaded_file.read()
 
         # 파일 확장자 추출 및 검증
         original_filename = uploaded_file.name
@@ -39,46 +37,21 @@ def transcribe_audio(uploaded_file, api_key=None):
         if file_ext not in supported_formats:
             return f"[오류: 지원되지 않는 파일 형식입니다. 지원 형식: {', '.join(supported_formats)}]"
 
-        # Apple 기기 m4a 파일 등 특수 코덱 처리
-        # m4a 파일의 경우 mp3로 변환 시도
-        if file_ext == 'm4a':
-            try:
-                # AudioSegment를 사용하여 m4a를 mp3로 변환
-                audio = AudioSegment.from_file(io.BytesIO(file_content), format="m4a")
-                mp3_buffer = io.BytesIO()
-                audio.export(mp3_buffer, format="mp3")
-                mp3_buffer.seek(0)
-                file_content = mp3_buffer.read()
-                file_ext = "mp3"
-            except Exception:
-                # 변환 실패 시 원본 파일 그대로 시도
-                pass
+        # 임시 파일로 저장 (파일 시스템에서 직접 읽기)
+        # OpenAI API는 실제 파일 경로를 선호합니다
+        uploaded_file.seek(0)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as temp_file:
+            temp_file.write(uploaded_file.read())
+            temp_file_path = temp_file.name
 
-        # BytesIO 객체로 변환하고 MIME type과 함께 파일명 설정
-        audio_file = io.BytesIO(file_content)
-        audio_file.name = f"audio.{file_ext}"  # 단순화된 파일명 사용
-
-        # MIME type 매핑
-        mime_types = {
-            'mp3': 'audio/mpeg',
-            'mp4': 'audio/mp4',
-            'm4a': 'audio/mp4',
-            'wav': 'audio/wav',
-            'webm': 'audio/webm',
-            'ogg': 'audio/ogg',
-            'flac': 'audio/flac',
-            'mpeg': 'audio/mpeg',
-            'mpga': 'audio/mpeg',
-            'oga': 'audio/ogg'
-        }
-
-        # Whisper API 호출 (파일을 튜플로 전달하여 MIME type 명시)
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=(audio_file.name, audio_file, mime_types.get(file_ext, 'audio/mpeg')),
-            language="ko",  # 한국어 명시
-            response_format="text"
-        )
+        # 임시 파일을 열어서 API에 전달
+        with open(temp_file_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="ko",  # 한국어 명시
+                response_format="text"
+            )
 
         # 전사 결과
         transcribed_text = transcript if isinstance(transcript, str) else transcript.text
@@ -109,6 +82,13 @@ def transcribe_audio(uploaded_file, api_key=None):
     except Exception as e:
         return f"[오디오 전사 오류: {uploaded_file.name} - {str(e)}]"
     finally:
+        # 임시 파일 삭제
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except Exception:
+                pass
+
         # 파일 포인터 초기화
         if hasattr(uploaded_file, 'seek'):
             uploaded_file.seek(0)
