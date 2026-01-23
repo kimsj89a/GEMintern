@@ -28,9 +28,19 @@ def transcribe_audio(uploaded_file, api_key=None):
         uploaded_file.seek(0)
         file_content = uploaded_file.read()
 
-        # BytesIO 객체로 변환하고 파일명 속성 추가
+        # 파일 확장자 추출 및 검증
+        original_filename = uploaded_file.name
+        file_ext = original_filename.split('.')[-1].lower()
+
+        # 지원되는 확장자 목록
+        supported_formats = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm']
+
+        if file_ext not in supported_formats:
+            return f"[오류: 지원되지 않는 파일 형식입니다. 지원 형식: {', '.join(supported_formats)}]"
+
+        # BytesIO 객체로 변환하고 간단한 파일명 설정 (확장자만 명확하게)
         audio_file = io.BytesIO(file_content)
-        audio_file.name = uploaded_file.name
+        audio_file.name = f"audio.{file_ext}"  # 단순화된 파일명 사용
 
         # Whisper API 호출
         transcript = client.audio.transcriptions.create(
@@ -64,7 +74,7 @@ def transcribe_audio(uploaded_file, api_key=None):
         cleaned_text = re.sub(r'\s*\.\s*', '. ', cleaned_text)
         cleaned_text = re.sub(r'\s*,\s*', ', ', cleaned_text)
 
-        return f"### [오디오 전사 결과: {uploaded_file.name}]\n\n{cleaned_text}\n\n"
+        return f"### [오디오 전사 결과: {original_filename}]\n\n{cleaned_text}\n\n"
 
     except Exception as e:
         return f"[오디오 전사 오류: {uploaded_file.name} - {str(e)}]"
