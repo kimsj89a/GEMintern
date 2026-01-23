@@ -31,17 +31,39 @@ def main():
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)
 
-    # 탭 기반 UI
-    tab1, tab2 = st.tabs(["📊 투자분석 보고서", "🎤 오디오 전사"])
+    # 탭 기반 UI - 4개 탭으로 분리
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📄 투자분석 보고서",
+        "📋 RFI 작성",
+        "📊 IM/PPT 생성",
+        "🎤 오디오 전사"
+    ])
+
+    # 공통 설정
+    settings = ui_input.render_settings()
 
     with tab1:
-        settings = ui_input.render_settings()
+        st.markdown("### 📄 투자분석 보고서 작성")
         st.markdown("---")
-        inputs = ui_input.render_input_panel(st.container(), settings)
+        inputs = ui_input.render_investment_report_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
         ui_output.render_output_panel(st.container(), settings, inputs)
 
     with tab2:
+        st.markdown("### 📋 RFI (실사 자료 요청) 작성")
+        st.markdown("---")
+        inputs = ui_input.render_rfi_panel(st.container(), settings)
+        st.markdown("<br>", unsafe_allow_html=True)
+        ui_output.render_output_panel(st.container(), settings, inputs)
+
+    with tab3:
+        st.markdown("### 📊 IM/PPT 생성")
+        st.markdown("---")
+        inputs = ui_input.render_im_ppt_panel(st.container(), settings)
+        st.markdown("<br>", unsafe_allow_html=True)
+        ui_output.render_output_panel(st.container(), settings, inputs)
+
+    with tab4:
         ui_audio.render_audio_transcription_panel()
 
 if __name__ == "__main__":

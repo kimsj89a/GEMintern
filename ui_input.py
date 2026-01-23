@@ -139,8 +139,177 @@ def render_settings():
     
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
+def render_investment_report_panel(container, settings):
+    """투자분석 보고서 입력 패널 (약식, 투자심사, 직접입력)"""
+    with container:
+        # 1. 템플릿 선택
+        template_options = {
+            'simple_review': '1. 약식 투자검토 (요약)',
+            'investment': '2. 투자심사보고서 (표준)',
+            'custom': '3. 직접 입력 (서식 복제 가능)'
+        }
+        template_option = st.selectbox(
+            "1. 문서 구조 / 템플릿 선택",
+            list(template_options.keys()),
+            format_func=lambda x: template_options[x],
+            key="report_template"
+        )
+
+        # 2. 구조 추출 및 편집
+        upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
+        uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'], key="report_structure")
+
+        btn_label = "구조/양식 추출 실행" if template_option == 'custom' else "구조 추출 실행"
+        if uploaded_structure_file and st.button(btn_label, key="report_extract"):
+            if not settings["api_key"]:
+                st.error("API Key 필요")
+            else:
+                with st.spinner("서식 분석 중..."):
+                    ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                    if ext:
+                        st.session_state['report_structure_input'] = ext
+                        st.rerun()
+
+        default_structure = core_logic.get_default_structure(template_option)
+        if 'report_structure_input' in st.session_state and template_option == 'custom':
+            default_structure = st.session_state['report_structure_input']
+
+        structure_text = st.text_area("문서 구조 (편집 가능)", value=default_structure, height=200, key="report_struct_text")
+
+        # 3. 데이터 입력
+        st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
+        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="report_files")
+
+        # 4. 컨텍스트
+        st.markdown("##### 3. 대상 기업 및 맥락")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="report_context")
+
+        st.markdown("---")
+        generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="report_generate")
+
+        return {
+            "template_option": template_option,
+            "structure_text": structure_text,
+            "uploaded_files": uploaded_files,
+            "rfi_file_list_input": "",
+            "context_text": context_text,
+            "rfi_existing": "",
+            "generate_btn": generate_btn
+        }
+
+def render_rfi_panel(container, settings):
+    """RFI 작성 입력 패널"""
+    with container:
+        template_option = 'rfi'
+
+        # 1. 최근 RFI 목록 (Basis)
+        st.markdown("##### 1. 최근 RFI 목록 (Basis)")
+        uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 드래그 & 드롭", type=['xlsx', 'xls', 'csv'], key="rfi_basis")
+
+        rfi_existing = ""
+        if uploaded_rfi_file:
+            with st.spinner("RFI 파일 파싱 중..."):
+                rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
+            st.success(f"✅ RFI 로드 완료! ({uploaded_rfi_file.name})")
+        else:
+            st.info("파일이 없으면 빈 목록에서 시작합니다.")
+
+        # 2. 수령 자료 폴더 스캔
+        st.markdown("##### 2. 수령 자료 폴더 스캔")
+        st.markdown("""
+        <div class="info-box">
+        <b>☁️ 클라우드/웹 환경 안내</b><br/>
+        웹 서버는 사용자의 PC(C:드라이브)를 직접 볼 수 없습니다. <br/>
+        아래 <b>드롭존에 폴더를 드래그</b>하면 브라우저가 파일명을 스캔해줍니다. <b>[복사]</b> 후 아래 칸에 <b>[붙여넣기]</b> 해주세요.
+        </div>
+        """, unsafe_allow_html=True)
+
+        # HTML 스캐너
+        components.html(HTML_SCANNER, height=280)
+
+        # 결과 입력창
+        rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...", key="rfi_filelist")
+
+        # 3. 추가 질문 및 확인 사항
+        st.markdown("##### 3. 추가 질문 및 확인 사항")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="rfi_context")
+
+        st.markdown("---")
+        generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="rfi_generate")
+
+        return {
+            "template_option": template_option,
+            "structure_text": "",
+            "uploaded_files": [],
+            "rfi_file_list_input": rfi_file_list_input,
+            "context_text": context_text,
+            "rfi_existing": rfi_existing,
+            "generate_btn": generate_btn
+        }
+
+def render_im_ppt_panel(container, settings):
+    """IM/PPT 생성 입력 패널"""
+    with container:
+        # 1. 템플릿 선택
+        template_options = {
+            'im': '1. IM (투자제안서)',
+            'presentation': '2. 투자심의 발표자료 (PPT)',
+            'management': '3. 사후관리보고서'
+        }
+        template_option = st.selectbox(
+            "1. 문서 구조 / 템플릿 선택",
+            list(template_options.keys()),
+            format_func=lambda x: template_options[x],
+            key="im_template"
+        )
+
+        # 2. 구조 추출 및 편집 (선택)
+        uploaded_structure_file = st.file_uploader("📂 서식 파일 업로드 (구조 추출용)", type=['pdf', 'docx', 'txt', 'md'], key="im_structure")
+
+        if uploaded_structure_file and st.button("구조 추출 실행", key="im_extract"):
+            if not settings["api_key"]:
+                st.error("API Key 필요")
+            else:
+                with st.spinner("서식 분석 중..."):
+                    ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                    if ext:
+                        st.session_state['im_structure_input'] = ext
+                        st.rerun()
+
+        default_structure = core_logic.get_default_structure(template_option)
+        if 'im_structure_input' in st.session_state:
+            default_structure = st.session_state['im_structure_input']
+
+        structure_text = st.text_area("문서 구조 (편집 가능)", value=default_structure, height=200, key="im_struct_text")
+
+        # 3. 데이터 입력
+        st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
+        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="im_files")
+
+        # 4. 컨텍스트
+        st.markdown("##### 3. 대상 기업 및 맥락")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="im_context")
+
+        st.markdown("---")
+        generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="im_generate")
+
+        return {
+            "template_option": template_option,
+            "structure_text": structure_text,
+            "uploaded_files": uploaded_files,
+            "rfi_file_list_input": "",
+            "context_text": context_text,
+            "rfi_existing": "",
+            "generate_btn": generate_btn
+        }
+
 def render_input_panel(container, settings):
-    """왼쪽 입력 패널 UI"""
+    """레거시 호환용 - 기본적으로 투자분석 보고서 패널 호출"""
+    return render_investment_report_panel(container, settings)
+
+# 아래는 기존 코드 (삭제하지 말 것)
+def _legacy_render_input_panel(container, settings):
+    """왼쪽 입력 패널 UI (레거시)"""
     with container:
         st.markdown("### 📝 입력 (Input)")
 
@@ -148,7 +317,7 @@ def render_input_panel(container, settings):
         template_option = st.selectbox("1. 문서 구조 / 템플릿 선택", list(TEMPLATES.keys()), format_func=lambda x: TEMPLATES[x])
         is_rfi = (template_option == 'rfi')
         rfi_existing = ""
-        
+
         # 2. RFI 모드 전용 UI
         if is_rfi:
             st.markdown("##### 2. 최근 RFI 목록 (Basis)")
