@@ -1,4 +1,5 @@
 import re
+import io
 from openai import OpenAI
 
 def transcribe_audio(uploaded_file, api_key=None):
@@ -25,15 +26,16 @@ def transcribe_audio(uploaded_file, api_key=None):
 
         # 파일을 메모리에서 직접 전송
         uploaded_file.seek(0)
+        file_content = uploaded_file.read()
 
-        # Streamlit UploadedFile을 OpenAI가 인식할 수 있는 형식으로 변환
-        # 튜플 형식: (filename, file_content, content_type)
-        file_tuple = (uploaded_file.name, uploaded_file.read(), uploaded_file.type)
+        # BytesIO 객체로 변환하고 파일명 속성 추가
+        audio_file = io.BytesIO(file_content)
+        audio_file.name = uploaded_file.name
 
         # Whisper API 호출
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
-            file=file_tuple,
+            file=audio_file,
             language="ko",  # 한국어 명시
             response_format="text"
         )
