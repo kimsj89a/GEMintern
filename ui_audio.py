@@ -127,21 +127,30 @@ def render_audio_transcription_panel():
             st.error("⚠️ 오디오 파일을 업로드해주세요")
         else:
             with st.spinner("🎧 오디오 전사 중... (파일 크기에 따라 수 분 소요될 수 있습니다)"):
-                transcribed_text = utils_audio.transcribe_audio(
-                    uploaded_file=uploaded_audio,
-                    api_key=openai_api_key,
-                    language="ko",
-                    chunk_seconds=chunk_minutes * 60,
-                    do_diarization=do_diarization,
-                    include_timestamps=include_timestamps,
-                    remove_fillers=remove_fillers,
-                    gpt_mode=gpt_mode[1],  # tuple의 두 번째 값 (실제 mode)
-                    gpt_model=gpt_model
-                )
+                try:
+                    transcribed_text = utils_audio.transcribe_audio(
+                        uploaded_file=uploaded_audio,
+                        api_key=openai_api_key,
+                        language="ko",
+                        chunk_seconds=chunk_minutes * 60,
+                        do_diarization=do_diarization,
+                        include_timestamps=include_timestamps,
+                        remove_fillers=remove_fillers,
+                        gpt_mode=gpt_mode[1],  # tuple의 두 번째 값 (실제 mode)
+                        gpt_model=gpt_model
+                    )
 
-                # 결과 저장
-                st.session_state['transcription_result'] = transcribed_text
-                st.success("✅ 전사 완료!")
+                    # 결과 저장
+                    st.session_state['transcription_result'] = transcribed_text
+                    st.success("✅ 전사 완료!")
+                except Exception as e:
+                    st.error(f"⚠️ 전사 중 오류 발생: {str(e)}")
+                finally:
+                    # 파일 객체를 명시적으로 정리 (seek을 통해 스트림 리셋)
+                    try:
+                        uploaded_audio.seek(0)
+                    except Exception:
+                        pass
 
     # 결과 표시
     if 'transcription_result' in st.session_state and st.session_state['transcription_result']:

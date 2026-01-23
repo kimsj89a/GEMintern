@@ -1,6 +1,7 @@
 import os
 import re
 import io
+import gc
 import math
 import json
 import shutil
@@ -36,10 +37,22 @@ def _safe_seek(uploaded_file) -> None:
         pass
 
 def _write_uploaded_to_temp(uploaded_file, suffix: str) -> str:
+    """
+    Streamlit의 UploadedFile을 임시 파일로 저장.
+    파일 내용을 읽은 후 즉시 핸들 정리.
+    """
     _safe_seek(uploaded_file)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-        f.write(uploaded_file.read())
-        return f.name
+    # 파일 내용을 메모리로 읽기
+    file_content = uploaded_file.read()
+
+    # 임시 파일에 쓰기 (핸들을 즉시 닫음)
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp_file.write(file_content)
+        tmp_file.flush()
+        return tmp_file.name
+    finally:
+        tmp_file.close()  # 명시적으로 닫기
 
 def _get_duration_seconds(path: str) -> Optional[float]:
     # Uses ffprobe via ffmpeg install; if not available, returns None
@@ -461,10 +474,13 @@ def transcribe_audio(
     temp_in = None
     temp_wav = None
     chunk_paths: List[str] = []
+    chunk_dirs: set = set()
 
     try:
-        # 0) 업로드 파일 저장
+        # 0) 업로드 파일을 먼저 임시 파일로 저장 (파일 핸들 즉시 해제)
         temp_in = _write_uploaded_to_temp(uploaded_file, suffix=f".{file_ext}")
+        # 업로드 파일 포인터를 바로 리셋 (더 이상 사용하지 않음)
+        _safe_seek(uploaded_file)
 
         # (안정화) 16k mono wav로 변환 (ffmpeg 없으면 원본 사용)
         temp_wav = _convert_to_wav_16k_mono(temp_in)
@@ -531,35 +547,57 @@ def transcribe_audio(
         return f"[오디오 전사 오류: {original_filename} - {str(e)}]"
 
     finally:
-        # 업로드 포인터 복구 먼저 (파일 핸들 정리)
-        _safe_seek(uploaded_file)
+        # 0. 가비지 컬렉션을 먼저 실행하여 파일 핸들 해제 확인
+        import time
+        gc.collect()
+        time.sleep(0.05)  # 짧은 대기로 OS가 핸들을 정리할 시간 제공
 
-        # 임시 파일 삭제
+        # 1. 임시 파일 삭제 (메인 임시 파일들)
         for p in [temp_in, temp_wav]:
             if p and os.path.exists(p):
                 try:
                     os.unlink(p)
-                except Exception as e:
-                    print(f"Warning: Failed to delete {p}: {e}")
+                except PermissionError:
+                    # Windows에서 파일이 아직 사용 중일 수 있음 - 짧은 대기 후 재시도
+                    time.sleep(0.1)
+                    try:
+                        os.unlink(p)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
 
-        # split chunks directory/files cleanup
-        chunk_dirs = set()
-        for cp in chunk_paths or []:
+        # 2. 청크 파일들 삭제 및 디렉토리 수집
+        for cp in chunk_paths:
             if cp and os.path.exists(cp):
                 # 디렉토리 경로 기억
-                chunk_dirs.add(os.path.dirname(cp))
+                parent_dir = os.path.dirname(cp)
+                if parent_dir:
+                    chunk_dirs.add(parent_dir)
+                # 청크 파일 삭제
                 try:
                     os.unlink(cp)
-                except Exception as e:
-                    print(f"Warning: Failed to delete chunk {cp}: {e}")
+                except PermissionError:
+                    time.sleep(0.1)
+                    try:
+                        os.unlink(cp)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
 
-        # 청크 디렉토리 삭제
+        # 3. 청크 디렉토리 삭제
         for d in chunk_dirs:
-            try:
-                if os.path.exists(d) and os.path.isdir(d):
-                    os.rmdir(d)
-            except Exception as e:
-                print(f"Warning: Failed to delete directory {d}: {e}")
+            if d and os.path.exists(d) and os.path.isdir(d):
+                try:
+                    # 디렉토리가 비어있는지 확인
+                    if not os.listdir(d):
+                        os.rmdir(d)
+                except Exception:
+                    pass
+
+        # 4. 마지막 가비지 컬렉션 실행
+        gc.collect()
 
 
 def is_audio_file(filename: str) -> bool:
