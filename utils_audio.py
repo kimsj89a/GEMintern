@@ -73,7 +73,11 @@ def _convert_to_wav_16k_mono(input_path: str) -> str:
         # Whisper can still handle many formats, but conversion is recommended.
         return input_path
 
-    out_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+    # 임시 파일 핸들을 즉시 닫아 Windows 파일 잠금 문제 방지
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    out_path = tmp_file.name
+    tmp_file.close()
+
     _run([
         "ffmpeg", "-y",
         "-i", input_path,
@@ -140,14 +144,21 @@ def _transcribe_whisper_verbose(
     Calls Whisper with verbose_json to get segments/timestamps.
     IMPORTANT: pass (filename, fileobj) so format detection doesn't fail.
     """
+    # 파일 내용을 메모리로 읽어서 사용 (파일 핸들 누수 방지)
     with open(file_path, "rb") as f:
-        resp = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=(original_filename, f),  # <-- 핵심: 파일명 포함
-            language=language,
-            response_format="verbose_json",
-            timestamp_granularities=["segment"],
-        )
+        file_content = f.read()
+
+    # io.BytesIO로 파일 객체 생성하여 API 호출
+    file_obj = io.BytesIO(file_content)
+    resp = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=(original_filename, file_obj),  # <-- 핵심: 파일명 포함
+        language=language,
+        response_format="verbose_json",
+        timestamp_granularities=["segment"],
+    )
+    file_obj.close()  # 명시적으로 닫기
+
     # SDK가 dict/obj 형태로 올 수 있어 안전하게 변환
     if isinstance(resp, dict):
         return resp
@@ -520,24 +531,35 @@ def transcribe_audio(
         return f"[오디오 전사 오류: {original_filename} - {str(e)}]"
 
     finally:
+        # 업로드 포인터 복구 먼저 (파일 핸들 정리)
+        _safe_seek(uploaded_file)
+
         # 임시 파일 삭제
         for p in [temp_in, temp_wav]:
             if p and os.path.exists(p):
                 try:
                     os.unlink(p)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Warning: Failed to delete {p}: {e}")
 
         # split chunks directory/files cleanup
+        chunk_dirs = set()
         for cp in chunk_paths or []:
             if cp and os.path.exists(cp):
+                # 디렉토리 경로 기억
+                chunk_dirs.add(os.path.dirname(cp))
                 try:
                     os.unlink(cp)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Warning: Failed to delete chunk {cp}: {e}")
 
-        # 업로드 포인터 복구
-        _safe_seek(uploaded_file)
+        # 청크 디렉토리 삭제
+        for d in chunk_dirs:
+            try:
+                if os.path.exists(d) and os.path.isdir(d):
+                    os.rmdir(d)
+            except Exception as e:
+                print(f"Warning: Failed to delete directory {d}: {e}")
 
 
 def is_audio_file(filename: str) -> bool:
