@@ -26,10 +26,14 @@ def transcribe_audio(uploaded_file, api_key=None):
         # 파일을 메모리에서 직접 전송
         uploaded_file.seek(0)
 
+        # Streamlit UploadedFile을 OpenAI가 인식할 수 있는 형식으로 변환
+        # 튜플 형식: (filename, file_content, content_type)
+        file_tuple = (uploaded_file.name, uploaded_file.read(), uploaded_file.type)
+
         # Whisper API 호출
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
-            file=uploaded_file,
+            file=file_tuple,
             language="ko",  # 한국어 명시
             response_format="text"
         )
