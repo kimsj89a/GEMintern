@@ -10,3 +10,4 @@ XlsxWriter
 pymupdf
 python-calamine
 tabulate
+openai

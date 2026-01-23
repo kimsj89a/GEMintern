@@ -5,6 +5,7 @@ import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
 from pptx import Presentation
+from openai import OpenAI
 
 def parse_uploaded_file(uploaded_file):
     """파일 타입별 텍스트 추출 (전체 시트 지원 + 오류 방지)"""

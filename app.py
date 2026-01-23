@@ -1,6 +1,7 @@
 import streamlit as st
 import ui_input
 import ui_output
+import ui_audio
 
 # --- 페이지 설정 ---
 st.set_page_config(layout="wide", page_title="GEM Intern v5.12", page_icon="💎")
@@ -30,11 +31,18 @@ def main():
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)
 
-    settings = ui_input.render_settings()
-    st.markdown("---")
-    inputs = ui_input.render_input_panel(st.container(), settings)
-    st.markdown("<br>", unsafe_allow_html=True) 
-    ui_output.render_output_panel(st.container(), settings, inputs)
+    # 탭 기반 UI
+    tab1, tab2 = st.tabs(["📊 투자분석 보고서", "🎤 오디오 전사"])
+
+    with tab1:
+        settings = ui_input.render_settings()
+        st.markdown("---")
+        inputs = ui_input.render_input_panel(st.container(), settings)
+        st.markdown("<br>", unsafe_allow_html=True)
+        ui_output.render_output_panel(st.container(), settings, inputs)
+
+    with tab2:
+        ui_audio.render_audio_transcription_panel()
 
 if __name__ == "__main__":
     main()
