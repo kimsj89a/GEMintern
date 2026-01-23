@@ -10,9 +10,11 @@ def render_audio_transcription_panel():
     st.markdown("### 🎤 오디오 전사 (Audio Transcription)")
     st.markdown("""
         <div style='background-color: #e8f4f8; padding: 12px; border-radius: 6px; margin-bottom: 15px;'>
-        <b>🔊 음성 파일 전사 기능</b><br/>
-        MP3, WAV 등 오디오 파일을 업로드하면 텍스트로 변환됩니다.<br/>
-        추임새("아", "음", "그" 등) 자동 제거 옵션 제공
+        <b>🔊 음성 파일 전사 기능 (고급)</b><br/>
+        ✓ Apple m4a 파일 지원 (iPhone/iPad 녹음)<br/>
+        ✓ 긴 파일 자동 분할 (FFmpeg 필요)<br/>
+        ✓ 타임스탬프 & 문단 정리<br/>
+        ✓ GPT 후처리 (요약/정리)
         </div>
     """, unsafe_allow_html=True)
 
@@ -50,11 +52,72 @@ def render_audio_transcription_panel():
     )
 
     # 전사 옵션
-    remove_fillers = st.checkbox(
-        "추임새 자동 제거 ('아', '음', '그' 등)",
-        value=True,
-        key="audio_remove_fillers"
-    )
+    st.markdown("##### ⚙️ 전사 옵션")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**기본 설정**")
+        include_timestamps = st.checkbox(
+            "⏱️ 타임스탬프 포함 [mm:ss]",
+            value=True,
+            help="각 문단에 시작-종료 시간 표시",
+            key="audio_timestamps"
+        )
+
+        remove_fillers = st.checkbox(
+            "🧹 추임새 자동 제거",
+            value=True,
+            help="'아', '음', '그' 등 불필요한 표현 제거",
+            key="audio_remove_fillers"
+        )
+
+        chunk_minutes = st.slider(
+            "📦 긴 파일 분할 단위 (분)",
+            min_value=5,
+            max_value=30,
+            value=10,
+            step=5,
+            help="FFmpeg 설치 시 자동 분할 (미설치 시 전체 처리)",
+            key="audio_chunk_minutes"
+        )
+
+    with col2:
+        st.markdown("**고급 설정**")
+
+        gpt_mode = st.selectbox(
+            "🤖 GPT 후처리",
+            options=[
+                ("없음", None),
+                ("텍스트 정리", "clean"),
+                ("회의록 요약", "summary"),
+                ("질적코딩용", "atlas_codebook")
+            ],
+            format_func=lambda x: x[0],
+            help="전사 후 GPT로 추가 정리 (비용 추가 발생)",
+            key="audio_gpt_mode"
+        )
+
+        gpt_model = st.selectbox(
+            "GPT 모델",
+            options=["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+            index=0,
+            help="후처리용 모델 선택",
+            key="audio_gpt_model"
+        )
+
+        # 화자 분리 (고급 기능 - HF_TOKEN 필요)
+        do_diarization = st.checkbox(
+            "🎭 화자 분리 시도 (실험적)",
+            value=False,
+            help="HuggingFace Token 환경변수 필요 (HF_TOKEN)",
+            key="audio_diarization"
+        )
+
+    # FFmpeg 설치 확인
+    has_ffmpeg = utils_audio._has_ffmpeg()
+    if not has_ffmpeg:
+        st.warning("⚠️ FFmpeg가 설치되지 않았습니다. 긴 파일 분할 및 형식 변환이 제한됩니다.")
 
     # 전사 실행
     if st.button("🚀 전사 시작", use_container_width=True, type="primary", key="audio_transcribe_btn"):
@@ -63,17 +126,18 @@ def render_audio_transcription_panel():
         elif not uploaded_audio:
             st.error("⚠️ 오디오 파일을 업로드해주세요")
         else:
-            with st.spinner("🎧 오디오 전사 중... (파일 크기에 따라 시간이 걸릴 수 있습니다)"):
+            with st.spinner("🎧 오디오 전사 중... (파일 크기에 따라 수 분 소요될 수 있습니다)"):
                 transcribed_text = utils_audio.transcribe_audio(
-                    uploaded_audio,
-                    openai_api_key
+                    uploaded_file=uploaded_audio,
+                    api_key=openai_api_key,
+                    language="ko",
+                    chunk_seconds=chunk_minutes * 60,
+                    do_diarization=do_diarization,
+                    include_timestamps=include_timestamps,
+                    remove_fillers=remove_fillers,
+                    gpt_mode=gpt_mode[1],  # tuple의 두 번째 값 (실제 mode)
+                    gpt_model=gpt_model
                 )
-
-                # 추임새 제거 옵션이 꺼져있으면 원본 반환
-                if not remove_fillers and transcribed_text:
-                    # utils_audio.transcribe_audio는 이미 추임새 제거를 하므로,
-                    # 옵션을 끄려면 별도 처리 필요 (향후 개선)
-                    pass
 
                 # 결과 저장
                 st.session_state['transcription_result'] = transcribed_text
@@ -85,24 +149,39 @@ def render_audio_transcription_panel():
         st.markdown("### 📝 전사 결과")
 
         result_text = st.session_state['transcription_result']
-        st.text_area(
-            "전사된 텍스트",
+
+        # 결과 미리보기 (마크다운 렌더링)
+        with st.expander("📄 결과 미리보기", expanded=True):
+            st.markdown(result_text)
+
+        # 편집 가능한 텍스트 영역
+        st.markdown("##### 편집 가능한 텍스트")
+        edited_text = st.text_area(
+            "전사된 텍스트 (편집 가능)",
             value=result_text,
             height=400,
             key="audio_result_text"
         )
 
-        # 다운로드 버튼
-        col1, col2 = st.columns(2)
+        # 다운로드 및 초기화 버튼
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.download_button(
-                label="📥 텍스트 파일로 다운로드",
-                data=result_text,
-                file_name="transcription.txt",
+                label="📥 텍스트 파일 다운로드",
+                data=edited_text,
+                file_name=f"transcription_{uploaded_audio.name.split('.')[0]}.txt",
                 mime="text/plain",
                 use_container_width=True
             )
         with col2:
+            st.download_button(
+                label="📥 마크다운 파일 다운로드",
+                data=edited_text,
+                file_name=f"transcription_{uploaded_audio.name.split('.')[0]}.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+        with col3:
             if st.button("🔄 초기화", use_container_width=True):
                 del st.session_state['transcription_result']
                 st.rerun()
