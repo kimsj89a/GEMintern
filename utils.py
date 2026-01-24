@@ -116,18 +116,34 @@ def create_docx(markdown_text):
     doc = Document()
     lines = markdown_text.split('\n')
     i = 0
+
+    # 로마 숫자 헤더 패턴 (I., II., III., IV., V., VI., VII., VIII.)
+    roman_header_pattern = re.compile(r'^(I{1,3}|IV|VI{0,3}|V|IX|X)\.\s+(.+)$')
+
     while i < len(lines):
         raw_line = lines[i]
         line = raw_line.strip()
-        
-        if line.startswith('# '):
-            doc.add_heading(line.replace('# ', ''), level=1)
+
+        # Markdown 헤더 처리 (#### 추가)
+        if line.startswith('##### '):
+            doc.add_heading(line.replace('##### ', ''), level=5)
+            i += 1
+        elif line.startswith('#### '):
+            doc.add_heading(line.replace('#### ', ''), level=4)
+            i += 1
+        elif line.startswith('### '):
+            doc.add_heading(line.replace('### ', ''), level=3)
             i += 1
         elif line.startswith('## '):
             doc.add_heading(line.replace('## ', ''), level=2)
             i += 1
-        elif line.startswith('### '):
-            doc.add_heading(line.replace('### ', ''), level=3)
+        elif line.startswith('# '):
+            doc.add_heading(line.replace('# ', ''), level=1)
+            i += 1
+        # 로마 숫자 헤더 처리 (I. Executive Summary 등)
+        elif roman_header_pattern.match(line):
+            match = roman_header_pattern.match(line)
+            doc.add_heading(line, level=1)
             i += 1
         elif line.startswith('|'):
             table_lines = []

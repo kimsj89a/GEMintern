@@ -56,7 +56,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         [데이터] {file_context[:50000]}
         """
         config = types.GenerateContentConfig(
-            max_output_tokens=8192,
+            max_output_tokens=65536,
             temperature=0.7,
             system_instruction=system_instruction
         )
@@ -77,7 +77,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         {file_context[:50000]}
         """
         config = types.GenerateContentConfig(
-            max_output_tokens=8192,
+            max_output_tokens=65536,
             temperature=0.5, # 구조 준수를 위해 약간 낮춤
             system_instruction=system_instruction
         )
@@ -128,9 +128,9 @@ def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, 
 
     # 3개 파트 정의 (part_key, title, max_tokens)
     parts = [
-        ('report_part1', 'Part 1/3: Executive Summary & Investment Highlights', 12000),
-        ('report_part2', 'Part 2/3: Target Company & Market Analysis', 16384),
-        ('report_part3', 'Part 3/3: Financials, Valuation, Risk & 종합의견', 20000)
+        ('report_part1', 'Part 1/3: Executive Summary & Investment Highlights', 65536),
+        ('report_part2', 'Part 2/3: Target Company & Market Analysis', 65536),
+        ('report_part3', 'Part 3/3: Financials, Valuation, Risk & 종합의견', 65536)
     ]
 
     accumulated_result = ""

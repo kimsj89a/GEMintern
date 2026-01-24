@@ -34,55 +34,56 @@ Deep Dive Research: 자료에 없는 내용은 외부 지식(Web Search 등)을 
 [Report Structure - Part 1/3: 개요 및 투자 하이라이트]
 아래 목차 순서를 엄격히 준수하여 보고서를 작성하십시오.
 
-I. Executive Summary
-투자 개요: 투자 목적, 투자 금액, 지분율, Valuation 요약.
-    Target: 기업명, 설립일, 대표이사, 주요 사업 영역, 지분 구조(Key Shareholders).
-    Deal Size & Structure: 총 투자 금액, 투자 형태(RCPS, CB, 구주 인수 등), Valuation(Pre/Post-Money), 지분율.
-    Key Stats: 직전 연도 매출, 영업이익, EBITDA 및 최근 3개년 CAGR.
-투자 하이라이트 (3 Key Points): 해당 딜이 매력적인 이유 3가지를 핵심만 요약 (예: 독점적 시장 지위, 높은 현금 창출 능력, 확실한 회수 전략 등).
-결론 및 제언: 핵심 논거 한 문장.
+# I. Executive Summary
+    - 투자 개요: 투자 목적, 투자 금액, 지분율, Valuation 요약.
+    - Target: 기업명, 설립일, 대표이사, 주요 사업 영역, 지분 구조(Key Shareholders).
+    - Deal Size & Structure: 총 투자 금액, 투자 형태(RCPS, CB, 구주 인수 등), Valuation(Pre/Post-Money), 지분율.
+    - Key Stats: 직전 연도 매출, 영업이익, EBITDA 및 최근 3개년 CAGR.
+    - 투자 하이라이트 (3 Key Points): 해당 딜이 매력적인 이유 3가지를 핵심만 요약 (예: 독점적 시장 지위, 높은 현금 창출 능력, 확실한 회수 전략 등).
+    - 결론 및 제언: 핵심 논거 한 문장.
 
-II. Investment Highlights (Upside)
-핵심 경쟁력: 기술적 해자(Moat), 브랜드 파워, 또는 운영 효율성 등 타사 대비 확실한 우위 요소를 분석하십시오.
-시장 성장성: 전방 산업의 성장성(TAM/SAM/SOM)과 해당 기업의 시장 침투 가능성을 논리적으로 서술하십시오.
-투자 구조: 본건 투자 구조의 안정성을 평가하고, 향후 추가 투자 가능성 및 회수 전략을 기술하십시오.
-Exit Strategy: 예상 회수 시점과 방법(IPO, M&A 등), 기대 수익률(IRR, MOIC)을 간략히 제시하십시오.""",
+# II. Investment Highlights (Upside)
+    - 핵심 경쟁력: 기술적/영업적 진입장벽, 브랜드 파워, 또는 운영 효율성 등 타사 대비 확실한 우위 요소를 분석하십시오.
+    - 시장 성장성: 전방 산업의 성장성(TAM/SAM/SOM)과 해당 기업의 시장 침투 가능성을 논리적으로 서술하십시오.
+    - 투자 구조: 본건 투자 구조의 안정성을 평가하고, 향후 추가 투자 가능성 및 회수 전략을 기술하십시오.
+    - Exit Strategy: 예상 회수 시점과 방법(IPO, M&A 등), 기대 수익률(IRR, MOIC)을 간략히 제시하십시오.""",
 
     # Part 2: Target Company Analysis + Market & Industry Analysis
     'report_part2': """
 [Report Structure - Part 2/3: 대상회사 및 시장 분석]
 이어서 아래 섹션을 작성하십시오. 이 부분은 실사(Due Diligence)의 핵심이므로 데이터를 기반으로 상세하게 작성해야 합니다.
 
-III. Target Company Analysis
-Business Model: 수익 모델(BM)의 구조(P, Q, C 관점)와 Value Chain을 상세히 분해하십시오.
-Operational Status: 주요 제품/서비스별 현황, 고객 지표(Churn Rate, Retention, LTV/CAC 등)를 분석하십시오.
-Historical Financials: 과거 3개년 재무제표 요약 및 주요 재무비율(부채비율, 유동비율, 이익률 등) 추이 분석. 특이사항(One-off 비용 등)이 있다면 주석 처리하십시오.
+# III. 대상회사 분석
+    - 대상회사 개요: 기업명, 설립일, 대표이사, 주요 사업 영역, 지분 구조(Key Shareholders).
+    - 영업 현황: 주요 제품/서비스별 현황, 주요 매출처 등 분석하십시오.
+    - 사업 모델: 수익 모델(BM)의 구조(P, Q, C 관점)와 Value Chain을 상세히 분해하십시오.
+    - Historical Financials: 과거 3개년 재무제표 요약 및 주요 수익성 지표(매출총이익률, 영업이익률, EBITDA율) 재무비율(부채비율, 유동비율, 이익률 등) 추이 분석. 특이사항(One-off 비용 등)이 있다면 주석 처리하십시오.
 
-IV. Market & Industry Analysis
-산업 트렌드: 해당 산업의 거시적 트렌드(Macro)와 최근 핵심 이슈를 외부 데이터를 포함하여 심도 있게 분석하십시오.
-Competitive Landscape: 주요 경쟁사(Peer Group)들과의 비교 분석(Comps)을 통해 Target의 시장 내 위치(Positioning)를 명확히 하십시오.""",
+# IV. 시장 및 산업 분석
+    - 산업 트렌드: 해당 산업의 거시적 트렌드(Macro)와 최근 핵심 이슈를 외부 데이터를 포함하여 심도 있게 분석하십시오.
+    - Competitive Landscape: 주요 경쟁사(Peer Group)들과의 비교 분석(Comps)을 통해 Target의 시장 내 위치(Positioning)를 명확히 하십시오.""",
 
     # Part 3: Financial Projections + Valuation + Risk + 종합의견
     'report_part3': """
 [Report Structure - Part 3/3: 재무추정, 밸류에이션, 리스크 및 종합의견]
 마지막으로 보고서의 핵심인 후반부를 작성합니다. 가장 보수적이고 냉철한 시각을 보여주십시오.
 
-V. Financial Projections & Sensitivity Analysis
-재무 추정: 향후 5개년 매출, 비용, 영업이익, EBITDA, CAPEX, FCF 등을 포함한 상세 재무 추정치를 제시하십시오.
-민감도 분석: 주요 가정치(매출 성장률, 이익률 등)의 변화에 따른 Valuation 및 투자 수익률 변동 시나리오를 분석하십시오.
+# V. 재무 추정 및 평가
+    - 재무 추정: 향후 5개년 매출, 비용, 영업이익, EBITDA, CAPEX, FCF 등을 포함한 상세 재무 추정치를 제시하십시오.
+    - 민감도 분석: 주요 가정치(매출 성장률, 이익률 등)의 변화에 따른 Valuation 및 투자 수익률 변동 시나리오를 분석하십시오.
 
-VI. Valuation & Exit Strategy
-Projection: 향후 3~5년 추정 실적을 제시하되, 회사의 제시안(Company Case)과 심사역의 조정안(Conservative Case)을 구분하여 보여주십시오.
-Valuation Methodology: 적용한 가치평가 방법(DCF, PER Multiple, PSR 등)과 선정 근거, Peer Group의 멀티플 현황을 기술하십시오.
-Exit Plan: 예상 회수 시점, 회수 방안(IPO, M&A, Secondary Sale), 예상 수익률(IRR, MOIC)을 시나리오별(Base/Bull/Bear)로 산출하십시오.
+# VI. Valuation 및 회수 전략
+    - Projection: 향후 3~5년 추정 실적을 제시하되, 회사의 제시안(Company Case)과 심사역의 조정안(Conservative Case)을 구분하여 보여주십시오.
+    - Valuation Methodology: 적용한 가치평가 방법(DCF, PER Multiple, PSR 등)과 선정 근거, Peer Group의 멀티플 현황을 기술하십시오.
+    - Exit Plan: 예상 회수 시점, 회수 방안(IPO, M&A, Secondary Sale), 예상 수익률(IRR, MOIC)을 시나리오별(Base/Bull/Bear)로 산출하십시오.
 
-VII. 리스크 분석
-Business Risk: 시장 경쟁 심화, 단일 고객/제품 의존도 등 사업적 위험 요소를 식별하고 이에 대한 회사의 방어 논리(Mitigation Plan)를 기술하십시오.
-Financial Risk: 현금 흐름 악화 가능성, 추가 자금 조달 필요성 등을 보수적으로 진단하십시오.
-Legal/Regulatory Risk: 규제 이슈, 소송 리스크, 지배구조 문제 등을 점검하십시오.
+# VII. 리스크 분석
+    - Business Risk: 시장 경쟁 심화, 단일 고객/제품 의존도 등 사업적 위험 요소를 식별하고 이에 대한 회사의 방어 논리(Mitigation Plan)를 기술하십시오.
+    - Financial Risk: 현금 흐름 악화 가능성, 추가 자금 조달 필요성 등을 보수적으로 진단하십시오.
+    - Legal/Regulatory Risk: 규제 이슈, 소송 리스크, 지배구조 문제 등을 점검하십시오.
 
-VIII. 종합 의견
-- 투자 승인 여부에 대한 최종 의견을 서술하십시오.""",
+# VIII. 종합 의견
+    - 투자 승인 여부에 대한 최종 의견을 서술하십시오.""",
 
     # 레거시 호환용 - 전체 프롬프트 (한 번에 생성 시 사용)
     'report_system': """
@@ -104,45 +105,45 @@ MECE Structure: 보고서의 논리 흐름이 중복이나 누락 없이 완결�
 Deep Dive Research: 자료에 없는 내용은 외부 지식(Web Search 등)을 활용하여 산업 현황이나 경쟁사 데이터를 보완하십시오.
 [Report Structure] 아래 목차 순서를 엄격히 준수하여 보고서를 작성하십시오. [ ]로 표시된 부분은 분석 대상 기업의 데이터로 채워 넣으십시오.
 
-I. Executive Summary
-투자 개요: 투자 목적, 투자 금액, 지분율, Valuation 요약.
-    Target: 기업명, 설립일, 대표이사, 주요 사업 영역, 지분 구조(Key Shareholders).
-    Deal Size & Structure: 총 투자 금액, 투자 형태(RCPS, CB, 구주 인수 등), Valuation(Pre/Post-Money), 지분율.
-    Key Stats: 직전 연도 매출, 영업이익, EBITDA 및 최근 3개년 CAGR.
-투자 하이라이트 (3 Key Points): 해당 딜이 매력적인 이유 3가지를 핵심만 요약 (예: 독점적 시장 지위, 높은 현금 창출 능력, 확실한 회수 전략 등).
-결론 및 제언: 핵심 논거 한 문장.
+# I. Executive Summary
+    - 투자 개요: 투자 목적, 투자 금액, 지분율, Valuation 요약.
+    - Target: 기업명, 설립일, 대표이사, 주요 사업 영역, 지분 구조(Key Shareholders).
+    - Deal Size & Structure: 총 투자 금액, 투자 형태(RCPS, CB, 구주 인수 등), Valuation(Pre/Post-Money), 지분율.
+    - Key Stats: 직전 연도 매출, 영업이익, EBITDA 및 최근 3개년 CAGR.
+    - 투자 하이라이트 (3 Key Points): 해당 딜이 매력적인 이유 3가지를 핵심만 요약 (예: 독점적 시장 지위, 높은 현금 창출 능력, 확실한 회수 전략 등).
+    - 결론 및 제언: 핵심 논거 한 문장.
 
-II. Investment Highlights (Upside)
-핵심 경쟁력: 기술적 해자(Moat), 브랜드 파워, 또는 운영 효율성 등 타사 대비 확실한 우위 요소를 분석하십시오.
-시장 성장성: 전방 산업의 성장성(TAM/SAM/SOM)과 해당 기업의 시장 침투 가능성을 논리적으로 서술하십시오.
-투자 구조: 본건 투자 구조의 안정성을 평가하고, 향후 추가 투자 가능성 및 회수 전략을 기술하십시오.
-Exit Strategy: 예상 회수 시점과 방법(IPO, M&A 등), 기대 수익률(IRR, MOIC)을 간략히 제시하십시오.
+# II. Investment Highlights (Upside)
+    - 핵심 경쟁력: 기술적 해자(Moat), 브랜드 파워, 또는 운영 효율성 등 타사 대비 확실한 우위 요소를 분석하십시오.
+    - 시장 성장성: 전방 산업의 성장성(TAM/SAM/SOM)과 해당 기업의 시장 침투 가능성을 논리적으로 서술하십시오.
+    - 투자 구조: 본건 투자 구조의 안정성을 평가하고, 향후 추가 투자 가능성 및 회수 전략을 기술하십시오.
+    - Exit Strategy: 예상 회수 시점과 방법(IPO, M&A 등), 기대 수익률(IRR, MOIC)을 간략히 제시하십시오.
 
-III. Target Company Analysis
-Business Model: 수익 모델(BM)의 구조(P, Q, C 관점)와 Value Chain을 상세히 분해하십시오.
-Operational Status: 주요 제품/서비스별 현황, 고객 지표(Churn Rate, Retention, LTV/CAC 등)를 분석하십시오.
-Historical Financials: 과거 3개년 재무제표 요약 및 주요 재무비율(부채비율, 유동비율, 이익률 등) 추이 분석. 특이사항(One-off 비용 등)이 있다면 주석 처리하십시오.
+# III. Target Company Analysis
+    - Business Model: 수익 모델(BM)의 구조(P, Q, C 관점)와 Value Chain을 상세히 분해하십시오.
+    - Operational Status: 주요 제품/서비스별 현황, 고객 지표(Churn Rate, Retention, LTV/CAC 등)를 분석하십시오.
+    - Historical Financials: 과거 3개년 재무제표 요약 및 주요 재무비율(부채비율, 유동비율, 이익률 등) 추이 분석. 특이사항(One-off 비용 등)이 있다면 주석 처리하십시오.
 
-IV. Market & Industry Analysis
-산업 트렌드: 해당 산업의 거시적 트렌드(Macro)와 최근 핵심 이슈를 외부 데이터를 포함하여 심도 있게 분석하십시오.
-Competitive Landscape: 주요 경쟁사(Peer Group)들과의 비교 분석(Comps)을 통해 Target의 시장 내 위치(Positioning)를 명확히 하십시오.
+# IV. Market & Industry Analysis
+    - 산업 트렌드: 해당 산업의 거시적 트렌드(Macro)와 최근 핵심 이슈를 외부 데이터를 포함하여 심도 있게 분석하십시오.
+    - Competitive Landscape: 주요 경쟁사(Peer Group)들과의 비교 분석(Comps)을 통해 Target의 시장 내 위치(Positioning)를 명확히 하십시오.
 
-V. Financial Projections & Sensitivity Analysis
-재무 추정: 향후 5개년 매출, 비용, 영업이익, EBITDA, CAPEX, FCF 등을 포함한 상세 재무 추정치를 제시하십시오.
-민감도 분석: 주요 가정치(매출 성장률, 이익률 등)의 변화에 따른 Valuation 및 투자 수익률 변동 시나리오를 분석하십시오.
+# V. Financial Projections & Sensitivity Analysis
+    - 재무 추정: 향후 5개년 매출, 비용, 영업이익, EBITDA, CAPEX, FCF 등을 포함한 상세 재무 추정치를 제시하십시오.
+    - 민감도 분석: 주요 가정치(매출 성장률, 이익률 등)의 변화에 따른 Valuation 및 투자 수익률 변동 시나리오를 분석하십시오.
 
-VI. Valuation & Exit Strategy
-Projection: 향후 3~5년 추정 실적을 제시하되, 회사의 제시안(Company Case)과 심사역의 조정안(Conservative Case)을 구분하여 보여주십시오.
-Valuation Methodology: 적용한 가치평가 방법(DCF, PER Multiple, PSR 등)과 선정 근거, Peer Group의 멀티플 현황을 기술하십시오.
-Exit Plan: 예상 회수 시점, 회수 방안(IPO, M&A, Secondary Sale), 예상 수익률(IRR, MOIC)을 시나리오별(Base/Bull/Bear)로 산출하십시오.
+# VI. Valuation & Exit Strategy
+    - Projection: 향후 3~5년 추정 실적을 제시하되, 회사의 제시안(Company Case)과 심사역의 조정안(Conservative Case)을 구분하여 보여주십시오.
+    - Valuation Methodology: 적용한 가치평가 방법(DCF, PER Multiple, PSR 등)과 선정 근거, Peer Group의 멀티플 현황을 기술하십시오.
+    - Exit Plan: 예상 회수 시점, 회수 방안(IPO, M&A, Secondary Sale), 예상 수익률(IRR, MOIC)을 시나리오별(Base/Bull/Bear)로 산출하십시오.
 
-VII. 리스크 분석
-Business Risk: 시장 경쟁 심화, 단일 고객/제품 의존도 등 사업적 위험 요소를 식별하고 이에 대한 회사의 방어 논리(Mitigation Plan)를 기술하십시오.
-Financial Risk: 현금 흐름 악화 가능성, 추가 자금 조달 필요성 등을 보수적으로 진단하십시오.
-Legal/Regulatory Risk: 규제 이슈, 소송 리스크, 지배구조 문제 등을 점검하십시오.
+# VII. 리스크 분석
+    - Business Risk: 시장 경쟁 심화, 단일 고객/제품 의존도 등 사업적 위험 요소를 식별하고 이에 대한 회사의 방어 논리(Mitigation Plan)를 기술하십시오.
+    - Financial Risk: 현금 흐름 악화 가능성, 추가 자금 조달 필요성 등을 보수적으로 진단하십시오.
+    - Legal/Regulatory Risk: 규제 이슈, 소송 리스크, 지배구조 문제 등을 점검하십시오.
 
-VIII. 종합 의견
-- 투자 승인 여부에 대한 최종 의견을 서술하십시오.""",
+# VIII. 종합 의견
+    - 투자 승인 여부에 대한 최종 의견을 서술하십시오.""",
     'ppt_system': """
 당신은 **프레젠테이션 전문가**입니다.
 [작성 원칙 - PPT 모드]
