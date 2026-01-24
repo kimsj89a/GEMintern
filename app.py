@@ -47,21 +47,21 @@ def main():
         st.markdown("---")
         inputs = ui_input.render_investment_report_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs)
+        ui_output.render_output_panel(st.container(), settings, inputs, tab_id="tab1")
 
     with tab2:
         st.markdown("### 📋 RFI (실사 자료 요청) 작성")
         st.markdown("---")
         inputs = ui_input.render_rfi_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs)
+        ui_output.render_output_panel(st.container(), settings, inputs, tab_id="tab2")
 
     with tab3:
         st.markdown("### 📊 IM/PPT 생성")
         st.markdown("---")
         inputs = ui_input.render_im_ppt_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs)
+        ui_output.render_output_panel(st.container(), settings, inputs, tab_id="tab3")
 
     with tab4:
         ui_audio.render_audio_transcription_panel()

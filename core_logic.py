@@ -1,3 +1,4 @@
+import re
 from google import genai
 from google.genai import types
 import utils
@@ -16,22 +17,23 @@ PROMPTS = {
 3. 내용(본문)은 제외하고, 오직 **구조(뼈대)**만 출력하십시오.
 """,
     'report_system': """
-당신은 **국내 최정상급 PEF/VC 수석 심사역**입니다. 
+당신은 **국내 최정상급 PEF/VC 수석 심사역**입니다.
 [대상 기업]에 대한 투자를 승인받기 위해 투심위 위원들을 설득할 수 있는 **'투자심사보고서(Investment Memorandum)'**를 작성 중입니다.
 
 [작성 원칙 - Word 모드]
-1. **헤더 금지**: '수신:', '발신:', '작성일:', '대상:' 등의 보고서 개요 메타데이터를 절대 작성하지 마십시오.
-2. **분석 태도**: 객관적이고 보수적인 태도로 분석하세요.
-3. **서술 방식**: 논리적 연결이 있는 문장형 개조식(Bullet points)을 사용하세요.
-4. **결론 작성 규칙**: "[승인 권고]" 등의 라벨을 붙이지 말고 바로 내용을 서술하십시오.
-5. **표/출처**: Markdown Table 사용, 출처 명시.
+1. **분석 태도 (최우선)**: 제공된 자료들은 회사나 자문사가 작성한 홍보성 자료임을 감안하여, **최대한 객관적이고 보수적인 태도**로 분석하세요. 장밋빛 전망은 배제하고, 리스크와 하방 요인을 비판적으로 검토해야 합니다.
+2. **상세 작성**: 제공된 [분석 데이터]의 **모든 페이지**를 꼼꼼히 분석하여, 내용을 축약하지 말고 **최대한 상세하게** 작성하세요. 구체적인 수치(매출액, 영업이익률, CAGR 등)를 반드시 포함하세요.
+3. **서술 방식**: 가독성을 위해 **개조식(Bullet points)**을 적극 활용하되, 단순 나열이 아닌 논리적 연결이 있는 문장형 개조식을 사용하세요. 전문 비즈니스 용어(EBITDA, Valuation, IRR, MoIC, Downside protection 등)를 적절히 사용하세요.
+4. **표(Table)**: 원본 데이터의 재무 수치나 비교 자료는 Markdown Table로 변환하여 삽입하세요.
+5. **출처 표기**: 데이터 인용 시 바로 아래에 "Source : [문서의 실제 제목] (p.[페이지])"를 명시하세요.
+6. **헤더 금지**: '수신:', '발신:', '작성일:' 등의 보고서 개요 메타데이터는 작성하지 마십시오.
 """,
     'ppt_system': """
-당신은 **프레젠테이션 전문가**입니다.
+당신은 **프레젠테이션 전문가**이자 **깐깐한 투자 심사역**입니다.
 [작성 원칙 - PPT 모드]
-1. **구조적 포맷팅**: # (간지), ## (슬라이드 제목), - (내용) 구조 준수.
-2. **내용 작성**: 서술형 금지, 핵심 키워드 위주의 단문(개조식) 작성.
-3. **분량**: 슬라이드당 5~7줄 이내.
+1. **분석 태도**: 제공된 자료가 회사 측 주장임을 인지하고, **객관적이고 보수적인 관점**에서 핵심 내용을 요약하세요. 과장된 표현은 걸러내고 팩트 위주로 구성하세요.
+2. **구조적 포맷팅**: # (간지), ## (슬라이드 제목), - (내용) 구조 준수.
+3. **내용 작성**: 서술형 금지, 핵심 키워드 위주의 단문(개조식) 작성.
 """,
     # [NEW] Custom 모드 전용 (서식 복제)
     'custom_system': """
@@ -132,6 +134,7 @@ def get_default_structure(template_key):
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
     client = get_client(api_key)
     template_opt = inputs['template_option']
+    structure_text = inputs['structure_text']
     
     # [RFI Mode]
     if template_opt == 'rfi':
@@ -139,76 +142,91 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         for chunk in stream:
             yield chunk
         return
+    
+    # [Sequential Generation Strategy]
+    # 1. Split structure into chapters to generate long, detailed reports
+    # Regex splits by headers starting with # (e.g., # 1. Overview)
+    sections = re.split(r'(?=^# )', structure_text, flags=re.MULTILINE)
+    sections = [s for s in sections if s.strip()]
+    
+    # If no sections found (e.g. custom without headers), treat as one block
+    if not sections:
+        sections = [structure_text]
 
-    # [PPT Mode]
-    if template_opt == 'presentation':
-        system_instruction = PROMPTS['ppt_system']
-        main_prompt = f"""
-        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        [슬라이드 구조] {inputs['structure_text']}
-        [맥락] {inputs['context_text']}
-        [데이터] {file_context[:50000]}
-        """
-        config = types.GenerateContentConfig(
-            max_output_tokens=8192,
-            temperature=0.7,
-            system_instruction=system_instruction
-        )
+    for i, section_content in enumerate(sections):
+        section_title = section_content.split('\n')[0].replace('#', '').strip()
+        
+        # Determine System Instruction based on Mode
+        if template_opt == 'presentation':
+            base_system = PROMPTS['ppt_system']
+            task_instruction = f"""
+            [현재 작업]
+            전체 발표자료 중 **"{section_title}"** 파트만 작성하세요.
+            입력된 [슬라이드 구조]의 하위 목차(##)를 슬라이드 제목으로 삼아 내용을 구성하세요.
+            """
+        elif template_opt == 'custom':
+            base_system = PROMPTS['custom_system']
+            task_instruction = f"""
+            [현재 작업]
+            전체 문서 중 **"{section_title}"** 챕터만 작성하세요.
+            제공된 [문서 구조]를 토씨 하나 틀리지 말고 그대로 유지하며 내용을 채우십시오.
+            """
+        else:
+            # Standard Investment Report / Simple Review / IM / Management
+            base_system = PROMPTS['report_system']
+            
+            # Special handling for Simple Review (Summary focus)
+            if template_opt == 'simple_review':
+                base_system += "\n**중요: 이 보고서는 5페이지 내외의 '요약' 보고서입니다. 장황한 나열보다는 핵심 요약과 근거 위주로 명료하게 서술하세요.**"
+            
+            if inputs['use_diagram']:
+                base_system += "\n**도식화**: 설명 중 시각화가 필요한 프로세스나 구조가 있다면 **{{DIAGRAM: 설명}}** 태그를 삽입하세요."
+                
+            task_instruction = f"""
+            [현재 작업]
+            전체 보고서 중 **"{section_title}"** 챕터만 작성하세요.
+            입력된 [문서 구조]의 하위 목차를 빠짐없이 다루세요.
+            """
 
-    # [Custom Mode] - 서식 복제
-    elif template_opt == 'custom':
-        system_instruction = PROMPTS['custom_system']
+        # Construct Prompt
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
         
-        [목표 문서 구조 (반드시 준수)]
-        {inputs['structure_text']}
+        [작성할 챕터 구조]
+        {section_content}
         
         [전체 맥락]
         {inputs['context_text']}
         
-        [본문 채우기용 분석 데이터]
+        [분석 데이터]
+        첨부된 파일 내용을 바탕으로 작성하세요. 없는 내용은 지어내지 말고, 추론이 필요하면 [추후 실사 필요]라고 명시하세요.
         {file_context[:50000]}
-        """
-        config = types.GenerateContentConfig(
-            max_output_tokens=8192,
-            temperature=0.5, # 구조 준수를 위해 약간 낮춤
-            system_instruction=system_instruction
-        )
-
-    # [Standard Report Mode]
-    else:
-        system_instruction = PROMPTS['report_system']
-        if template_opt == 'simple_review':
-             system_instruction += "\n**중요: 10페이지 이내로 핵심만 요약하세요.**"
-        if inputs['use_diagram']:
-            system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
-
-        main_prompt = f"""
-        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        [문서 구조] {inputs['structure_text']}
-        [맥락] {inputs['context_text']}
-        [데이터] {file_context[:50000]}
-        """
         
-        tools = []
-        if "뉴스" in inputs['structure_text'] or "동향" in inputs['structure_text']:
-            tools = [types.Tool(google_search=types.GoogleSearch())]
+        {task_instruction}
+        """
 
         config = types.GenerateContentConfig(
-            tools=tools,
             max_output_tokens=8192,
             temperature=0.7,
-            system_instruction=system_instruction
+            system_instruction=base_system
         )
 
-    response_stream = client.models.generate_content_stream(
-        model=model_name,
-        contents=main_prompt,
-        config=config
-    )
-    for chunk in response_stream:
-        yield chunk
+        # Generate Stream for this section
+        response_stream = client.models.generate_content_stream(
+            model=model_name,
+            contents=main_prompt,
+            config=config
+        )
+        
+        for chunk in response_stream:
+            yield chunk
+            
+        # Add separator between sections
+        yield types.GenerateContentResponse(
+            candidates=[types.Candidate(
+                content=types.Content(parts=[types.Part(text="\n\n")])
+            )]
+        )
 
 def refine_report(api_key, model_name, current_text, refine_query):
     client = get_client(api_key)
