@@ -6,6 +6,59 @@ import fitz  # PyMuPDF
 from docx import Document
 from pptx import Presentation
 from openai import OpenAI
+from PIL import Image
+
+# OCR 지원 (pytesseract 설치 시 활성화)
+try:
+    import pytesseract
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+
+
+def extract_pdf_with_ocr(doc, ocr_threshold=50):
+    """
+    PDF에서 텍스트 추출 (OCR 폴백 지원)
+
+    Args:
+        doc: fitz.Document 객체
+        ocr_threshold: 페이지당 이 글자수 미만이면 OCR 실행
+
+    Returns:
+        추출된 텍스트
+    """
+    text_content = ""
+    ocr_used = False
+
+    for _, page in enumerate(doc):
+        # 1. 먼저 일반 텍스트 추출 시도
+        page_text = page.get_text().strip()
+
+        # 2. 텍스트가 너무 적으면 OCR 시도
+        if len(page_text) < ocr_threshold and OCR_AVAILABLE:
+            try:
+                # PyMuPDF pixmap을 PIL Image로 변환
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x 해상도로 품질 향상
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                # pytesseract로 OCR 실행 (한글+영어)
+                ocr_text = pytesseract.image_to_string(img, lang='kor+eng')
+
+                if len(ocr_text.strip()) > len(page_text):
+                    page_text = ocr_text.strip()
+                    ocr_used = True
+
+            except Exception:
+                # OCR 실패 시 원본 텍스트 유지
+                pass
+
+        text_content += f"{page_text}\n"
+
+    # OCR 사용 여부 표시
+    if ocr_used:
+        text_content = "[OCR 적용됨]\n" + text_content
+
+    return text_content
 
 def parse_uploaded_file(uploaded_file):
     """파일 타입별 텍스트 추출 (전체 시트 지원 + 오류 방지)"""
@@ -16,11 +69,10 @@ def parse_uploaded_file(uploaded_file):
     text_content = ""
 
     try:
-        # [PDF] PyMuPDF
+        # [PDF] PyMuPDF + OCR 폴백
         if file_type == 'pdf':
             with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-                for page in doc:
-                    text_content += page.get_text() + "\n"
+                text_content = extract_pdf_with_ocr(doc)
         
         # [Word] python-docx
         elif file_type in ['docx', 'doc']:
