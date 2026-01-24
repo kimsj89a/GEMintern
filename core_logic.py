@@ -2,101 +2,7 @@ from google import genai
 from google.genai import types
 import utils
 import core_rfi 
-
-# --- PROMPTS ---
-PROMPTS = {
-    'structure_extraction': """
-[System: Thinking Level MINIMAL]
-당신은 문서 구조 분석 전문가입니다.
-제공된 파일의 내용을 분석하여 **문서의 목차(Table of Contents)**와 **핵심 구조**를 Markdown 형식으로 추출하십시오.
-
-[요구사항]
-1. 문서의 계층 구조(#, ##, ###)를 원본과 최대한 동일하게 유지하십시오.
-2. 각 챕터의 제목을 그대로 살리십시오.
-3. 내용(본문)은 제외하고, 오직 **구조(뼈대)**만 출력하십시오.
-""",
-    'report_system': """
-당신은 **국내 최정상급 PEF/VC 수석 심사역**입니다. 
-[대상 기업]에 대한 투자를 승인받기 위해 투심위 위원들을 설득할 수 있는 **'투자심사보고서(Investment Memorandum)'**를 작성 중입니다.
-
-[작성 원칙 - Word 모드]
-1. **헤더 금지**: '수신:', '발신:', '작성일:', '대상:' 등의 보고서 개요 메타데이터를 절대 작성하지 마십시오.
-2. **분석 태도**: 객관적이고 보수적인 태도로 분석하세요.
-3. **서술 방식**: 논리적 연결이 있는 문장형 개조식(Bullet points)을 사용하세요.
-4. **결론 작성 규칙**: "[승인 권고]" 등의 라벨을 붙이지 말고 바로 내용을 서술하십시오.
-5. **표/출처**: Markdown Table 사용, 출처 명시.
-""",
-    'ppt_system': """
-당신은 **프레젠테이션 전문가**입니다.
-[작성 원칙 - PPT 모드]
-1. **구조적 포맷팅**: # (간지), ## (슬라이드 제목), - (내용) 구조 준수.
-2. **내용 작성**: 서술형 금지, 핵심 키워드 위주의 단문(개조식) 작성.
-3. **분량**: 슬라이드당 5~7줄 이내.
-""",
-    # [NEW] Custom 모드 전용 (서식 복제)
-    'custom_system': """
-당신은 **문서 작성 및 편집 전문가**입니다.
-사용자가 제공한 **[문서 구조(Format)]**를 완벽하게 준수하면서, **[분석 데이터(Raw Data)]**의 내용으로 본문을 채워 넣으십시오.
-
-[작성 원칙 - Custom Mode]
-1. **구조 절대 준수**: 제공된 [문서 구조]의 목차(Header)와 순서를 **토씨 하나 바꾸지 말고 그대로 유지**하십시오. 임의로 목차를 추가하거나 삭제하는 것은 금지됩니다.
-2. **Context-Aware Filling**: 각 챕터 제목(Header)이 의도하는 바를 파악하고, [분석 데이터]에서 가장 적절한 내용을 찾아 서술하십시오.
-3. **빈칸 채우기**: 만약 데이터에 해당 챕터와 관련된 내용이 없다면, 억지로 지어내지 말고 "*(해당 내용 확인 불가)*"라고 표시하십시오.
-4. **스타일**: 원본 서식의 흐름을 따르되, 내용은 전문적이고 객관적인 비즈니스 톤으로 작성하십시오.
-"""
-}
-
-TEMPLATE_STRUCTURES = {
-    'simple_review': """# 1. Executive Summary
-   - 대상 기업 요약
-   - 주요 투자 조건
-
-# 2. 회사 현황
-   - 설립 및 연혁
-   - 주요 사업 현황
-
-# 3. 주요 동향 및 이슈
-   - 최근 주요 계약
-   - 최근 주요 뉴스
-
-# 4. 재무 및 주가 분석
-   - 요약 재무상태 (최근 3년 매출/이익, 자산/부채 현황)
-   - (필요시) 주가 추이 및 거래량 분석
-
-# 5. 종합 의견
-   - 투자 리스크 점검
-   - 최종 의견""",
-    'rfi': "[RFI 모드] 자동 생성됩니다.",
-    'investment': """# 1. 투자내용 (Executive Summary)
-# 2. 회사현황
-# 3. 시장분석
-# 4. 사업분석
-# 5. 투자 타당성
-# 6. 리스크 분석
-# 7. 종합의견""",
-    'im': "# 1. Highlights\n# 2. Company\n# 3. Market\n# 4. Product\n# 5. Financial",
-    'management': "# 1. 개요\n# 2. 현황\n# 3. 이슈\n# 4. 회수",
-    'presentation': """# 1. Executive Summary
-## 투자 개요
-## 핵심 투자 포인트
-## 주요 투자 조건
-
-# 2. Market & Business
-## 시장 규모 및 성장성
-## 경쟁 현황
-## 비즈니스 모델
-## 핵심 기술
-
-# 3. Financials & Valuation
-## 과거 재무 실적
-## 추정 손익
-## 가치평가 및 회수 전략
-
-# 4. Risk & Opinion
-## 주요 리스크 및 헷지 방안
-## 종합 투자의견""",
-    'custom': ""
-}
+import prompts
 
 def get_client(api_key):
     return genai.Client(api_key=api_key)
@@ -105,7 +11,7 @@ def extract_structure(api_key, structure_file):
     try:
         client = get_client(api_key)
         file_text = utils.parse_uploaded_file(structure_file)
-        prompt = f"{PROMPTS['structure_extraction']}\n[파일 내용]\n{file_text[:15000]}"
+        prompt = f"{prompts.LOGIC_PROMPTS['structure_extraction']}\n[파일 내용]\n{file_text[:15000]}"
         resp = client.models.generate_content(model="gemini-3-flash-preview", contents=prompt)
         return resp.text
     except Exception as e:
@@ -127,7 +33,7 @@ def parse_all_files(uploaded_files, read_content=True):
     return all_text, file_list_str
 
 def get_default_structure(template_key):
-    return TEMPLATE_STRUCTURES.get(template_key, "")
+    return prompts.TEMPLATE_STRUCTURES.get(template_key, "")
 
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
     client = get_client(api_key)
@@ -142,7 +48,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
     # [PPT Mode]
     if template_opt == 'presentation':
-        system_instruction = PROMPTS['ppt_system']
+        system_instruction = prompts.LOGIC_PROMPTS['ppt_system']
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
         [슬라이드 구조] {inputs['structure_text']}
@@ -157,7 +63,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
     # [Custom Mode] - 서식 복제
     elif template_opt == 'custom':
-        system_instruction = PROMPTS['custom_system']
+        system_instruction = prompts.LOGIC_PROMPTS['custom_system']
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
         
@@ -178,7 +84,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
     # [Standard Report Mode]
     else:
-        system_instruction = PROMPTS['report_system']
+        system_instruction = prompts.LOGIC_PROMPTS['report_system']
         if template_opt == 'simple_review':
              system_instruction += "\n**중요: 10페이지 이내로 핵심만 요약하세요.**"
         if inputs['use_diagram']:
@@ -186,6 +92,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
+        [Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
         [문서 구조] {inputs['structure_text']}
         [맥락] {inputs['context_text']}
         [데이터] {file_context[:50000]}
@@ -198,7 +105,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         config = types.GenerateContentConfig(
             tools=tools,
             max_output_tokens=8192,
-            temperature=0.7,
+            temperature=0.3,
             system_instruction=system_instruction
         )
 
@@ -209,6 +116,83 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     )
     for chunk in response_stream:
         yield chunk
+
+def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, file_context):
+    """3단계 Chained Prompting으로 투자심사보고서 생성 (품질 우선)"""
+    client = get_client(api_key)
+
+    # 시스템 프롬프트 (공통)
+    system_instruction = prompts.LOGIC_PROMPTS['report_system_base']
+    if inputs.get('use_diagram'):
+        system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
+
+    # 3개 파트 정의 (part_key, title, max_tokens)
+    parts = [
+        ('report_part1', 'Part 1/3: Executive Summary & Investment Highlights', 12000),
+        ('report_part2', 'Part 2/3: Target Company & Market Analysis', 16384),
+        ('report_part3', 'Part 3/3: Financials, Valuation, Risk & 종합의견', 20000)
+    ]
+
+    accumulated_result = ""
+
+    for part_key, part_title, max_tokens in parts:
+        # 진행 상황 알림
+        status_text = f"\n\n---\n\n📝 **[{part_title}] 생성 중...**\n\n"
+        yield types.GenerateContentResponse(
+            candidates=[types.Candidate(
+                content=types.Content(parts=[types.Part(text=status_text)])
+            )]
+        )
+
+        # 이전 파트 결과를 컨텍스트로 포함
+        prev_context = ""
+        if accumulated_result:
+            prev_context = f"""
+[이전 작성 내용 - 참고용, 중복 작성 금지]
+{accumulated_result[-20000:]}
+"""
+
+        main_prompt = f"""
+[System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
+[Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
+
+{prev_context}
+
+{prompts.LOGIC_PROMPTS[part_key]}
+
+[맥락]
+{inputs['context_text']}
+
+[분석 데이터]
+{file_context[:45000]}
+"""
+
+        tools = []
+        # Part 2 (시장 분석)에서 웹 검색 활성화
+        if part_key == 'report_part2':
+            tools = [types.Tool(google_search=types.GoogleSearch())]
+
+        config = types.GenerateContentConfig(
+            tools=tools,
+            max_output_tokens=max_tokens,
+            temperature=0.3,
+            system_instruction=system_instruction
+        )
+
+        part_result = ""
+        response_stream = client.models.generate_content_stream(
+            model=model_name,
+            contents=main_prompt,
+            config=config
+        )
+
+        for chunk in response_stream:
+            if chunk.text:
+                part_result += chunk.text
+            yield chunk
+
+        accumulated_result += part_result
+
 
 def refine_report(api_key, model_name, current_text, refine_query):
     client = get_client(api_key)

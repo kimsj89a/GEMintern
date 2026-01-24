@@ -4,7 +4,13 @@ import utils
 import utils_ppt
 import core_logic
 
-def render_output_panel(container, settings, inputs):
+def render_output_panel(container, settings, inputs, key_prefix="output"):
+    # State keys with prefix to isolate tabs
+    k_editing = f"{key_prefix}_is_editing"
+    k_copy = f"{key_prefix}_show_copy_code"
+    k_text = f"{key_prefix}_generated_text"
+    k_mode = f"{key_prefix}_active_mode"
+
     with container:
         c_head1, c_head2 = st.columns([1, 1])
         with c_head1:
@@ -13,38 +19,43 @@ def render_output_panel(container, settings, inputs):
         with c_head2:
             sub_c1, sub_c2, sub_c3 = st.columns([2, 1, 1])
             with sub_c2:
-                if "is_editing" not in st.session_state:
-                    st.session_state.is_editing = False
-                edit_label = "✏️ 완료" if st.session_state.is_editing else "✏️ 편집"
-                if st.button(edit_label, key="btn_toggle_edit", use_container_width=True):
-                    st.session_state.is_editing = not st.session_state.is_editing
+                if k_editing not in st.session_state:
+                    st.session_state[k_editing] = False
+                edit_label = "✏️ 완료" if st.session_state[k_editing] else "✏️ 편집"
+                if st.button(edit_label, key=f"{key_prefix}_btn_toggle_edit", use_container_width=True):
+                    st.session_state[k_editing] = not st.session_state[k_editing]
                     st.rerun()
 
             with sub_c3:
-                if st.button("📋 복사", key="btn_copy_view", use_container_width=True):
+                if st.button("📋 복사", key=f"{key_prefix}_btn_copy_view", use_container_width=True):
                     st.toast("아래 코드를 클릭하여 복사하세요", icon="📋")
-                    st.session_state.show_copy_code = True
+                    st.session_state[k_copy] = True
                 else:
-                    if "show_copy_code" not in st.session_state:
-                        st.session_state.show_copy_code = False
+                    if k_copy not in st.session_state:
+                        st.session_state[k_copy] = False
 
-        st.markdown('<div id="result_anchor"></div>', unsafe_allow_html=True)
+        anchor_id = f"{key_prefix}_result_anchor"
+        st.markdown(f'<div id="{anchor_id}"></div>', unsafe_allow_html=True)
 
         status_placeholder = st.empty()
         result_container = st.container(height=600, border=True)
         
-        if "active_mode" not in st.session_state:
-            st.session_state.active_mode = inputs['template_option']
+        if k_mode not in st.session_state:
+            st.session_state[k_mode] = inputs['template_option']
+        
+        # Initialize text state if missing
+        if k_text not in st.session_state:
+            st.session_state[k_text] = ""
 
         # 1. 생성 로직
         if inputs['generate_btn']:
-            st.session_state.active_mode = inputs['template_option']
-            st.session_state.is_editing = False
-            st.session_state.show_copy_code = False
+            st.session_state[k_mode] = inputs['template_option']
+            st.session_state[k_editing] = False
+            st.session_state[k_copy] = False
 
-            components.html("""
+            components.html(f"""
                 <script>
-                    window.parent.document.getElementById('result_anchor').scrollIntoView({behavior: 'smooth'});
+                    window.parent.document.getElementById('{anchor_id}').scrollIntoView({{behavior: 'smooth'}});
                 </script>
             """, height=0)
 
@@ -65,11 +76,20 @@ def render_output_panel(container, settings, inputs):
                             st.write("📂 1. 파일을 읽고 텍스트를 추출합니다...")
                             file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True)
                         
-                        st.write(f"🧠 2. AI가 [{st.session_state.active_mode}] 페르소나로 분석을 시작합니다...")
-                        stream = core_logic.generate_report_stream(
-                            settings['api_key'], settings['model_name'], inputs, settings['thinking_level'], file_context
-                        )
-                        st.write("✍️ 3. 문서를 작성 중입니다 (스트리밍)...")
+                        st.write(f"🧠 2. AI가 [{st.session_state[k_mode]}] 페르소나로 분석을 시작합니다...")
+
+                        # 생성 모드에 따라 다른 함수 호출
+                        gen_mode = inputs.get('generation_mode', 'single')
+                        if gen_mode == 'chained' and inputs['template_option'] == 'investment':
+                            st.write("✍️ 3. 3단계 분할 생성 모드로 문서를 작성합니다...")
+                            stream = core_logic.generate_report_stream_chained(
+                                settings['api_key'], settings['model_name'], inputs, settings['thinking_level'], file_context
+                            )
+                        else:
+                            st.write("✍️ 3. 문서를 작성 중입니다 (스트리밍)...")
+                            stream = core_logic.generate_report_stream(
+                                settings['api_key'], settings['model_name'], inputs, settings['thinking_level'], file_context
+                            )
                         
                         full_response = ""
                         with result_container:
@@ -81,30 +101,30 @@ def render_output_panel(container, settings, inputs):
                             response_placeholder.markdown(full_response)
                         
                         status.update(label="✅ 작성이 완료되었습니다!", state="complete", expanded=False)
-                        st.session_state.generated_text = full_response
+                        st.session_state[k_text] = full_response
                 except Exception as e:
                     st.error(f"생성 중 오류 발생: {e}")
 
         # 2. 결과 표시
-        elif st.session_state.generated_text:
+        elif st.session_state[k_text]:
             with result_container:
-                if st.session_state.get("show_copy_code"):
+                if st.session_state.get(k_copy):
                     st.info("우측 상단의 복사 버튼을 누르세요. (닫으려면 '복사' 버튼 다시 클릭)")
-                    st.code(st.session_state.generated_text, language="markdown")
+                    st.code(st.session_state[k_text], language="markdown")
                 
-                if st.session_state.is_editing:
-                    new_text = st.text_area("내용 편집", value=st.session_state.generated_text, height=550, label_visibility="collapsed")
-                    st.session_state.generated_text = new_text
+                if st.session_state[k_editing]:
+                    new_text = st.text_area("내용 편집", value=st.session_state[k_text], height=550, label_visibility="collapsed", key=f"{key_prefix}_edit_area")
+                    st.session_state[k_text] = new_text
                 else:
-                    st.markdown(st.session_state.generated_text)
+                    st.markdown(st.session_state[k_text])
 
         # 3. 하단 액션
-        if st.session_state.generated_text:
+        if st.session_state[k_text]:
             st.markdown("---")
             
             # PPT 변환 버튼
-            if st.session_state.active_mode != 'presentation' and st.session_state.active_mode != 'rfi':
-                if st.button("📊 이 내용으로 발표자료(PPT) 생성하기", use_container_width=True):
+            if st.session_state[k_mode] != 'presentation' and st.session_state[k_mode] != 'rfi':
+                if st.button("📊 이 내용으로 발표자료(PPT) 생성하기", use_container_width=True, key=f"{key_prefix}_btn_ppt_convert"):
                     if not settings['api_key']:
                         st.error("API Key 필요")
                     else:
@@ -112,8 +132,8 @@ def render_output_panel(container, settings, inputs):
                             ppt_inputs = inputs.copy()
                             ppt_inputs['template_option'] = 'presentation'
                             ppt_inputs['structure_text'] = core_logic.get_default_structure('presentation')
-                            st.session_state.active_mode = 'presentation'
-                            st.session_state.is_editing = False
+                            st.session_state[k_mode] = 'presentation'
+                            st.session_state[k_editing] = False
 
                             with status_placeholder.status("🔄 PPT 스타일로 변환 중...", expanded=True) as status:
                                 # PPT 변환 시에는 기존 데이터를 재활용 (파일 다시 읽을 필요 X)
@@ -131,22 +151,22 @@ def render_output_panel(container, settings, inputs):
                                             response_placeholder.markdown(full_response + "▌")
                                     response_placeholder.markdown(full_response)
                                 status.update(label="✅ PPT 변환 완료!", state="complete", expanded=False)
-                                st.session_state.generated_text = full_response
+                                st.session_state[k_text] = full_response
                                 st.rerun()
                         except Exception as e:
                             st.error(f"PPT 변환 오류: {e}")
 
             # Refine
-            refine_query = st.chat_input("결과물 수정/보완 요청")
+            refine_query = st.chat_input("결과물 수정/보완 요청", key=f"{key_prefix}_chat_refine")
             if refine_query:
                 if not settings['api_key']: st.error("API Key 필요")
                 else:
                     with st.spinner("수정 내용 생성 중..."):
                         try:
                             refined_text = core_logic.refine_report(
-                                settings['api_key'], settings['model_name'], st.session_state.generated_text, refine_query
+                                settings['api_key'], settings['model_name'], st.session_state[k_text], refine_query
                             )
-                            st.session_state.generated_text += f"\n\n--- [추가 요청 반영] ---\n{refined_text}"
+                            st.session_state[k_text] += f"\n\n--- [추가 요청 반영] ---\n{refined_text}"
                             st.rerun()
                         except Exception as e:
                             st.error(f"수정 오류: {e}")
@@ -154,15 +174,15 @@ def render_output_panel(container, settings, inputs):
             # Download
             st.write("")
             col_d1, col_d2 = st.columns(2)
-            current_mode = st.session_state.get('active_mode', inputs['template_option'])
+            current_mode = st.session_state.get(k_mode, inputs['template_option'])
             fname = utils.generate_filename(inputs['uploaded_files'], current_mode)
             
             with col_d1:
                 if current_mode == 'rfi':
-                    st.download_button("📉 RFI 엑셀 저장", utils.create_excel(st.session_state.generated_text), fname.replace('.docx','.xlsx'), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    st.download_button("📉 RFI 엑셀 저장", utils.create_excel(st.session_state[k_text]), fname.replace('.docx','.xlsx'), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"{key_prefix}_dl_rfi")
                 else:
-                    st.download_button(f"📄 Word 저장 ({fname})", utils.create_docx(st.session_state.generated_text), fname, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+                    st.download_button(f"📄 Word 저장 ({fname})", utils.create_docx(st.session_state[k_text]), fname, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key=f"{key_prefix}_dl_word")
             
             with col_d2:
                 btn_type = "primary" if current_mode == 'presentation' else "secondary"
-                st.download_button(f"📊 PPT 저장 ({fname.replace('.docx','.pptx')})", utils_ppt.create_ppt(st.session_state.generated_text), fname.replace('.docx','.pptx'), "application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True, type=btn_type)
+                st.download_button(f"📊 PPT 저장 ({fname.replace('.docx','.pptx')})", utils_ppt.create_ppt(st.session_state[k_text]), fname.replace('.docx','.pptx'), "application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True, type=btn_type, key=f"{key_prefix}_dl_ppt")

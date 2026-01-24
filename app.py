@@ -19,7 +19,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 상태 초기화 ---
-if "generated_text" not in st.session_state: st.session_state.generated_text = ""
+# if "generated_text" not in st.session_state: st.session_state.generated_text = "" # Removed global init
 
 def main():
     st.markdown("""
@@ -47,21 +47,21 @@ def main():
         st.markdown("---")
         inputs = ui_input.render_investment_report_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs)
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="report")
 
     with tab2:
         st.markdown("### 📋 RFI (실사 자료 요청) 작성")
         st.markdown("---")
         inputs = ui_input.render_rfi_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs)
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="rfi")
 
     with tab3:
         st.markdown("### 📊 IM/PPT 생성")
         st.markdown("---")
         inputs = ui_input.render_im_ppt_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs)
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
 
     with tab4:
         ui_audio.render_audio_transcription_panel()
