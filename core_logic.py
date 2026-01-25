@@ -1,8 +1,7 @@
-import re
 from google import genai
 from google.genai import types
 import utils
-import core_rfi 
+import core_rfi
 import prompts
 
 def get_client(api_key):
@@ -19,13 +18,7 @@ def extract_structure(api_key, structure_file):
         return f"구조 추출 오류: {str(e)}"
 
 def parse_all_files(uploaded_files, read_content=True, api_key=None):
-    """파일 목록 파싱 (OCR 지원)
-
-    Args:
-        uploaded_files: 업로드된 파일 목록
-        read_content: 내용 읽기 여부
-        api_key: Google API 키 (PDF OCR용)
-    """
+    """파일 목록 파싱 (OCR 지원)"""
     all_text = ""
     file_list_str = ""
     if uploaded_files:
@@ -43,78 +36,67 @@ def parse_all_files(uploaded_files, read_content=True, api_key=None):
 def get_default_structure(template_key):
     return prompts.TEMPLATE_STRUCTURES.get(template_key, "")
 
+def _get_system_prompt(template_opt):
+    """템플릿별 시스템 프롬프트 반환"""
+    prompt_map = {
+        'simple_review': 'simple_review_system',
+        'investment': 'investment_system',
+        'im': 'im_system',
+        'management': 'management_system',
+        'presentation': 'ppt_system',
+        'custom': 'custom_system'
+    }
+    prompt_key = prompt_map.get(template_opt, 'custom_system')
+    return prompts.LOGIC_PROMPTS.get(prompt_key, prompts.LOGIC_PROMPTS['custom_system'])
+
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
+    """단일 생성 모드 - 모든 템플릿 지원"""
     client = get_client(api_key)
     template_opt = inputs['template_option']
     structure_text = inputs['structure_text']
-    
-    # [RFI Mode]
+
+    # [RFI Mode] - 별도 처리
     if template_opt == 'rfi':
         stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level)
         for chunk in stream:
             yield chunk
         return
-    
-    # [Sequential Generation Strategy]
-    # 1. Split structure into chapters to generate long, detailed reports
-    # Regex splits by headers starting with # (e.g., # 1. Overview)
-    sections = re.split(r'(?=^# )', structure_text, flags=re.MULTILINE)
-    sections = [s for s in sections if s.strip()]
-    
-    # If no sections found (e.g. custom without headers), treat as one block
-    if not sections:
-        sections = [structure_text]
 
-    # [PPT Mode]
+    # 템플릿별 시스템 프롬프트 가져오기
+    system_instruction = _get_system_prompt(template_opt)
+
+    # 도식화 옵션 추가
+    if inputs.get('use_diagram'):
+        system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
+
+    # 프롬프트 구성
+    main_prompt = f"""
+[System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
+[Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
+
+[문서 구조]
+{structure_text}
+
+[맥락]
+{inputs['context_text']}
+
+[분석 데이터]
+{file_context[:50000]}
+"""
+
+    # 템플릿별 config 설정
     if template_opt == 'presentation':
-        system_instruction = prompts.LOGIC_PROMPTS['ppt_system']
-        main_prompt = f"""
-        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        [슬라이드 구조] {inputs['structure_text']}
-        [맥락] {inputs['context_text']}
-        [데이터] {file_context[:50000]}
-        """
-        config = types.GenerateContentConfig(
-            max_output_tokens=65536,
-            temperature=0.7,
-            system_instruction=system_instruction
-        )
-
-    # [Custom Mode] - 서식 복제
+        temperature = 0.7
     elif template_opt == 'custom':
-        system_instruction = prompts.LOGIC_PROMPTS['custom_system']
-        main_prompt = f"""
-        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        [문서 구조] {inputs['structure_text']}
-        [맥락] {inputs['context_text']}
-        [데이터] {file_context[:50000]}
-        """
-        config = types.GenerateContentConfig(
-            max_output_tokens=65536,
-            temperature=0.5,
-            system_instruction=system_instruction
-        )
-
-    # [Standard Report Mode]
+        temperature = 0.5
     else:
-        system_instruction = prompts.LOGIC_PROMPTS['report_system_base']
-        if template_opt == 'simple_review':
-            system_instruction += "\n**중요: 10페이지 이내로 핵심만 요약하세요.**"
-        if inputs.get('use_diagram'):
-            system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
+        temperature = 0.3
 
-        main_prompt = f"""
-        [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        [Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
-        [문서 구조] {inputs['structure_text']}
-        [맥락] {inputs['context_text']}
-        [데이터] {file_context[:50000]}
-        """
-        config = types.GenerateContentConfig(
-            max_output_tokens=65536,
-            temperature=0.3,
-            system_instruction=system_instruction
-        )
+    config = types.GenerateContentConfig(
+        max_output_tokens=65536,
+        temperature=temperature,
+        system_instruction=system_instruction
+    )
 
     # Generate Stream
     response_stream = client.models.generate_content_stream(
@@ -127,19 +109,19 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         yield chunk
 
 def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, file_context):
-    """3단계 Chained Prompting으로 투자심사보고서 생성 (품질 우선)"""
+    """3단계 Chained Prompting - 투자심사보고서 전용 (품질 우선)"""
     client = get_client(api_key)
 
-    # 시스템 프롬프트 (공통)
-    system_instruction = prompts.LOGIC_PROMPTS['report_system_base']
+    # 투자심사보고서 전용 시스템 프롬프트
+    system_instruction = prompts.LOGIC_PROMPTS['investment_system']
     if inputs.get('use_diagram'):
         system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
 
-    # 3개 파트 정의 (part_key, title, max_tokens)
+    # 투자심사보고서 3개 파트 정의 (투자심사보고서 structure 기반)
     parts = [
-        ('report_part1', 'Part 1/3: Executive Summary & Investment Highlights', 65536),
-        ('report_part2', 'Part 2/3: Target Company & Market Analysis', 65536),
-        ('report_part3', 'Part 3/3: Financials, Valuation, Risk & 종합의견', 65536)
+        ('investment_part1', 'Part 1/3: 투자내용', 65536),
+        ('investment_part2', 'Part 2/3: 회사현황 & 시장/사업분석', 65536),
+        ('investment_part3', 'Part 3/3: Valuation, Risk & 종합의견', 65536)
     ]
 
     accumulated_result = ""
@@ -161,13 +143,16 @@ def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, 
 {accumulated_result[-20000:]}
 """
 
+        # 파트별 프롬프트 가져오기
+        part_prompt = prompts.LOGIC_PROMPTS.get(part_key, "")
+
         main_prompt = f"""
 [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
 [Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
 
 {prev_context}
 
-{prompts.LOGIC_PROMPTS[part_key]}
+{part_prompt}
 
 [맥락]
 {inputs['context_text']}
@@ -178,7 +163,7 @@ def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, 
 
         tools = []
         # Part 2 (시장 분석)에서 웹 검색 활성화
-        if part_key == 'report_part2':
+        if part_key == 'investment_part2':
             tools = [types.Tool(google_search=types.GoogleSearch())]
 
         config = types.GenerateContentConfig(
@@ -206,7 +191,7 @@ def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, 
 def refine_report(api_key, model_name, current_text, refine_query):
     client = get_client(api_key)
     refine_prompt = f"""
-    당신은 문서 수정 전문가입니다. 
+    당신은 문서 수정 전문가입니다.
     사용자 요청: "{refine_query}"
     기존 내용을 바탕으로 **"## 🔄 추가 요청 반영"** 하위에 내용을 작성하세요.
     [기존 내용] {current_text[:20000]}...
