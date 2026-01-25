@@ -157,15 +157,15 @@ def render_audio_transcription_panel():
             with st.spinner(f"🎧 {engine_name}로 오디오 전사 중... (파일 크기에 따라 수 분 소요될 수 있습니다)"):
                 try:
                     # 실시간 결과 표시를 위한 컨테이너
-                                        progress_container = st.container()
+                    progress_container = st.container()
                     with progress_container:
-                        st.info("?? ??? ?? ?... (?? -> ??)")
+                        st.info("실시간 전사 진행 중... (음성 -> 텍스트)")
                         col_res1, col_res2 = st.columns(2)
                         with col_res1:
-                            st.markdown("### ?? ??? ??")
+                            st.markdown("### 실시간 전사 결과")
                             transcription_placeholder = st.empty()
                         with col_res2:
-                            st.markdown("### ?? ??? ???")
+                            st.markdown("### 실시간 요약 결과")
                             summary_placeholder = st.empty()
 
                     def _render_chunk_views(chunks):
@@ -182,7 +182,7 @@ def render_audio_transcription_panel():
                             "\n\n---\n\n".join(summary_parts),
                         )
 
-full_transcript = ""
+                    full_transcript = ""
                     full_summary = ""
                     chunk_results = []
                     
