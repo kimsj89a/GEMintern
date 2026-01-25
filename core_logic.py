@@ -109,7 +109,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         yield chunk
 
 def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, file_context):
-    """3단계 Chained Prompting - 투자심사보고서 전용 (품질 우선)"""
+    """5단계 Chained Prompting - 투자심사보고서 전용 (품질 우선)"""
     client = get_client(api_key)
 
     # 투자심사보고서 전용 시스템 프롬프트
@@ -117,11 +117,13 @@ def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, 
     if inputs.get('use_diagram'):
         system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
 
-    # 투자심사보고서 3개 파트 정의 (투자심사보고서 structure 기반)
+    # 투자심사보고서 5개 파트 정의
     parts = [
-        ('investment_part1', 'Part 1/3: 투자내용', 65536),
-        ('investment_part2', 'Part 2/3: 회사현황 & 시장/사업분석', 65536),
-        ('investment_part3', 'Part 3/3: Valuation, Risk & 종합의견', 65536)
+        ('investment_part1', 'Part 1/5: 투자내용', 32768),
+        ('investment_part2', 'Part 2/5: 회사현황', 32768),
+        ('investment_part3', 'Part 3/5: 시장분석', 32768),
+        ('investment_part4', 'Part 4/5: 사업분석', 32768),
+        ('investment_part5', 'Part 5/5: Valuation, Risk & 종합의견', 65536)
     ]
 
     accumulated_result = ""
@@ -162,8 +164,8 @@ def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, 
 """
 
         tools = []
-        # Part 2 (시장 분석)에서 웹 검색 활성화
-        if part_key == 'investment_part2':
+        # Part 3 (시장분석)에서 웹 검색 활성화
+        if part_key == 'investment_part3':
             tools = [types.Tool(google_search=types.GoogleSearch())]
 
         config = types.GenerateContentConfig(
