@@ -156,35 +156,8 @@ def render_audio_transcription_panel():
             engine_name = "Whisper" if transcription_engine[1] == "whisper" else "Gemini"
             with st.spinner(f"🎧 {engine_name}로 오디오 전사 중... (파일 크기에 따라 수 분 소요될 수 있습니다)"):
                 try:
-                    # 실시간 결과 표시를 위한 컨테이너
-                    progress_container = st.container()
-                    with progress_container:
-                        st.info("실시간 전사 진행 중... (음성 -> 텍스트)")
-                        col_res1, col_res2 = st.columns(2)
-                        with col_res1:
-                            st.markdown("### 실시간 전사 결과")
-                            transcription_placeholder = st.empty()
-                        with col_res2:
-                            st.markdown("### 실시간 요약 결과")
-                            summary_placeholder = st.empty()
-
-                    def _render_chunk_views(chunks):
-                        transcript_parts = []
-                        summary_parts = []
-                        for i, c in enumerate(chunks, 1):
-                            transcript_parts.append(f"#### Chunk {i}\n{c.get('text', '')}")
-                            if c.get('summary'):
-                                summary_parts.append(f"#### Chunk {i}\n{c['summary']}")
-                            else:
-                                summary_parts.append(f"#### Chunk {i}\n(Summary pending...)")
-                        return (
-                            "\n\n---\n\n".join(transcript_parts),
-                            "\n\n---\n\n".join(summary_parts),
-                        )
-
                     full_transcript = ""
                     full_summary = ""
-                    chunk_results = []
                     
                     # Generator를 통해 순차적으로 처리
                     for chunk_text in utils_audio.transcribe_audio(
@@ -221,11 +194,7 @@ def render_audio_transcription_panel():
                                 api_key=api_key,
                                 api_type=auto_api_type
                             )
-                            chunk_results[-1]["summary"] = chunk_summary
-                            transcript_md, summary_md = _render_chunk_views(chunk_results)
-                            transcription_placeholder.markdown(transcript_md)
-                            summary_placeholder.markdown(summary_md)
-                            full_summary += chunk_summary + "
+                            full_summary += chunk_summary + "\n\n"
 
 "
                         except Exception as e:
