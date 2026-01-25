@@ -47,33 +47,21 @@ def main():
         st.markdown("---")
         inputs = ui_input.render_investment_report_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-<<<<<<< HEAD
-        ui_output.render_output_panel(st.container(), settings, inputs, tab_id="tab1")
-=======
         ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="report")
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
 
     with tab2:
         st.markdown("### 📋 RFI (실사 자료 요청) 작성")
         st.markdown("---")
         inputs = ui_input.render_rfi_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-<<<<<<< HEAD
-        ui_output.render_output_panel(st.container(), settings, inputs, tab_id="tab2")
-=======
         ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="rfi")
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
 
     with tab3:
         st.markdown("### 📊 IM/PPT 생성")
         st.markdown("---")
         inputs = ui_input.render_im_ppt_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-<<<<<<< HEAD
-        ui_output.render_output_panel(st.container(), settings, inputs, tab_id="tab3")
-=======
         ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
 
     with tab4:
         ui_audio.render_audio_transcription_panel()

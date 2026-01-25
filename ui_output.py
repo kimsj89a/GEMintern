@@ -4,18 +4,6 @@ import utils
 import utils_ppt
 import core_logic
 
-<<<<<<< HEAD
-def render_output_panel(container, settings, inputs, tab_id="default"):
-    """
-    결과물 패널 렌더링
-
-    Args:
-        container: Streamlit 컨테이너
-        settings: 설정 정보
-        inputs: 입력 데이터
-        tab_id: 탭 식별자 (각 탭마다 고유한 key를 사용하기 위함)
-    """
-=======
 def render_output_panel(container, settings, inputs, key_prefix="output"):
     # State keys with prefix to isolate tabs
     k_editing = f"{key_prefix}_is_editing"
@@ -23,7 +11,6 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
     k_text = f"{key_prefix}_generated_text"
     k_mode = f"{key_prefix}_active_mode"
 
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
     with container:
         c_head1, c_head2 = st.columns([1, 1])
         with c_head1:
@@ -32,17 +19,6 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
         with c_head2:
             sub_c1, sub_c2, sub_c3 = st.columns([2, 1, 1])
             with sub_c2:
-<<<<<<< HEAD
-                if "is_editing" not in st.session_state:
-                    st.session_state.is_editing = False
-                edit_label = "✏️ 완료" if st.session_state.is_editing else "✏️ 편집"
-                if st.button(edit_label, key=f"btn_toggle_edit_{tab_id}", use_container_width=True):
-                    st.session_state.is_editing = not st.session_state.is_editing
-                    st.rerun()
-
-            with sub_c3:
-                if st.button("📋 복사", key=f"btn_copy_view_{tab_id}", use_container_width=True):
-=======
                 if k_editing not in st.session_state:
                     st.session_state[k_editing] = False
                 edit_label = "✏️ 완료" if st.session_state[k_editing] else "✏️ 편집"
@@ -52,7 +28,6 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
 
             with sub_c3:
                 if st.button("📋 복사", key=f"{key_prefix}_btn_copy_view", use_container_width=True):
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
                     st.toast("아래 코드를 클릭하여 복사하세요", icon="📋")
                     st.session_state[k_copy] = True
                 else:
@@ -182,11 +157,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                             st.error(f"PPT 변환 오류: {e}")
 
             # Refine
-<<<<<<< HEAD
-            refine_query = st.chat_input("결과물 수정/보완 요청", key=f"refine_chat_{tab_id}")
-=======
             refine_query = st.chat_input("결과물 수정/보완 요청", key=f"{key_prefix}_chat_refine")
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
             if refine_query:
                 if not settings['api_key']: st.error("API Key 필요")
                 else:
