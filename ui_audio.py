@@ -173,14 +173,8 @@ def render_audio_transcription_panel():
                         engine=transcription_engine[1],  # whisper 또는 gemini
                         gemini_model="gemini-2.0-flash-exp"  # Gemini 모델
                     ):
-                        # 1. ??? ???????? ????? (??? ????? ???)
-                        chunk_results.append({"text": chunk_text, "summary": None})
-                        transcript_md, summary_md = _render_chunk_views(chunk_results)
-                        transcription_placeholder.markdown(transcript_md)
-                        summary_placeholder.markdown(summary_md)
-                        full_transcript += chunk_text + "
-
-"
+                        # 1. 텍스트 누적
+                        full_transcript += chunk_text + "\n\n"
 
                         # 2. 해당 청크에 대한 요약 생성 (순차적 요약)
                         try:
@@ -195,8 +189,6 @@ def render_audio_transcription_panel():
                                 api_type=auto_api_type
                             )
                             full_summary += chunk_summary + "\n\n"
-
-"
                         except Exception as e:
                             full_summary += f"\n[요약 실패: {e}]\n"
 
