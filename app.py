@@ -31,6 +31,9 @@ def main():
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
     """, unsafe_allow_html=True)
 
+    # 공통 설정 (탭 위에 고정)
+    settings = ui_input.render_settings()
+
     # 탭 기반 UI - 4개 탭으로 분리
     tab1, tab2, tab3, tab4 = st.tabs([
         "📊 투자분석 보고서",
@@ -38,9 +41,6 @@ def main():
         "📈 IM/PPT 생성",
         "🎤 오디오 전사"
     ])
-
-    # 공통 설정
-    settings = ui_input.render_settings()
 
     with tab1:
         st.markdown("### 📄 투자분석 보고서 작성")
