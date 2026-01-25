@@ -136,7 +136,14 @@ def render_settings():
         with c4:
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
-    
+
+        # OCR 상태 표시
+        ocr_available, ocr_msg = utils.get_ocr_status()
+        if ocr_available:
+            st.info("🔍 PDF OCR: Gemini Vision 사용 (스캔 PDF 자동 인식)")
+        else:
+            st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
+
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
 
 def _on_template_change(template_key, struct_key, custom_input_key=None):

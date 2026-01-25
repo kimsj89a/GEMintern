@@ -10,26 +10,33 @@ def get_client(api_key):
 def extract_structure(api_key, structure_file):
     try:
         client = get_client(api_key)
-        file_text = utils.parse_uploaded_file(structure_file)
+        file_text = utils.parse_uploaded_file(structure_file, api_key=api_key)
         prompt = f"{prompts.LOGIC_PROMPTS['structure_extraction']}\n[파일 내용]\n{file_text[:15000]}"
         resp = client.models.generate_content(model="gemini-3-flash-preview", contents=prompt)
         return resp.text
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files, read_content=True):
+def parse_all_files(uploaded_files, read_content=True, api_key=None):
+    """파일 목록 파싱 (OCR 지원)
+
+    Args:
+        uploaded_files: 업로드된 파일 목록
+        read_content: 내용 읽기 여부
+        api_key: Google API 키 (PDF OCR용)
+    """
     all_text = ""
     file_list_str = ""
     if uploaded_files:
         for file in uploaded_files:
             file_list_str += f"- {file.name}\n"
             if read_content:
-                parsed = utils.parse_uploaded_file(file)
+                parsed = utils.parse_uploaded_file(file, api_key=api_key)
                 all_text += parsed
-    
+
     if not read_content:
         all_text = "(RFI 모드: 내용을 읽지 않음)"
-        
+
     return all_text, file_list_str
 
 def get_default_structure(template_key):
