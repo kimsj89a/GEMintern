@@ -2,6 +2,7 @@ import os
 import datetime
 from google import genai
 from google.genai import types
+<<<<<<< HEAD
 
 # --- RFI 전용 프롬프트 ---
 PROMPTS = {
@@ -47,6 +48,9 @@ PROMPTS = {
    (요청일자는 오늘 날짜 기준 +5 영업일)
 """
 }
+=======
+import prompts
+>>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
 
 def get_client(api_key):
     return genai.Client(api_key=api_key)
@@ -54,7 +58,7 @@ def get_client(api_key):
 def analyze_rfi_status(client, existing_rfi, file_index_str):
     """Step 1: Flash 모델로 인덱싱"""
     prompt = f"""
-    {PROMPTS['indexing']}
+    {prompts.RFI_PROMPTS['indexing']}
     
     [기존 요청 자료 목록(RFI)]
     {existing_rfi}
@@ -108,7 +112,7 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
     config = types.GenerateContentConfig(
         max_output_tokens=8192,
         temperature=0.2, 
-        system_instruction=PROMPTS['finalizing']
+        system_instruction=prompts.RFI_PROMPTS['finalizing']
     )
     
     response_stream = client.models.generate_content_stream(

@@ -7,20 +7,131 @@ from docx import Document
 from pptx import Presentation
 from openai import OpenAI
 
-def parse_uploaded_file(uploaded_file):
-    """파일 타입별 텍스트 추출 (전체 시트 지원 + 오류 방지)"""
+# Gemini Vision OCR 지원 (google-genai 패키지 필요)
+OCR_AVAILABLE = False
+OCR_ERROR_MSG = ""
+
+try:
+    from google import genai
+    from google.genai import types
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_ERROR_MSG = "google-genai 패키지가 설치되지 않았습니다."
+
+
+def get_ocr_status():
+    """OCR 상태 확인 (UI에서 사용)"""
+    if OCR_AVAILABLE:
+        return True, "Gemini Vision OCR 사용 가능 (API 키 필요)"
+    return False, OCR_ERROR_MSG
+
+
+def extract_pdf_with_gemini_ocr(doc, api_key, ocr_threshold=50):
+    """
+    PDF에서 텍스트 추출 (Gemini Vision OCR 폴백)
+
+    Args:
+        doc: fitz.Document 객체
+        api_key: Google API 키
+        ocr_threshold: 페이지당 이 글자수 미만이면 OCR 실행
+
+    Returns:
+        추출된 텍스트
+    """
+    text_content = ""
+    ocr_used = False
+    ocr_pages = []
+
+    # 1단계: 일반 텍스트 추출 및 OCR 필요 페이지 수집
+    for page_num, page in enumerate(doc):
+        page_text = page.get_text().strip()
+
+        if len(page_text) < ocr_threshold:
+            # OCR이 필요한 페이지 - 이미지로 변환
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))  # 1.5x 해상도
+            img_bytes = pix.tobytes("png")
+            ocr_pages.append((page_num, img_bytes, page_text))
+        else:
+            text_content += f"[Page {page_num + 1}]\n{page_text}\n\n"
+
+    # 2단계: OCR 필요 페이지가 있고 API 키가 있으면 Gemini OCR 실행
+    if ocr_pages and api_key and OCR_AVAILABLE:
+        try:
+            client = genai.Client(api_key=api_key)
+
+            for page_num, img_bytes, original_text in ocr_pages:
+                try:
+                    # Gemini Vision API 호출
+                    response = client.models.generate_content(
+                        model="gemini-2.0-flash-exp",
+                        contents=[
+                            types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                            "이 이미지에서 모든 텍스트를 추출해주세요. 원본 레이아웃을 최대한 유지하고, 텍스트만 반환해주세요. 추가 설명 없이 텍스트만 출력하세요."
+                        ],
+                        config=types.GenerateContentConfig(
+                            max_output_tokens=4096,
+                            temperature=0.1
+                        )
+                    )
+
+                    ocr_text = response.text.strip() if response.text else ""
+
+                    if len(ocr_text) > len(original_text):
+                        text_content += f"[Page {page_num + 1} - OCR]\n{ocr_text}\n\n"
+                        ocr_used = True
+                    else:
+                        text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
+
+                except Exception:
+                    # 개별 페이지 OCR 실패 시 원본 유지
+                    text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
+
+        except Exception:
+            # API 연결 실패 시 원본 텍스트로 대체
+            for page_num, _, original_text in ocr_pages:
+                text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
+    else:
+        # OCR 불가능 시 원본 텍스트 사용
+        for page_num, _, original_text in ocr_pages:
+            text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
+
+    # OCR 사용 여부 표시
+    if ocr_used:
+        text_content = "[Gemini Vision OCR 적용됨]\n\n" + text_content
+
+    return text_content
+
+
+# 레거시 호환용 (API 키 없이 호출 시)
+def extract_pdf_with_ocr(doc):
+    """레거시 호환 - API 키 없이 호출 시 일반 텍스트만 추출"""
+    text_content = ""
+    for page_num, page in enumerate(doc):
+        page_text = page.get_text().strip()
+        text_content += f"[Page {page_num + 1}]\n{page_text}\n\n"
+    return text_content
+
+def parse_uploaded_file(uploaded_file, api_key=None):
+    """파일 타입별 텍스트 추출 (전체 시트 지원 + OCR 지원)
+
+    Args:
+        uploaded_file: Streamlit 업로드 파일 객체
+        api_key: Google API 키 (PDF OCR용, 선택사항)
+    """
     if uploaded_file is None:
         return ""
-        
+
     file_type = uploaded_file.name.split('.')[-1].lower()
     text_content = ""
 
     try:
-        # [PDF] PyMuPDF
+        # [PDF] PyMuPDF + Gemini Vision OCR
         if file_type == 'pdf':
             with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-                for page in doc:
-                    text_content += page.get_text() + "\n"
+                if api_key:
+                    text_content = extract_pdf_with_gemini_ocr(doc, api_key)
+                else:
+                    text_content = extract_pdf_with_ocr(doc)
         
         # [Word] python-docx
         elif file_type in ['docx', 'doc']:
@@ -116,18 +227,34 @@ def create_docx(markdown_text):
     doc = Document()
     lines = markdown_text.split('\n')
     i = 0
+
+    # 로마 숫자 헤더 패턴 (I., II., III., IV., V., VI., VII., VIII.)
+    roman_header_pattern = re.compile(r'^(I{1,3}|IV|VI{0,3}|V|IX|X)\.\s+(.+)$')
+
     while i < len(lines):
         raw_line = lines[i]
         line = raw_line.strip()
-        
-        if line.startswith('# '):
-            doc.add_heading(line.replace('# ', ''), level=1)
+
+        # Markdown 헤더 처리 (#### 추가)
+        if line.startswith('##### '):
+            doc.add_heading(line.replace('##### ', ''), level=5)
+            i += 1
+        elif line.startswith('#### '):
+            doc.add_heading(line.replace('#### ', ''), level=4)
+            i += 1
+        elif line.startswith('### '):
+            doc.add_heading(line.replace('### ', ''), level=3)
             i += 1
         elif line.startswith('## '):
             doc.add_heading(line.replace('## ', ''), level=2)
             i += 1
-        elif line.startswith('### '):
-            doc.add_heading(line.replace('### ', ''), level=3)
+        elif line.startswith('# '):
+            doc.add_heading(line.replace('# ', ''), level=1)
+            i += 1
+        # 로마 숫자 헤더 처리 (I. Executive Summary 등)
+        elif roman_header_pattern.match(line):
+            match = roman_header_pattern.match(line)
+            doc.add_heading(line, level=1)
             i += 1
         elif line.startswith('|'):
             table_lines = []

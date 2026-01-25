@@ -136,8 +136,27 @@ def render_settings():
         with c4:
             st.write(""); st.write("")
             use_diagram = st.checkbox("🎨 도식화 생성", value=False)
-    
+
+        # OCR 상태 표시
+        ocr_available, ocr_msg = utils.get_ocr_status()
+        if ocr_available:
+            st.info("🔍 PDF OCR: Gemini Vision 사용 (스캔 PDF 자동 인식)")
+        else:
+            st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
+
     return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
+
+def _on_template_change(template_key, struct_key, custom_input_key=None):
+    """템플릿 변경 시 구조 텍스트 강제 업데이트 콜백"""
+    if template_key not in st.session_state: return
+    
+    selected_template = st.session_state[template_key]
+    new_text = core_logic.get_default_structure(selected_template)
+    
+    if selected_template == 'custom' and custom_input_key and custom_input_key in st.session_state:
+        new_text = st.session_state[custom_input_key]
+        
+    st.session_state[struct_key] = new_text
 
 def render_investment_report_panel(container, settings):
     """투자분석 보고서 입력 패널 (약식, 투자심사, 직접입력)"""
@@ -152,7 +171,9 @@ def render_investment_report_panel(container, settings):
             "1. 문서 구조 / 템플릿 선택",
             list(template_options.keys()),
             format_func=lambda x: template_options[x],
-            key="report_template"
+            key="report_template",
+            on_change=_on_template_change,
+            args=("report_template", "report_struct_text", "report_structure_input")
         )
 
         # 2. 구조 추출 및 편집
@@ -184,6 +205,21 @@ def render_investment_report_panel(container, settings):
         st.markdown("##### 3. 대상 기업 및 맥락")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="report_context")
 
+        # 5. 생성 모드 선택 (투자심사보고서만 해당)
+        generation_mode = "single"
+        if template_option == 'investment':
+            st.markdown("##### 4. 생성 방식")
+            generation_mode = st.radio(
+                "생성 방식 선택",
+                ["chained", "single"],
+                format_func=lambda x: "📊 3단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
+                index=0,
+                horizontal=True,
+                help="분할 생성 시 Valuation, Risk 섹션이 더 상세하게 작성됩니다.",
+                label_visibility="collapsed",
+                key="report_gen_mode"
+            )
+
         st.markdown("---")
         generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="report_generate")
 
@@ -194,7 +230,8 @@ def render_investment_report_panel(container, settings):
             "rfi_file_list_input": "",
             "context_text": context_text,
             "rfi_existing": "",
-            "generate_btn": generate_btn
+            "generate_btn": generate_btn,
+            "generation_mode": generation_mode
         }
 
 def render_rfi_panel(container, settings):
@@ -244,7 +281,8 @@ def render_rfi_panel(container, settings):
             "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
             "rfi_existing": rfi_existing,
-            "generate_btn": generate_btn
+            "generate_btn": generate_btn,
+            "generation_mode": "single"
         }
 
 def render_im_ppt_panel(container, settings):
@@ -260,7 +298,9 @@ def render_im_ppt_panel(container, settings):
             "1. 문서 구조 / 템플릿 선택",
             list(template_options.keys()),
             format_func=lambda x: template_options[x],
-            key="im_template"
+            key="im_template",
+            on_change=_on_template_change,
+            args=("im_template", "im_struct_text", "im_structure_input")
         )
 
         # 2. 구조 추출 및 편집 (선택)
@@ -300,7 +340,8 @@ def render_im_ppt_panel(container, settings):
             "rfi_file_list_input": "",
             "context_text": context_text,
             "rfi_existing": "",
-            "generate_btn": generate_btn
+            "generate_btn": generate_btn,
+            "generation_mode": "single"
         }
 
 def render_input_panel(container, settings):
@@ -390,5 +431,6 @@ def _legacy_render_input_panel(container, settings):
             "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
             "rfi_existing": rfi_existing,
-            "generate_btn": generate_btn
+            "generate_btn": generate_btn,
+            "generation_mode": "single"
         }
