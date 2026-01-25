@@ -65,44 +65,6 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     if not sections:
         sections = [structure_text]
 
-<<<<<<< HEAD
-    for i, section_content in enumerate(sections):
-        section_title = section_content.split('\n')[0].replace('#', '').strip()
-        
-        # Determine System Instruction based on Mode
-        if template_opt == 'presentation':
-            base_system = PROMPTS['ppt_system']
-            task_instruction = f"""
-            [현재 작업]
-            전체 발표자료 중 **"{section_title}"** 파트만 작성하세요.
-            입력된 [슬라이드 구조]의 하위 목차(##)를 슬라이드 제목으로 삼아 내용을 구성하세요.
-            """
-        elif template_opt == 'custom':
-            base_system = PROMPTS['custom_system']
-            task_instruction = f"""
-            [현재 작업]
-            전체 문서 중 **"{section_title}"** 챕터만 작성하세요.
-            제공된 [문서 구조]를 토씨 하나 틀리지 말고 그대로 유지하며 내용을 채우십시오.
-            """
-        else:
-            # Standard Investment Report / Simple Review / IM / Management
-            base_system = PROMPTS['report_system']
-            
-            # Special handling for Simple Review (Summary focus)
-            if template_opt == 'simple_review':
-                base_system += "\n**중요: 이 보고서는 5페이지 내외의 '요약' 보고서입니다. 장황한 나열보다는 핵심 요약과 근거 위주로 명료하게 서술하세요.**"
-            
-            if inputs['use_diagram']:
-                base_system += "\n**도식화**: 설명 중 시각화가 필요한 프로세스나 구조가 있다면 **{{DIAGRAM: 설명}}** 태그를 삽입하세요."
-                
-            task_instruction = f"""
-            [현재 작업]
-            전체 보고서 중 **"{section_title}"** 챕터만 작성하세요.
-            입력된 [문서 구조]의 하위 목차를 빠짐없이 다루세요.
-            """
-
-        # Construct Prompt
-=======
     # [PPT Mode]
     if template_opt == 'presentation':
         system_instruction = prompts.LOGIC_PROMPTS['ppt_system']
@@ -121,25 +83,15 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     # [Custom Mode] - 서식 복제
     elif template_opt == 'custom':
         system_instruction = prompts.LOGIC_PROMPTS['custom_system']
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
         main_prompt = f"""
         [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-        
-        [작성할 챕터 구조]
-        {section_content}
-        
-        [전체 맥락]
-        {inputs['context_text']}
-        
-        [분석 데이터]
-        첨부된 파일 내용을 바탕으로 작성하세요. 없는 내용은 지어내지 말고, 추론이 필요하면 [추후 실사 필요]라고 명시하세요.
-        {file_context[:50000]}
-<<<<<<< HEAD
-=======
+        [문서 구조] {inputs['structure_text']}
+        [맥락] {inputs['context_text']}
+        [데이터] {file_context[:50000]}
         """
         config = types.GenerateContentConfig(
             max_output_tokens=65536,
-            temperature=0.5, # 구조 준수를 위해 약간 낮춤
+            temperature=0.5,
             system_instruction=system_instruction
         )
 
@@ -147,7 +99,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     else:
         system_instruction = prompts.LOGIC_PROMPTS['report_system']
         if template_opt == 'simple_review':
-             system_instruction += "\n**중요: 10페이지 이내로 핵심만 요약하세요.**"
+            system_instruction += "\n**중요: 10페이지 이내로 핵심만 요약하세요.**"
         if inputs['use_diagram']:
             system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
 
@@ -158,38 +110,21 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         [맥락] {inputs['context_text']}
         [데이터] {file_context[:50000]}
         """
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
-        
-        {task_instruction}
-        """
-
         config = types.GenerateContentConfig(
-            max_output_tokens=8192,
-<<<<<<< HEAD
-            temperature=0.7,
-            system_instruction=base_system
-=======
+            max_output_tokens=65536,
             temperature=0.3,
             system_instruction=system_instruction
->>>>>>> b5499fc08ff2379c3bc3f5f3545d80550de1327c
         )
 
-        # Generate Stream for this section
-        response_stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=main_prompt,
-            config=config
-        )
-        
-        for chunk in response_stream:
-            yield chunk
-            
-        # Add separator between sections
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text="\n\n")])
-            )]
-        )
+    # Generate Stream
+    response_stream = client.models.generate_content_stream(
+        model=model_name,
+        contents=main_prompt,
+        config=config
+    )
+
+    for chunk in response_stream:
+        yield chunk
 
 def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, file_context):
     """3단계 Chained Prompting으로 투자심사보고서 생성 (품질 우선)"""
