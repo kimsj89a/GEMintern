@@ -97,7 +97,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
     # [Standard Report Mode]
     else:
-        system_instruction = prompts.LOGIC_PROMPTS['report_system']
+        system_instruction = prompts.LOGIC_PROMPTS['report_system_base']
         if template_opt == 'simple_review':
             system_instruction += "\n**중요: 10페이지 이내로 핵심만 요약하세요.**"
         if inputs['use_diagram']:
