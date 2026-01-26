@@ -125,10 +125,10 @@ def render_settings():
         c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         with c1:
             api_key = st.text_input("Google API Key", value=cached_key, type="password", placeholder="Enter Key...")
-            save_to_url = st.checkbox("�� 브라우저(URL)에 키 저장", value=bool(cached_key))
+            save_to_url = st.checkbox("🔐 브라우저(URL)에 키 저장", value=bool(cached_key))
             if save_to_url and api_key: st.query_params["api_key"] = api_key
             elif not save_to_url and "api_key" in st.query_params: del st.query_params["api_key"]
-            
+
         with c2:
             model_name = st.selectbox("사용할 모델", ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.0-flash-exp", "gemini-1.5-pro"])
         with c3:
@@ -139,12 +139,82 @@ def render_settings():
 
         # OCR 상태 표시
         ocr_available, ocr_msg = utils.get_ocr_status()
-        if ocr_available:
-            st.info("🔍 PDF OCR: Gemini Vision 사용 (스캔 PDF 자동 인식)")
-        else:
-            st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
+        docai_available, docai_msg = utils.get_docai_status()
 
-    return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
+        # OCR 방식 선택
+        ocr_options = ["Gemini Vision (기본)", "Google Document AI"]
+        if not docai_available:
+            st.caption(f"ℹ️ Document AI: {docai_msg}")
+
+        ocr_method = st.selectbox("🔍 OCR 방식 선택", ocr_options, key="ocr_method_select")
+
+        # Document AI 설정 (선택 시에만 표시)
+        docai_settings = {
+            "enabled": False,
+            "project_id": "",
+            "location": "us",
+            "processor_id": "",
+            "credentials_json": None
+        }
+
+        if "Document AI" in ocr_method:
+            with st.expander("📄 Document AI 설정", expanded=True):
+                st.markdown("""
+                <div style="background: #f0f9ff; padding: 10px; border-radius: 5px; margin-bottom: 10px; font-size: 12px;">
+                <b>📌 Document AI 설정 방법:</b><br/>
+                1. <a href="https://console.cloud.google.com/ai/document-ai" target="_blank">GCP Console</a>에서 Document AI 프로세서 생성<br/>
+                2. 서비스 계정 JSON 키 다운로드<br/>
+                3. 아래에 프로젝트 정보 입력
+                </div>
+                """, unsafe_allow_html=True)
+
+                dc1, dc2 = st.columns(2)
+                with dc1:
+                    docai_project_id = st.text_input("GCP 프로젝트 ID", placeholder="my-project-id", key="docai_project")
+                    docai_location = st.selectbox("프로세서 위치", ["us", "eu"], key="docai_location")
+                with dc2:
+                    docai_processor_id = st.text_input("프로세서 ID", placeholder="abc123def456", key="docai_processor")
+
+                # 서비스 계정 JSON 업로드
+                docai_credentials_file = st.file_uploader(
+                    "서비스 계정 JSON 파일 업로드",
+                    type=['json'],
+                    key="docai_credentials",
+                    help="GCP 서비스 계정 키 파일 (선택사항 - 없으면 ADC 사용)"
+                )
+
+                docai_credentials_json = None
+                if docai_credentials_file:
+                    docai_credentials_json = docai_credentials_file.read().decode('utf-8')
+                    docai_credentials_file.seek(0)
+                    st.success("✅ 서비스 계정 로드됨")
+
+                # 설정 완료 여부 확인
+                if docai_project_id and docai_processor_id:
+                    docai_settings = {
+                        "enabled": True,
+                        "project_id": docai_project_id,
+                        "location": docai_location,
+                        "processor_id": docai_processor_id,
+                        "credentials_json": docai_credentials_json
+                    }
+                    st.success("✅ Document AI 설정 완료")
+                else:
+                    st.warning("⚠️ 프로젝트 ID와 프로세서 ID를 입력하세요")
+        else:
+            # Gemini Vision OCR 상태 표시
+            if ocr_available:
+                st.info("🔍 PDF OCR: Gemini Vision 사용 (스캔 PDF 자동 인식)")
+            else:
+                st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
+
+    return {
+        "api_key": api_key,
+        "model_name": model_name,
+        "thinking_level": "High" if "High" in thinking_level else "Low",
+        "use_diagram": use_diagram,
+        "docai_settings": docai_settings
+    }
 
 def _on_template_change(template_key, struct_key, custom_input_key=None):
     """템플릿 변경 시 구조 텍스트 강제 업데이트 콜백"""
@@ -186,7 +256,11 @@ def render_investment_report_panel(container, settings):
                 st.error("API Key 필요")
             else:
                 with st.spinner("서식 분석 중..."):
-                    ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                    ext = core_logic.extract_structure(
+                        settings["api_key"],
+                        uploaded_structure_file,
+                        docai_settings=settings.get('docai_settings')
+                    )
                     if ext:
                         st.session_state['report_structure_input'] = ext
                         st.rerun()
@@ -311,7 +385,11 @@ def render_im_ppt_panel(container, settings):
                 st.error("API Key 필요")
             else:
                 with st.spinner("서식 분석 중..."):
-                    ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                    ext = core_logic.extract_structure(
+                        settings["api_key"],
+                        uploaded_structure_file,
+                        docai_settings=settings.get('docai_settings')
+                    )
                     if ext:
                         st.session_state['im_structure_input'] = ext
                         st.rerun()

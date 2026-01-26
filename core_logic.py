@@ -7,25 +7,58 @@ import prompts
 def get_client(api_key):
     return genai.Client(api_key=api_key)
 
-def extract_structure(api_key, structure_file):
+def extract_structure(api_key, structure_file, docai_settings=None):
     try:
         client = get_client(api_key)
-        file_text = utils.parse_uploaded_file(structure_file, api_key=api_key)
+
+        # Document AI 설정이 있고 활성화된 경우
+        if docai_settings and docai_settings.get('enabled'):
+            file_type = structure_file.name.split('.')[-1].lower()
+            if file_type in ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'tif', 'webp']:
+                file_text = utils.process_file_with_document_ai(
+                    structure_file,
+                    docai_settings['project_id'],
+                    docai_settings['location'],
+                    docai_settings['processor_id'],
+                    docai_settings.get('credentials_json')
+                )
+            else:
+                file_text = utils.parse_uploaded_file(structure_file, api_key=api_key)
+        else:
+            file_text = utils.parse_uploaded_file(structure_file, api_key=api_key)
+
         prompt = f"{prompts.LOGIC_PROMPTS['structure_extraction']}\n[파일 내용]\n{file_text[:15000]}"
         resp = client.models.generate_content(model="gemini-3-flash-preview", contents=prompt)
         return resp.text
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files, read_content=True, api_key=None):
-    """파일 목록 파싱 (OCR 지원)"""
+def parse_all_files(uploaded_files, read_content=True, api_key=None, docai_settings=None):
+    """파일 목록 파싱 (OCR 지원 - Gemini Vision 또는 Document AI)"""
     all_text = ""
     file_list_str = ""
     if uploaded_files:
         for file in uploaded_files:
             file_list_str += f"- {file.name}\n"
             if read_content:
-                parsed = utils.parse_uploaded_file(file, api_key=api_key)
+                # Document AI 설정이 있고 활성화된 경우
+                if docai_settings and docai_settings.get('enabled'):
+                    file_type = file.name.split('.')[-1].lower()
+                    # Document AI가 지원하는 파일 형식인 경우
+                    if file_type in ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'tif', 'webp']:
+                        parsed = utils.process_file_with_document_ai(
+                            file,
+                            docai_settings['project_id'],
+                            docai_settings['location'],
+                            docai_settings['processor_id'],
+                            docai_settings.get('credentials_json')
+                        )
+                    else:
+                        # Document AI가 지원하지 않는 형식은 기존 방식으로 처리
+                        parsed = utils.parse_uploaded_file(file, api_key=api_key)
+                else:
+                    # 기존 Gemini Vision OCR 방식
+                    parsed = utils.parse_uploaded_file(file, api_key=api_key)
                 all_text += parsed
 
     if not read_content:
