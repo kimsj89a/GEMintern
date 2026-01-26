@@ -1,6 +1,7 @@
 import io
 import re
 import os
+import tempfile
 import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
@@ -18,6 +19,13 @@ try:
 except ImportError:
     OCR_ERROR_MSG = "google-genai 패키지가 설치되지 않았습니다."
 
+# MarkItDown 지원 확인
+MARKITDOWN_AVAILABLE = False
+try:
+    from markitdown import MarkItDown
+    MARKITDOWN_AVAILABLE = True
+except ImportError:
+    pass
 
 def get_ocr_status():
     """OCR 상태 확인 (UI에서 사용)"""
@@ -120,6 +128,28 @@ def parse_uploaded_file(uploaded_file, api_key=None):
     """
     if uploaded_file is None:
         return ""
+
+    # [MarkItDown] 우선 시도
+    if MARKITDOWN_AVAILABLE:
+        try:
+            suffix = os.path.splitext(uploaded_file.name)[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                uploaded_file.seek(0)
+                tmp.write(uploaded_file.read())
+                tmp_path = tmp.name
+            uploaded_file.seek(0)
+            
+            try:
+                md = MarkItDown()
+                result = md.convert(tmp_path)
+                if result and result.text_content:
+                    return f"### [파일명: {uploaded_file.name} (MarkItDown)]\n{result.text_content}\n\n"
+            finally:
+                if os.path.exists(tmp_path):
+                    try: os.unlink(tmp_path)
+                    except: pass
+        except Exception:
+            uploaded_file.seek(0)
 
     file_type = uploaded_file.name.split('.')[-1].lower()
     text_content = ""

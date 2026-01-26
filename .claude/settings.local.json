@@ -6,7 +6,8 @@
       "Bash(git push:*)",
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(copy:*)"
     ]
   }
 }
