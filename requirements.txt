@@ -11,4 +11,3 @@ pymupdf
 python-calamine
 tabulate
 openai
-google-cloud-documentai
