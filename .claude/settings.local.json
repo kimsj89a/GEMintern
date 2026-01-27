@@ -10,7 +10,8 @@
       "Bash(copy:*)",
       "Bash(dir /b \"c:\\\\Users\\\\kimsj\\\\GEMintern\\\\GEMintern\\\\*.py\")",
       "Bash(ls:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(xcopy:*)"
     ]
   }
 }

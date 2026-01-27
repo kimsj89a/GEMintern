@@ -96,7 +96,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     if template_opt == 'presentation':
         temperature = 0.7
     elif template_opt == 'custom':
-        temperature = 0.5
+        temperature = 0.7  # 자유 구조화 모드 - 창의적 구조화를 위해 높은 temperature
     else:
         temperature = 0.3
 

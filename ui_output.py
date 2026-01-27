@@ -11,6 +11,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
     k_copy = f"{key_prefix}_show_copy_code"
     k_text = f"{key_prefix}_generated_text"
     k_mode = f"{key_prefix}_active_mode"
+    k_ocr = f"{key_prefix}_ocr_text"  # OCR 추출 텍스트 저장용
 
     with container:
         c_head1, c_head2 = st.columns([1, 1])
@@ -90,7 +91,9 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 api_key=settings['api_key'],
                                 docai_config=docai_config
                             )
-                        
+                            # OCR 텍스트 저장 (다운로드용)
+                            st.session_state[k_ocr] = file_context
+
                         st.write(f"🧠 2. AI가 [{st.session_state[k_mode]}] 페르소나로 분석을 시작합니다...")
 
                         # 생성 모드에 따라 다른 함수 호출
@@ -195,16 +198,22 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
 
             # Download
             st.write("")
-            col_d1, col_d2 = st.columns(2)
+            col_d1, col_d2, col_d3 = st.columns(3)
             current_mode = st.session_state.get(k_mode, inputs['template_option'])
             fname = utils.generate_filename(inputs['uploaded_files'], current_mode)
-            
+
             with col_d1:
                 if current_mode == 'rfi':
                     st.download_button("📉 RFI 엑셀 저장", utils.create_excel(st.session_state[k_text]), fname.replace('.docx','.xlsx'), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"{key_prefix}_dl_rfi")
                 else:
-                    st.download_button(f"📄 Word 저장 ({fname})", utils.create_docx(st.session_state[k_text]), fname, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key=f"{key_prefix}_dl_word")
-            
+                    st.download_button(f"📄 Word 저장", utils.create_docx(st.session_state[k_text]), fname, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key=f"{key_prefix}_dl_word")
+
             with col_d2:
                 btn_type = "primary" if current_mode == 'presentation' else "secondary"
-                st.download_button(f"📊 PPT 저장 ({fname.replace('.docx','.pptx')})", utils_ppt.create_ppt(st.session_state[k_text]), fname.replace('.docx','.pptx'), "application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True, type=btn_type, key=f"{key_prefix}_dl_ppt")
+                st.download_button(f"📊 PPT 저장", utils_ppt.create_ppt(st.session_state[k_text]), fname.replace('.docx','.pptx'), "application/vnd.openxmlformats-officedocument.presentationml.presentation", use_container_width=True, type=btn_type, key=f"{key_prefix}_dl_ppt")
+
+            with col_d3:
+                # OCR 텍스트 다운로드 (Document AI 사용 시)
+                ocr_text = st.session_state.get(k_ocr, "")
+                if ocr_text:
+                    st.download_button("📝 OCR 텍스트 저장", ocr_text, fname.replace('.docx', '_ocr.txt'), "text/plain", use_container_width=True, key=f"{key_prefix}_dl_ocr")

@@ -17,7 +17,7 @@ TEMPLATES = {
     'im': '4. IM (투자제안서)',
     'management': '5. 사후관리보고서',
     'presentation': '6. 투자심의 발표자료 (PPT)',
-    'custom': '7. 직접 입력 (서식 복제 가능)'
+    'custom': '7. 자유 구조화 (요약보고서)'
 }
 
 # [HTML/JS] 브라우저 기반 폴더 스캐너 (서버 업로드 X)
@@ -153,33 +153,62 @@ def render_settings():
 
         # Document AI 설정 (고급)
         st.markdown("---")
-        use_docai = st.checkbox("🔬 Document AI OCR 사용 (고품질 PDF/이미지 OCR)", value=False)
+
+        # .env에서 Document AI 기본값 로드
+        env_docai_project = os.getenv("GCP_PROJECT_ID", "")
+        env_docai_location = os.getenv("DOCAI_LOCATION", "us")
+        env_docai_processor = os.getenv("DOCAI_PROCESSOR_ID", "")
+        env_docai_creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+        # .env 설정이 있으면 기본 활성화
+        has_env_docai = bool(env_docai_project and env_docai_processor and env_docai_creds_path)
+        use_docai = st.checkbox("🔬 Document AI OCR 사용 (고품질 PDF/이미지 OCR)", value=has_env_docai)
 
         docai_config = None
         if use_docai:
-            dc1, dc2 = st.columns(2)
-            with dc1:
-                docai_project_id = st.text_input("GCP 프로젝트 ID", key="docai_project")
-                docai_location = st.selectbox("위치", ["us", "eu"], key="docai_location")
-            with dc2:
-                docai_processor_id = st.text_input("프로세서 ID", key="docai_processor")
-                docai_creds_file = st.file_uploader("서비스 계정 JSON", type=['json'], key="docai_creds")
+            # .env에서 credentials JSON 자동 로드
+            env_creds_json = None
+            if env_docai_creds_path:
+                creds_full_path = env_docai_creds_path
+                if not os.path.isabs(creds_full_path):
+                    creds_full_path = os.path.join(os.path.dirname(__file__), creds_full_path)
+                if os.path.exists(creds_full_path):
+                    with open(creds_full_path, 'r') as f:
+                        env_creds_json = f.read()
 
-            docai_creds_json = None
-            if docai_creds_file:
-                docai_creds_json = docai_creds_file.read().decode('utf-8')
-                docai_creds_file.seek(0)
-
-            if docai_project_id and docai_processor_id and docai_creds_json:
+            if has_env_docai and env_creds_json:
+                st.success(f"✅ .env에서 Document AI 설정 로드됨 (프로젝트: {env_docai_project})")
                 docai_config = {
-                    'project_id': docai_project_id,
-                    'location': docai_location,
-                    'processor_id': docai_processor_id,
-                    'credentials_json': docai_creds_json
+                    'project_id': env_docai_project,
+                    'location': env_docai_location,
+                    'processor_id': env_docai_processor,
+                    'credentials_json': env_creds_json
                 }
-                st.success("✅ Document AI 설정 완료")
-            elif use_docai:
-                st.warning("⚠️ Document AI 사용을 위해 모든 필드를 입력해주세요")
+            else:
+                dc1, dc2 = st.columns(2)
+                with dc1:
+                    docai_project_id = st.text_input("GCP 프로젝트 ID", value=env_docai_project, key="docai_project")
+                    loc_idx = 0 if env_docai_location == "us" else 1
+                    docai_location = st.selectbox("위치", ["us", "eu"], index=loc_idx, key="docai_location")
+                with dc2:
+                    docai_processor_id = st.text_input("프로세서 ID", value=env_docai_processor, key="docai_processor")
+                    docai_creds_file = st.file_uploader("서비스 계정 JSON", type=['json'], key="docai_creds")
+
+                docai_creds_json = env_creds_json
+                if docai_creds_file:
+                    docai_creds_json = docai_creds_file.read().decode('utf-8')
+                    docai_creds_file.seek(0)
+
+                if docai_project_id and docai_processor_id and docai_creds_json:
+                    docai_config = {
+                        'project_id': docai_project_id,
+                        'location': docai_location,
+                        'processor_id': docai_processor_id,
+                        'credentials_json': docai_creds_json
+                    }
+                    st.success("✅ Document AI 설정 완료")
+                else:
+                    st.warning("⚠️ Document AI 사용을 위해 모든 필드를 입력해주세요")
 
     return {
         "api_key": api_key,
