@@ -1,4 +1,4 @@
-import io
+﻿import io
 import re
 import os
 import tempfile
@@ -9,7 +9,7 @@ from docx.shared import Inches
 from pptx import Presentation
 from openai import OpenAI
 
-# Gemini Vision OCR 지원 (google-genai 패키지 필요)
+# Gemini Vision OCR 吏??(google-genai ?⑦궎吏 ?꾩슂)
 OCR_AVAILABLE = False
 OCR_ERROR_MSG = ""
 
@@ -18,9 +18,9 @@ try:
     from google.genai import types
     OCR_AVAILABLE = True
 except ImportError:
-    OCR_ERROR_MSG = "google-genai 패키지가 설치되지 않았습니다."
+    OCR_ERROR_MSG = "google-genai ?⑦궎吏媛 ?ㅼ튂?섏? ?딆븯?듬땲??"
 
-# MarkItDown 지원 확인
+# MarkItDown 吏???뺤씤
 MARKITDOWN_AVAILABLE = False
 try:
     from markitdown import MarkItDown
@@ -28,7 +28,7 @@ try:
 except ImportError:
     pass
 
-# Document AI OCR 지원 확인
+# Document AI OCR 吏???뺤씤
 DOCAI_AVAILABLE = False
 try:
     import utils_docai
@@ -37,53 +37,53 @@ except ImportError:
     pass
 
 def get_ocr_status():
-    """OCR 상태 확인 (UI에서 사용)"""
+    """OCR ?곹깭 ?뺤씤 (UI?먯꽌 ?ъ슜)"""
     if OCR_AVAILABLE:
-        return True, "Gemini Vision OCR 사용 가능 (API 키 필요)"
+        return True, "Gemini Vision OCR ?ъ슜 媛??(API ???꾩슂)"
     return False, OCR_ERROR_MSG
 
 
 def extract_pdf_with_gemini_ocr(doc, api_key, ocr_threshold=50):
     """
-    PDF에서 텍스트 추출 (Gemini Vision OCR 폴백)
+    PDF?먯꽌 ?띿뒪??異붿텧 (Gemini Vision OCR ?대갚)
 
     Args:
-        doc: fitz.Document 객체
-        api_key: Google API 키
-        ocr_threshold: 페이지당 이 글자수 미만이면 OCR 실행
+        doc: fitz.Document 媛앹껜
+        api_key: Google API ??
+        ocr_threshold: ?섏씠吏????湲?먯닔 誘몃쭔?대㈃ OCR ?ㅽ뻾
 
     Returns:
-        추출된 텍스트
+        異붿텧???띿뒪??
     """
     text_content = ""
     ocr_used = False
     ocr_pages = []
 
-    # 1단계: 일반 텍스트 추출 및 OCR 필요 페이지 수집
+    # 1?④퀎: ?쇰컲 ?띿뒪??異붿텧 諛?OCR ?꾩슂 ?섏씠吏 ?섏쭛
     for page_num, page in enumerate(doc):
         page_text = page.get_text().strip()
 
         if len(page_text) < ocr_threshold:
-            # OCR이 필요한 페이지 - 이미지로 변환
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))  # 1.5x 해상도
+            # OCR???꾩슂???섏씠吏 - ?대?吏濡?蹂??
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))  # 1.5x ?댁긽??
             img_bytes = pix.tobytes("png")
             ocr_pages.append((page_num, img_bytes, page_text))
         else:
             text_content += f"[Page {page_num + 1}]\n{page_text}\n\n"
 
-    # 2단계: OCR 필요 페이지가 있고 API 키가 있으면 Gemini OCR 실행
+    # 2?④퀎: OCR ?꾩슂 ?섏씠吏媛 ?덇퀬 API ?ㅺ? ?덉쑝硫?Gemini OCR ?ㅽ뻾
     if ocr_pages and api_key and OCR_AVAILABLE:
         try:
             client = genai.Client(api_key=api_key)
 
             for page_num, img_bytes, original_text in ocr_pages:
                 try:
-                    # Gemini Vision API 호출
+                    # Gemini Vision API ?몄텧
                     response = client.models.generate_content(
                         model="gemini-2.0-flash-exp",
                         contents=[
                             types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
-                            "이 이미지에서 모든 텍스트를 추출해주세요. 원본 레이아웃을 최대한 유지하고, 텍스트만 반환해주세요. 추가 설명 없이 텍스트만 출력하세요."
+                            "???대?吏?먯꽌 紐⑤뱺 ?띿뒪?몃? 異붿텧?댁＜?몄슂. ?먮낯 ?덉씠?꾩썐??理쒕????좎??섍퀬, ?띿뒪?몃쭔 諛섑솚?댁＜?몄슂. 異붽? ?ㅻ챸 ?놁씠 ?띿뒪?몃쭔 異쒕젰?섏꽭??"
                         ],
                         config=types.GenerateContentConfig(
                             max_output_tokens=4096,
@@ -100,52 +100,104 @@ def extract_pdf_with_gemini_ocr(doc, api_key, ocr_threshold=50):
                         text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
 
                 except Exception:
-                    # 개별 페이지 OCR 실패 시 원본 유지
+                    # 媛쒕퀎 ?섏씠吏 OCR ?ㅽ뙣 ???먮낯 ?좎?
                     text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
 
         except Exception:
-            # API 연결 실패 시 원본 텍스트로 대체
+            # API ?곌껐 ?ㅽ뙣 ???먮낯 ?띿뒪?몃줈 ?泥?
             for page_num, _, original_text in ocr_pages:
                 text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
     else:
-        # OCR 불가능 시 원본 텍스트 사용
+        # OCR 遺덇??????먮낯 ?띿뒪???ъ슜
         for page_num, _, original_text in ocr_pages:
             text_content += f"[Page {page_num + 1}]\n{original_text}\n\n"
 
-    # OCR 사용 여부 표시
+    # OCR ?ъ슜 ?щ? ?쒖떆
     if ocr_used:
-        text_content = "[Gemini Vision OCR 적용됨]\n\n" + text_content
+        text_content = "[Gemini Vision OCR ?곸슜??\n\n" + text_content
 
     return text_content
 
 
-# 레거시 호환용 (API 키 없이 호출 시)
+# ?덇굅???명솚??(API ???놁씠 ?몄텧 ??
 def extract_pdf_with_ocr(doc):
-    """레거시 호환 - API 키 없이 호출 시 일반 텍스트만 추출"""
+    """?덇굅???명솚 - API ???놁씠 ?몄텧 ???쇰컲 ?띿뒪?몃쭔 異붿텧"""
     text_content = ""
     for page_num, page in enumerate(doc):
         page_text = page.get_text().strip()
         text_content += f"[Page {page_num + 1}]\n{page_text}\n\n"
     return text_content
 
-def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
-    """파일 타입별 텍스트 추출 (전체 시트 지원 + OCR 지원)
+def _docx_to_ppt_markdown(doc: Document, filename: str) -> str:
+    """
+    Convert a Word document into PPT-friendly Markdown.
+
+    Mapping:
+    - Heading 1 -> section cover (#)
+    - Heading 2 -> slide title (##)
+    - Heading 3+ -> emphasized line inside a slide (###)
+    - Normal paragraphs -> bullets (-)
+    """
+    title = os.path.splitext(filename)[0]
+    lines = [f"# {title}"]
+
+    def has_slide_title() -> bool:
+        return any(line.startswith("## ") for line in lines)
+
+    for para in doc.paragraphs:
+        text = (para.text or "").strip()
+        if not text:
+            continue
+
+        style_name = ""
+        try:
+            style_name = (para.style.name or "").lower()
+        except Exception:
+            style_name = ""
+
+        if style_name.startswith("heading"):
+            level = 2
+            match = re.search(r"heading\s*(\d+)", style_name)
+            if match:
+                try:
+                    level = int(match.group(1))
+                except Exception:
+                    level = 2
+
+            if level <= 1:
+                lines.append(f"# {text}")
+            elif level == 2:
+                lines.append(f"## {text}")
+            else:
+                lines.append(f"### {text}")
+            continue
+
+        if not has_slide_title():
+            lines.append("## Overview")
+
+        lines.append(f"- {text}")
+
+    return "\n".join(lines).strip() + "\n\n"
+
+
+def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template_option=None):
+    """?뚯씪 ??낅퀎 ?띿뒪??異붿텧 (?꾩껜 ?쒗듃 吏??+ OCR 吏??
 
     Args:
-        uploaded_file: Streamlit 업로드 파일 객체
-        api_key: Google API 키 (PDF OCR용, 선택사항)
-        docai_config: Document AI 설정 dict (선택사항)
-            - project_id: GCP 프로젝트 ID
-            - location: 위치 (us/eu)
-            - processor_id: 프로세서 ID
-            - credentials_json: 서비스 계정 JSON 문자열
+        uploaded_file: Streamlit ?낅줈???뚯씪 媛앹껜
+        api_key: Google API ??(PDF OCR?? ?좏깮?ы빆)
+        docai_config: Document AI ?ㅼ젙 dict (?좏깮?ы빆)
+            - project_id: GCP ?꾨줈?앺듃 ID
+            - location: ?꾩튂 (us/eu)
+            - processor_id: ?꾨줈?몄꽌 ID
+            - credentials_json: ?쒕퉬??怨꾩젙 JSON 臾몄옄??
     """
     if uploaded_file is None:
         return ""
 
     file_type = uploaded_file.name.split('.')[-1].lower()
 
-    # [Document AI OCR] PDF/이미지 우선 처리
+    # [Document AI OCR] PDF/?대?吏 ?곗꽑 泥섎━
     if DOCAI_AVAILABLE and docai_config and file_type in utils_docai.get_supported_extensions():
         try:
             uploaded_file.seek(0)
@@ -163,13 +215,14 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
 
             uploaded_file.seek(0)
             if ocr_result and ocr_result.get('text'):
-                return f"### [파일명: {uploaded_file.name} (Document AI OCR)]\n{ocr_result['text']}\n\n"
+                return f"### [?뚯씪紐? {uploaded_file.name} (Document AI OCR)]\n{ocr_result['text']}\n\n"
         except Exception as e:
             uploaded_file.seek(0)
-            # Document AI 실패 시 다음 방법으로 진행
+            # Document AI ?ㅽ뙣 ???ㅼ쓬 諛⑸쾿?쇰줈 吏꾪뻾
 
     # [MarkItDown] 우선 시도
-    if MARKITDOWN_AVAILABLE:
+    # PPT 모드에서 Word는 별도 변환 로직을 사용한다.
+    if MARKITDOWN_AVAILABLE and not (template_option == "presentation" and file_type in ["docx", "doc"]):
         try:
             suffix = os.path.splitext(uploaded_file.name)[1]
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -182,7 +235,7 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
                 md = MarkItDown()
                 result = md.convert(tmp_path)
                 if result and result.text_content:
-                    return f"### [파일명: {uploaded_file.name} (MarkItDown)]\n{result.text_content}\n\n"
+                    return f"### [?뚯씪紐? {uploaded_file.name} (MarkItDown)]\n{result.text_content}\n\n"
             finally:
                 if os.path.exists(tmp_path):
                     try: os.unlink(tmp_path)
@@ -205,8 +258,11 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
         # [Word] python-docx
         elif file_type in ['docx', 'doc']:
             doc = Document(uploaded_file)
-            for para in doc.paragraphs:
-                text_content += para.text + "\n"
+            if template_option == "presentation":
+                text_content = _docx_to_ppt_markdown(doc, uploaded_file.name)
+            else:
+                for para in doc.paragraphs:
+                    text_content += para.text + "\n"
         
         # [PPT] python-pptx
         elif file_type in ['pptx', 'ppt']:
@@ -216,12 +272,12 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
                     if hasattr(shape, "text"):
                         text_content += shape.text + "\n"
         
-        # [Excel] pandas (전체 시트 파싱 적용)
+        # [Excel] pandas (?꾩껜 ?쒗듃 ?뚯떛 ?곸슜)
         elif file_type in ['xlsx', 'xls', 'csv']:
             try:
-                text_content = f"### [파일명: {uploaded_file.name}]\n"
+                text_content = f"### [?뚯씪紐? {uploaded_file.name}]\n"
                 
-                # 1. 파일 읽기 (CSV vs Excel)
+                # 1. ?뚯씪 ?쎄린 (CSV vs Excel)
                 if file_type == 'csv':
                     df = pd.read_csv(uploaded_file)
                     df = df.fillna("")
@@ -231,18 +287,18 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
                         table_text = df.to_string(index=False)
                     text_content += f"\n{table_text}\n"
                 else:
-                    # [핵심 변경] sheet_name=None으로 설정하여 모든 시트를 OrderedDict로 읽어옴
-                    # 엔진은 openpyxl을 명시적으로 사용 (안정성)
+                    # [?듭떖 蹂寃? sheet_name=None?쇰줈 ?ㅼ젙?섏뿬 紐⑤뱺 ?쒗듃瑜?OrderedDict濡??쎌뼱??
+                    # ?붿쭊? openpyxl??紐낆떆?곸쑝濡??ъ슜 (?덉젙??
                     xls_dict = pd.read_excel(uploaded_file, sheet_name=None, engine='openpyxl')
                     
-                    # 모든 시트 순회
+                    # 紐⑤뱺 ?쒗듃 ?쒗쉶
                     for sheet_name, df in xls_dict.items():
-                        df = df.fillna("") # 빈값 처리
+                        df = df.fillna("") # 鍮덇컪 泥섎━
                         
-                        # 시트별 헤더 추가
+                        # ?쒗듃蹂??ㅻ뜑 異붽?
                         text_content += f"\n#### [Sheet: {sheet_name}]\n"
                         
-                        # 변환 (tabulate가 없으면 to_string으로 대체)
+                        # 蹂??(tabulate媛 ?놁쑝硫?to_string?쇰줈 ?泥?
                         try:
                             table_text = df.to_markdown(index=False)
                         except ImportError:
@@ -251,7 +307,7 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
                         text_content += f"{table_text}\n"
 
             except Exception as e:
-                text_content = f"[엑셀 파싱 오류: {str(e)}]\n(Tip: 암호 걸린 파일은 아닌지, 포맷이 맞는지 확인해주세요)"
+                text_content = f"[?묒? ?뚯떛 ?ㅻ쪟: {str(e)}]\n(Tip: ?뷀샇 嫄몃┛ ?뚯씪? ?꾨땶吏, ?щ㎎??留욌뒗吏 ?뺤씤?댁＜?몄슂)"
         
         # [Text]
         elif file_type in ['txt', 'md']:
@@ -259,12 +315,12 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
             text_content = stringio.read()
             
         else:
-            text_content = f"[지원하지 않는 파일 형식입니다: {uploaded_file.name}]"
+            text_content = f"[吏?먰븯吏 ?딅뒗 ?뚯씪 ?뺤떇?낅땲?? {uploaded_file.name}]"
 
     except Exception as e:
-        return f"[파일 읽기 치명적 오류: {uploaded_file.name} - {str(e)}]"
+        return f"[?뚯씪 ?쎄린 移섎챸???ㅻ쪟: {uploaded_file.name} - {str(e)}]"
 
-    # 파일 포인터 초기화
+    # ?뚯씪 ?ъ씤??珥덇린??
     if hasattr(uploaded_file, 'seek'):
         uploaded_file.seek(0)
 
@@ -272,10 +328,15 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
 
 def generate_filename(uploaded_files, template_option):
     template_map = {
-        'simple_review': '약식투자검토', 'rfi': 'RFI', 'investment': '투자심사보고서',
-        'im': 'IM', 'management': '사후관리보고서', 'presentation': '발표자료', 'custom': '보고서'
+        "simple_review": "simple_review",
+        "rfi": "RFI",
+        "investment": "investment_report",
+        "im": "IM",
+        "management": "management_report",
+        "presentation": "presentation",
+        "custom": "report",
     }
-    suffix = template_map.get(template_option, '보고서')
+    suffix = template_map.get(template_option, "report")
     project_name = "Investment_Report"
     if uploaded_files:
         first_file = uploaded_files[0].name
@@ -284,33 +345,33 @@ def generate_filename(uploaded_files, template_option):
     return f"{project_name}_{suffix}.docx"
 
 def add_list_paragraph(doc, content, level, is_bullet=True):
-    """들여쓰기가 적용된 리스트 항목 추가
+    """?ㅼ뿬?곌린媛 ?곸슜??由ъ뒪????ぉ 異붽?
 
     Args:
-        doc: Document 객체
-        content: 텍스트 내용
-        level: 들여쓰기 수준 (0부터 시작)
-        is_bullet: True면 불릿, False면 번호
+        doc: Document 媛앹껜
+        content: ?띿뒪???댁슜
+        level: ?ㅼ뿬?곌린 ?섏? (0遺???쒖옉)
+        is_bullet: True硫?遺덈┸, False硫?踰덊샇
     """
 
-    # 수준별 불릿 문자 (순차적: 0→•, 1→◦, 2→▪, 3→▫, ...)
-    bullet_chars = ['•', '◦', '▪', '▫', '●', '○', '■', '□', '◆']
+    # Bullet characters by level (fallback to simple ASCII bullets)
+    bullet_chars = ["-", "*", "+"]
     bullet_char = bullet_chars[level % len(bullet_chars)]
 
     p = doc.add_paragraph()
 
-    # 들여쓰기 설정 (수준당 0.1인치)
+    # ?ㅼ뿬?곌린 ?ㅼ젙 (?섏???0.1?몄튂)
     indent = Inches(0.1 * (level + 1))
     p.paragraph_format.left_indent = indent
-    p.paragraph_format.first_line_indent = Inches(-0.15)  # 불릿/번호 hanging indent
+    p.paragraph_format.first_line_indent = Inches(-0.15)  # 遺덈┸/踰덊샇 hanging indent
 
-    # 불릿 문자 추가
+    # 遺덈┸ 臾몄옄 異붽?
     if is_bullet:
         p.add_run(f"{bullet_char} ")
     else:
-        p.add_run(f"• ")  # 번호 리스트도 일단 불릿으로
+        p.add_run(f"??")  # 踰덊샇 由ъ뒪?몃룄 ?쇰떒 遺덈┸?쇰줈
 
-    # 내용 추가 (볼드 처리 포함)
+    # ?댁슜 異붽? (蹂쇰뱶 泥섎━ ?ы븿)
     parts = re.split(r'(\*\*.*?\*\*)', content)
     for part in parts:
         if part.startswith('**') and part.endswith('**'):
@@ -326,20 +387,20 @@ def create_docx(markdown_text):
     lines = markdown_text.split('\n')
     i = 0
 
-    # 로마 숫자 헤더 패턴 (I., II., III., IV., V., VI., VII., VIII.)
+    # 濡쒕쭏 ?レ옄 ?ㅻ뜑 ?⑦꽩 (I., II., III., IV., V., VI., VII., VIII.)
     roman_header_pattern = re.compile(r'^(I{1,3}|IV|VI{0,3}|V|IX|X)\.\s+(.+)$')
 
-    # 리스트 level 추적 (들여쓰기 스택)
-    indent_stack = [0]  # 각 level의 들여쓰기 양 저장
+    # 由ъ뒪??level 異붿쟻 (?ㅼ뿬?곌린 ?ㅽ깮)
+    indent_stack = [0]  # 媛?level???ㅼ뿬?곌린 ?????
 
     while i < len(lines):
         raw_line = lines[i]
         line = raw_line.strip()
 
-        # Markdown 헤더 처리 (#### 추가)
+        # Markdown ?ㅻ뜑 泥섎━ (#### 異붽?)
         if line.startswith('##### '):
             doc.add_heading(line.replace('##### ', ''), level=5)
-            indent_stack = [0]  # 리스트 스택 리셋
+            indent_stack = [0]  # 由ъ뒪???ㅽ깮 由ъ뀑
             i += 1
         elif line.startswith('#### '):
             doc.add_heading(line.replace('#### ', ''), level=4)
@@ -357,7 +418,7 @@ def create_docx(markdown_text):
             doc.add_heading(line.replace('# ', ''), level=1)
             indent_stack = [0]
             i += 1
-        # 로마 숫자 헤더 처리 (I. Executive Summary 등)
+        # 濡쒕쭏 ?レ옄 ?ㅻ뜑 泥섎━ (I. Executive Summary ??
         elif roman_header_pattern.match(line):
             doc.add_heading(line, level=1)
             indent_stack = [0]
@@ -391,19 +452,19 @@ def create_docx(markdown_text):
             match = re.match(r'^(\s*)([-*]|\d+\.)\s+(.*)', raw_line)
             if match:
                 indent_str, marker, content = match.groups()
-                spaces = indent_str.replace('\t', '    ')  # 탭을 4칸으로
+                spaces = indent_str.replace('\t', '    ')  # ??쓣 4移몄쑝濡?
                 indent_len = len(spaces)
 
-                # 들여쓰기 기반 level 계산 (순차적으로 1, 2, 3...)
+                # ?ㅼ뿬?곌린 湲곕컲 level 怨꾩궛 (?쒖감?곸쑝濡?1, 2, 3...)
                 if indent_len == 0:
                     level = 0
                     indent_stack = [0]
                 elif indent_len > indent_stack[-1]:
-                    # 들여쓰기 증가 → level 증가
+                    # ?ㅼ뿬?곌린 利앷? ??level 利앷?
                     level = len(indent_stack)
                     indent_stack.append(indent_len)
                 else:
-                    # 들여쓰기 감소 또는 유지 → 해당 level 찾기
+                    # ?ㅼ뿬?곌린 媛먯냼 ?먮뒗 ?좎? ???대떦 level 李얘린
                     while len(indent_stack) > 1 and indent_stack[-1] > indent_len:
                         indent_stack.pop()
                     level = len(indent_stack) - 1
