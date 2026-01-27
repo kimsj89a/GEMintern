@@ -2,6 +2,7 @@ from google import genai
 from google.genai import types
 import utils
 import core_rfi
+import core_chained
 import prompts
 
 def get_client(api_key):
@@ -109,85 +110,19 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         yield chunk
 
 def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, file_context):
-    """5단계 Chained Prompting - 투자심사보고서 전용 (품질 우선)"""
-    client = get_client(api_key)
+    """Chained Prompting - core_chained 모듈 사용"""
+    template_option = inputs.get('template_option', 'investment')
 
-    # 투자심사보고서 전용 시스템 프롬프트
-    system_instruction = prompts.LOGIC_PROMPTS['investment_system']
-    if inputs.get('use_diagram'):
-        system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
-
-    # 투자심사보고서 5개 파트 정의
-    parts = [
-        ('investment_part1', 'Part 1/5: 투자내용', 32768),
-        ('investment_part2', 'Part 2/5: 회사현황', 32768),
-        ('investment_part3', 'Part 3/5: 시장분석', 32768),
-        ('investment_part4', 'Part 4/5: 사업분석', 32768),
-        ('investment_part5', 'Part 5/5: Valuation, Risk & 종합의견', 65536)
-    ]
-
-    accumulated_result = ""
-
-    for part_key, part_title, max_tokens in parts:
-        # 진행 상황 알림
-        status_text = f"\n\n---\n\n📝 **[{part_title}] 생성 중...**\n\n"
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=status_text)])
-            )]
-        )
-
-        # 이전 파트 결과를 컨텍스트로 포함
-        prev_context = ""
-        if accumulated_result:
-            prev_context = f"""
-[이전 작성 내용 - 참고용, 중복 작성 금지]
-{accumulated_result[-20000:]}
-"""
-
-        # 파트별 프롬프트 가져오기
-        part_prompt = prompts.LOGIC_PROMPTS.get(part_key, "")
-
-        main_prompt = f"""
-[System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-[Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
-
-{prev_context}
-
-{part_prompt}
-
-[맥락]
-{inputs['context_text']}
-
-[분석 데이터]
-{file_context[:45000]}
-"""
-
-        tools = []
-        # Part 3 (시장분석)에서 웹 검색 활성화
-        if part_key == 'investment_part3':
-            tools = [types.Tool(google_search=types.GoogleSearch())]
-
-        config = types.GenerateContentConfig(
-            tools=tools,
-            max_output_tokens=max_tokens,
-            temperature=0.3,
-            system_instruction=system_instruction
-        )
-
-        part_result = ""
-        response_stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=main_prompt,
-            config=config
-        )
-
-        for chunk in response_stream:
-            if chunk.text:
-                part_result += chunk.text
-            yield chunk
-
-        accumulated_result += part_result
+    # core_chained 모듈의 일반화된 함수 사용
+    for chunk in core_chained.generate_chained_stream(
+        api_key=api_key,
+        model_name=model_name,
+        inputs=inputs,
+        thinking_level=thinking_level,
+        file_context=file_context,
+        template_option=template_option
+    ):
+        yield chunk
 
 
 def refine_report(api_key, model_name, current_text, refine_query):

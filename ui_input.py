@@ -205,17 +205,18 @@ def render_investment_report_panel(container, settings):
         st.markdown("##### 3. 대상 기업 및 맥락")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="report_context")
 
-        # 5. 생성 모드 선택 (투자심사보고서만 해당)
+        # 5. 생성 모드 선택 (chained 지원 템플릿)
         generation_mode = "single"
-        if template_option == 'investment':
+        if template_option in ['investment', 'simple_review']:
+            part_count = 5 if template_option == 'investment' else 3
             st.markdown("##### 4. 생성 방식")
             generation_mode = st.radio(
                 "생성 방식 선택",
                 ["chained", "single"],
-                format_func=lambda x: "📊 3단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
+                format_func=lambda x: f"📊 {part_count}단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
                 index=0,
                 horizontal=True,
-                help="분할 생성 시 Valuation, Risk 섹션이 더 상세하게 작성됩니다.",
+                help="분할 생성 시 각 섹션이 더 상세하게 작성됩니다.",
                 label_visibility="collapsed",
                 key="report_gen_mode"
             )

@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import utils
 import utils_ppt
 import core_logic
+import core_chained
 
 def render_output_panel(container, settings, inputs, key_prefix="output"):
     # State keys with prefix to isolate tabs
@@ -84,8 +85,9 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
 
                         # 생성 모드에 따라 다른 함수 호출
                         gen_mode = inputs.get('generation_mode', 'single')
-                        if gen_mode == 'chained' and inputs['template_option'] == 'investment':
-                            st.write("✍️ 3. 3단계 분할 생성 모드로 문서를 작성합니다...")
+                        if gen_mode == 'chained' and core_chained.is_chained_supported(inputs['template_option']):
+                            part_count = len(core_chained.CHAINED_PARTS.get(inputs['template_option'], []))
+                            st.write(f"✍️ 3. {part_count}단계 분할 생성 모드로 문서를 작성합니다...")
                             stream = core_logic.generate_report_stream_chained(
                                 settings['api_key'], settings['model_name'], inputs, settings['thinking_level'], file_context
                             )
