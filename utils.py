@@ -293,22 +293,22 @@ def add_list_paragraph(doc, content, level, is_bullet=True):
         is_bullet: True면 불릿, False면 번호
     """
 
-    # 수준별 불릿 문자
+    # 수준별 불릿 문자 (순차적: 0→•, 1→◦, 2→▪, 3→▫, ...)
     bullet_chars = ['•', '◦', '▪', '▫', '●', '○', '■', '□', '◆']
     bullet_char = bullet_chars[level % len(bullet_chars)]
 
     p = doc.add_paragraph()
 
-    # 들여쓰기 설정 (수준당 0.25인치)
-    indent = Inches(0.25 * (level + 1))
+    # 들여쓰기 설정 (수준당 0.1인치)
+    indent = Inches(0.1 * (level + 1))
     p.paragraph_format.left_indent = indent
-    p.paragraph_format.first_line_indent = Inches(-0.2)  # 불릿/번호 hanging indent
+    p.paragraph_format.first_line_indent = Inches(-0.15)  # 불릿/번호 hanging indent
 
     # 불릿 문자 추가
     if is_bullet:
         p.add_run(f"{bullet_char} ")
     else:
-        p.add_run(f"• ")  # 번호 리스트도 일단 불릿으로 (번호 자동 매기기는 복잡)
+        p.add_run(f"• ")  # 번호 리스트도 일단 불릿으로
 
     # 내용 추가 (볼드 처리 포함)
     parts = re.split(r'(\*\*.*?\*\*)', content)
@@ -329,6 +329,9 @@ def create_docx(markdown_text):
     # 로마 숫자 헤더 패턴 (I., II., III., IV., V., VI., VII., VIII.)
     roman_header_pattern = re.compile(r'^(I{1,3}|IV|VI{0,3}|V|IX|X)\.\s+(.+)$')
 
+    # 리스트 level 추적 (들여쓰기 스택)
+    indent_stack = [0]  # 각 level의 들여쓰기 양 저장
+
     while i < len(lines):
         raw_line = lines[i]
         line = raw_line.strip()
@@ -336,22 +339,28 @@ def create_docx(markdown_text):
         # Markdown 헤더 처리 (#### 추가)
         if line.startswith('##### '):
             doc.add_heading(line.replace('##### ', ''), level=5)
+            indent_stack = [0]  # 리스트 스택 리셋
             i += 1
         elif line.startswith('#### '):
             doc.add_heading(line.replace('#### ', ''), level=4)
+            indent_stack = [0]
             i += 1
         elif line.startswith('### '):
             doc.add_heading(line.replace('### ', ''), level=3)
+            indent_stack = [0]
             i += 1
         elif line.startswith('## '):
             doc.add_heading(line.replace('## ', ''), level=2)
+            indent_stack = [0]
             i += 1
         elif line.startswith('# '):
             doc.add_heading(line.replace('# ', ''), level=1)
+            indent_stack = [0]
             i += 1
         # 로마 숫자 헤더 처리 (I. Executive Summary 등)
         elif roman_header_pattern.match(line):
             doc.add_heading(line, level=1)
+            indent_stack = [0]
             i += 1
         elif line.startswith('|'):
             table_lines = []
@@ -377,12 +386,28 @@ def create_docx(markdown_text):
                         row_cells = table.add_row().cells
                         for idx, text in enumerate(row_data):
                             if idx < len(row_cells): row_cells[idx].text = text.replace('**', '')
+            indent_stack = [0]
         elif re.match(r'^\s*([-*]|\d+\.)\s', raw_line):
             match = re.match(r'^(\s*)([-*]|\d+\.)\s+(.*)', raw_line)
             if match:
                 indent_str, marker, content = match.groups()
-                spaces = indent_str.replace('\t', '  ')
-                level = len(spaces) // 2
+                spaces = indent_str.replace('\t', '    ')  # 탭을 4칸으로
+                indent_len = len(spaces)
+
+                # 들여쓰기 기반 level 계산 (순차적으로 1, 2, 3...)
+                if indent_len == 0:
+                    level = 0
+                    indent_stack = [0]
+                elif indent_len > indent_stack[-1]:
+                    # 들여쓰기 증가 → level 증가
+                    level = len(indent_stack)
+                    indent_stack.append(indent_len)
+                else:
+                    # 들여쓰기 감소 또는 유지 → 해당 level 찾기
+                    while len(indent_stack) > 1 and indent_stack[-1] > indent_len:
+                        indent_stack.pop()
+                    level = len(indent_stack) - 1
+
                 if level > 8: level = 8
                 is_bullet = marker in ['-', '*']
                 add_list_paragraph(doc, content, level, is_bullet)
