@@ -4,48 +4,6 @@ import utils
 import utils_ppt
 import core_logic
 
-# PDF 처리용 라이브러리 임포트 시도
-try:
-    import pdfplumber
-except ImportError:
-    pdfplumber = None
-
-try:
-    import pypdf
-except ImportError:
-    pypdf = None
-
-def _parse_pdf_chunked(file_obj, chunk_size=15):
-    """
-    PDF 파일을 청크 단위로 나누어 텍스트를 추출합니다 (Searchable PDF 지원).
-    15페이지 이상일 경우 chunking하여 작업 후 병합합니다.
-    """
-    text_content = []
-    try:
-        # 1순위: pdfplumber (레이아웃 보존 우수)
-        if pdfplumber:
-            with pdfplumber.open(file_obj) as pdf:
-                total_pages = len(pdf.pages)
-                for i in range(0, total_pages, chunk_size):
-                    chunk = pdf.pages[i:i+chunk_size]
-                    chunk_text = "\n".join([p.extract_text() or "" for p in chunk])
-                    if chunk_text.strip():
-                        text_content.append(chunk_text)
-        # 2순위: pypdf (가벼움)
-        elif pypdf:
-            reader = pypdf.PdfReader(file_obj)
-            total_pages = len(reader.pages)
-            for i in range(0, total_pages, chunk_size):
-                end = min(i + chunk_size, total_pages)
-                chunk_text = "\n".join([reader.pages[p].extract_text() or "" for p in range(i, end)])
-                if chunk_text.strip():
-                    text_content.append(chunk_text)
-    except Exception as e:
-        print(f"PDF Parsing Error: {e}")
-        return None
-    
-    return "\n\n".join(text_content) if text_content else None
-
 def render_output_panel(container, settings, inputs, key_prefix="output"):
     # State keys with prefix to isolate tabs
     k_editing = f"{key_prefix}_is_editing"
@@ -114,34 +72,13 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                         if is_rfi_mode:
                             st.write("📂 1. (Fast Mode) 파일 내용을 건너뛰고 파일명만 추출합니다...")
                             file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=False)
-                        elif utils.MARKITDOWN_AVAILABLE:
-                            st.write("📂 1. MarkItDown을 사용하여 파일을 변환 중입니다...")
-                            file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True, api_key=settings['api_key'])
                         else:
-                            # [수정] Searchable PDF 우선 처리 및 Chunking 로직 적용
-                            st.write("📂 1. 파일을 분석 중입니다 (Searchable PDF & OCR)...")
-                            
-                            pdf_files = [f for f in inputs['uploaded_files'] if f.name.lower().endswith('.pdf')]
-                            other_files = [f for f in inputs['uploaded_files'] if not f.name.lower().endswith('.pdf')]
-                            
-                            extracted_parts = []
-                            
-                            # 1. PDF 파일: Searchable Text 우선 추출 (Chunking 적용)
-                            if pdf_files:
-                                for pdf in pdf_files:
-                                    pdf_text = _parse_pdf_chunked(pdf, chunk_size=15)
-                                    if pdf_text:
-                                        extracted_parts.append(f"=== File: {pdf.name} ===\n{pdf_text}")
-                                    else:
-                                        # 텍스트 추출 실패 시 OCR 처리를 위해 other_files로 넘김
-                                        other_files.append(pdf)
-                            
-                            # 2. 나머지 파일 및 스캔된 PDF: 기존 OCR/Parsing 로직 사용
-                            if other_files:
-                                ocr_context, _ = core_logic.parse_all_files(other_files, read_content=True, api_key=settings['api_key'])
-                                extracted_parts.append(ocr_context)
-                            
-                            file_context = "\n\n".join(extracted_parts)
+                            # MarkItDown을 우선 사용하여 파일을 마크다운으로 변환
+                            if utils.MARKITDOWN_AVAILABLE:
+                                st.write("📂 1. MarkItDown으로 파일을 마크다운으로 변환 중입니다...")
+                            else:
+                                st.write("📂 1. 파일을 분석 중입니다 (텍스트 추출 + OCR)...")
+                            file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True, api_key=settings['api_key'])
                         
                         st.write(f"🧠 2. AI가 [{st.session_state[k_mode]}] 페르소나로 분석을 시작합니다...")
 

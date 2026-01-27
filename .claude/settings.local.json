@@ -7,7 +7,9 @@
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
       "Bash(git reset:*)",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(dir /b \"c:\\\\Users\\\\kimsj\\\\GEMintern\\\\GEMintern\\\\*.py\")",
+      "Bash(ls:*)"
     ]
   }
 }

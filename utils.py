@@ -5,6 +5,8 @@ import tempfile
 import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 from pptx import Presentation
 from openai import OpenAI
 
@@ -244,17 +246,117 @@ def generate_filename(uploaded_files, template_option):
         project_name = re.sub(r'[\\/*?:"<>|]', "", base_name).strip()
     return f"{project_name}_{suffix}.docx"
 
-def set_list_level(paragraph, level):
+def create_numbering_definitions(doc):
+    """문서에 불릿/번호 리스트용 numbering definition 추가"""
+    # numbering part 가져오기 또는 생성
+    numbering_part = doc.part.numbering_part
+    numbering_elm = numbering_part._element
+
+    # 불릿 리스트용 abstractNum (abstractNumId=0)
+    bullet_abstract = OxmlElement('w:abstractNum')
+    bullet_abstract.set(qn('w:abstractNumId'), '0')
+
+    bullet_chars = ['●', '○', '■', '□', '◆', '◇', '▶', '▷', '•']
+    for lvl in range(9):
+        level_elm = OxmlElement('w:lvl')
+        level_elm.set(qn('w:ilvl'), str(lvl))
+
+        start = OxmlElement('w:start')
+        start.set(qn('w:val'), '1')
+        level_elm.append(start)
+
+        numFmt = OxmlElement('w:numFmt')
+        numFmt.set(qn('w:val'), 'bullet')
+        level_elm.append(numFmt)
+
+        lvlText = OxmlElement('w:lvlText')
+        lvlText.set(qn('w:val'), bullet_chars[lvl % len(bullet_chars)])
+        level_elm.append(lvlText)
+
+        lvlJc = OxmlElement('w:lvlJc')
+        lvlJc.set(qn('w:val'), 'left')
+        level_elm.append(lvlJc)
+
+        pPr = OxmlElement('w:pPr')
+        ind = OxmlElement('w:ind')
+        ind.set(qn('w:left'), str(720 * (lvl + 1)))  # 들여쓰기
+        ind.set(qn('w:hanging'), '360')
+        pPr.append(ind)
+        level_elm.append(pPr)
+
+        bullet_abstract.append(level_elm)
+
+    # 번호 리스트용 abstractNum (abstractNumId=1)
+    number_abstract = OxmlElement('w:abstractNum')
+    number_abstract.set(qn('w:abstractNumId'), '1')
+
+    num_formats = ['decimal', 'lowerLetter', 'lowerRoman', 'decimal', 'lowerLetter', 'lowerRoman', 'decimal', 'lowerLetter', 'lowerRoman']
+    for lvl in range(9):
+        level_elm = OxmlElement('w:lvl')
+        level_elm.set(qn('w:ilvl'), str(lvl))
+
+        start = OxmlElement('w:start')
+        start.set(qn('w:val'), '1')
+        level_elm.append(start)
+
+        numFmt = OxmlElement('w:numFmt')
+        numFmt.set(qn('w:val'), num_formats[lvl])
+        level_elm.append(numFmt)
+
+        lvlText = OxmlElement('w:lvlText')
+        lvlText.set(qn('w:val'), f'%{lvl+1}.')
+        level_elm.append(lvlText)
+
+        lvlJc = OxmlElement('w:lvlJc')
+        lvlJc.set(qn('w:val'), 'left')
+        level_elm.append(lvlJc)
+
+        pPr = OxmlElement('w:pPr')
+        ind = OxmlElement('w:ind')
+        ind.set(qn('w:left'), str(720 * (lvl + 1)))
+        ind.set(qn('w:hanging'), '360')
+        pPr.append(ind)
+        level_elm.append(pPr)
+
+        number_abstract.append(level_elm)
+
+    # abstractNum들 추가 (기존 것들 앞에)
+    first_child = numbering_elm[0] if len(numbering_elm) > 0 else None
+    if first_child is not None:
+        first_child.addprevious(bullet_abstract)
+        first_child.addprevious(number_abstract)
+    else:
+        numbering_elm.append(bullet_abstract)
+        numbering_elm.append(number_abstract)
+
+    # num 요소들 추가 (abstractNumId 참조)
+    for num_id, abstract_id in [(1, 0), (2, 1)]:
+        num_elm = OxmlElement('w:num')
+        num_elm.set(qn('w:numId'), str(num_id))
+        abstractNumId = OxmlElement('w:abstractNumId')
+        abstractNumId.set(qn('w:val'), str(abstract_id))
+        num_elm.append(abstractNumId)
+        numbering_elm.append(num_elm)
+
+    return 1, 2  # bullet numId, number numId
+
+def set_list_level(paragraph, level, num_id):
+    """리스트 수준 설정 (num_id: 1=불릿, 2=번호)"""
     pPr = paragraph._p.get_or_add_pPr()
     numPr = pPr.get_or_add_numPr()
+
     ilvl = numPr.get_or_add_ilvl()
     ilvl.val = level
-    if numPr.numId is None:
-        numId = numPr.get_or_add_numId()
-        numId.val = 1 
+
+    numId = numPr.get_or_add_numId()
+    numId.val = num_id
 
 def create_docx(markdown_text):
     doc = Document()
+
+    # numbering definition 생성 (불릿/번호 리스트 수준 지원)
+    bullet_num_id, number_num_id = create_numbering_definitions(doc)
+
     lines = markdown_text.split('\n')
     i = 0
 
@@ -318,10 +420,9 @@ def create_docx(markdown_text):
                 level = len(spaces) // 2
                 if level > 8: level = 8
                 is_bullet = marker in ['-', '*']
-                style_name = 'List Bullet' if is_bullet else 'List Number'
-                try: p = doc.add_paragraph(style=style_name)
-                except: p = doc.add_paragraph()
-                set_list_level(p, level)
+                p = doc.add_paragraph()
+                num_id = bullet_num_id if is_bullet else number_num_id
+                set_list_level(p, level, num_id)
                 parts = re.split(r'(\*\*.*?\*\*)', content)
                 for part in parts:
                     if part.startswith('**') and part.endswith('**'):
