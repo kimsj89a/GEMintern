@@ -1,8 +1,13 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import os
+from dotenv import load_dotenv
 import utils
 import core_logic
 import core_rfi
+
+# .env 파일 로드
+load_dotenv()
 
 # 템플릿 상수 정의
 TEMPLATES = {
@@ -118,7 +123,9 @@ HTML_SCANNER = """
 def render_settings():
     """상단 설정 영역"""
     query_params = st.query_params
-    cached_key = query_params.get("api_key", "")
+    # .env 또는 URL 파라미터에서 API 키 로드
+    env_key = os.getenv("GOOGLE_API_KEY", "")
+    cached_key = query_params.get("api_key", "") or env_key
     if isinstance(cached_key, list): cached_key = cached_key[0]
 
     with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
