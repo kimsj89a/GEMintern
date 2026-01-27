@@ -4,7 +4,7 @@ import ui_output
 import ui_audio
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v5.12", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v5.13", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -25,7 +25,7 @@ def main():
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v5.12</span>
+            <span class="badge">v5.13</span>
             <span class="badge badge-blue">Cloud-Safe Indexer</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
