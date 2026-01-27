@@ -237,7 +237,7 @@ def render_investment_report_panel(container, settings):
         template_options = {
             'simple_review': '1. 약식 투자검토 (요약)',
             'investment': '2. 투자심사보고서 (표준)',
-            'custom': '3. 직접 입력 (서식 복제 가능)'
+            'custom': '3. 자유 구조화 (요약보고서)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",
