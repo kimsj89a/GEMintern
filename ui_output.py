@@ -70,16 +70,26 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                     is_rfi_mode = (inputs['template_option'] == 'rfi')
 
                     with status_placeholder.status("🚀 분석 작업을 시작합니다...", expanded=True) as status:
+                        # Document AI 설정 가져오기
+                        docai_config = settings.get('docai_config')
+
                         if is_rfi_mode:
                             st.write("📂 1. (Fast Mode) 파일 내용을 건너뛰고 파일명만 추출합니다...")
                             file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=False)
                         else:
-                            # MarkItDown을 우선 사용하여 파일을 마크다운으로 변환
-                            if utils.MARKITDOWN_AVAILABLE:
+                            # OCR 방식 표시
+                            if docai_config:
+                                st.write("📂 1. Document AI OCR로 파일을 마크다운으로 변환 중입니다...")
+                            elif utils.MARKITDOWN_AVAILABLE:
                                 st.write("📂 1. MarkItDown으로 파일을 마크다운으로 변환 중입니다...")
                             else:
                                 st.write("📂 1. 파일을 분석 중입니다 (텍스트 추출 + OCR)...")
-                            file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True, api_key=settings['api_key'])
+                            file_context, _ = core_logic.parse_all_files(
+                                inputs['uploaded_files'],
+                                read_content=True,
+                                api_key=settings['api_key'],
+                                docai_config=docai_config
+                            )
                         
                         st.write(f"🧠 2. AI가 [{st.session_state[k_mode]}] 페르소나로 분석을 시작합니다...")
 
@@ -144,7 +154,13 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                             with status_placeholder.status("🔄 PPT 스타일로 변환 중...", expanded=True) as status:
                                 # PPT 변환 시에는 기존 데이터를 재활용 (파일 다시 읽을 필요 X)
                                 # 하지만 file_context가 필요하므로 다시 파싱 (이미 로컬 캐시되어 빠름)
-                                file_context, _ = core_logic.parse_all_files(inputs['uploaded_files'], read_content=True, api_key=settings['api_key'])
+                                docai_config = settings.get('docai_config')
+                                file_context, _ = core_logic.parse_all_files(
+                                    inputs['uploaded_files'],
+                                    read_content=True,
+                                    api_key=settings['api_key'],
+                                    docai_config=docai_config
+                                )
                                 stream = core_logic.generate_report_stream(
                                     settings['api_key'], settings['model_name'], ppt_inputs, settings['thinking_level'], file_context
                                 )

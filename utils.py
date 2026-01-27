@@ -5,8 +5,7 @@ import tempfile
 import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+from docx.shared import Inches
 from pptx import Presentation
 from openai import OpenAI
 
@@ -26,6 +25,14 @@ MARKITDOWN_AVAILABLE = False
 try:
     from markitdown import MarkItDown
     MARKITDOWN_AVAILABLE = True
+except ImportError:
+    pass
+
+# Document AI OCR 지원 확인
+DOCAI_AVAILABLE = False
+try:
+    import utils_docai
+    DOCAI_AVAILABLE = True
 except ImportError:
     pass
 
@@ -121,15 +128,45 @@ def extract_pdf_with_ocr(doc):
         text_content += f"[Page {page_num + 1}]\n{page_text}\n\n"
     return text_content
 
-def parse_uploaded_file(uploaded_file, api_key=None):
+def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None):
     """파일 타입별 텍스트 추출 (전체 시트 지원 + OCR 지원)
 
     Args:
         uploaded_file: Streamlit 업로드 파일 객체
         api_key: Google API 키 (PDF OCR용, 선택사항)
+        docai_config: Document AI 설정 dict (선택사항)
+            - project_id: GCP 프로젝트 ID
+            - location: 위치 (us/eu)
+            - processor_id: 프로세서 ID
+            - credentials_json: 서비스 계정 JSON 문자열
     """
     if uploaded_file is None:
         return ""
+
+    file_type = uploaded_file.name.split('.')[-1].lower()
+
+    # [Document AI OCR] PDF/이미지 우선 처리
+    if DOCAI_AVAILABLE and docai_config and file_type in utils_docai.get_supported_extensions():
+        try:
+            uploaded_file.seek(0)
+            file_bytes = uploaded_file.read()
+            mime_type = utils_docai.get_mime_type(uploaded_file.name)
+
+            ocr_result = utils_docai.process_document(
+                file_bytes=file_bytes,
+                mime_type=mime_type,
+                project_id=docai_config['project_id'],
+                location=docai_config.get('location', 'us'),
+                processor_id=docai_config['processor_id'],
+                credentials_json=docai_config.get('credentials_json')
+            )
+
+            uploaded_file.seek(0)
+            if ocr_result and ocr_result.get('text'):
+                return f"### [파일명: {uploaded_file.name} (Document AI OCR)]\n{ocr_result['text']}\n\n"
+        except Exception as e:
+            uploaded_file.seek(0)
+            # Document AI 실패 시 다음 방법으로 진행
 
     # [MarkItDown] 우선 시도
     if MARKITDOWN_AVAILABLE:
@@ -246,117 +283,46 @@ def generate_filename(uploaded_files, template_option):
         project_name = re.sub(r'[\\/*?:"<>|]', "", base_name).strip()
     return f"{project_name}_{suffix}.docx"
 
-def create_numbering_definitions(doc):
-    """문서에 불릿/번호 리스트용 numbering definition 추가"""
-    # numbering part 가져오기 또는 생성
-    numbering_part = doc.part.numbering_part
-    numbering_elm = numbering_part._element
+def add_list_paragraph(doc, content, level, is_bullet=True):
+    """들여쓰기가 적용된 리스트 항목 추가
 
-    # 불릿 리스트용 abstractNum (abstractNumId=0)
-    bullet_abstract = OxmlElement('w:abstractNum')
-    bullet_abstract.set(qn('w:abstractNumId'), '0')
+    Args:
+        doc: Document 객체
+        content: 텍스트 내용
+        level: 들여쓰기 수준 (0부터 시작)
+        is_bullet: True면 불릿, False면 번호
+    """
 
-    bullet_chars = ['●', '○', '■', '□', '◆', '◇', '▶', '▷', '•']
-    for lvl in range(9):
-        level_elm = OxmlElement('w:lvl')
-        level_elm.set(qn('w:ilvl'), str(lvl))
+    # 수준별 불릿 문자
+    bullet_chars = ['•', '◦', '▪', '▫', '●', '○', '■', '□', '◆']
+    bullet_char = bullet_chars[level % len(bullet_chars)]
 
-        start = OxmlElement('w:start')
-        start.set(qn('w:val'), '1')
-        level_elm.append(start)
+    p = doc.add_paragraph()
 
-        numFmt = OxmlElement('w:numFmt')
-        numFmt.set(qn('w:val'), 'bullet')
-        level_elm.append(numFmt)
+    # 들여쓰기 설정 (수준당 0.25인치)
+    indent = Inches(0.25 * (level + 1))
+    p.paragraph_format.left_indent = indent
+    p.paragraph_format.first_line_indent = Inches(-0.2)  # 불릿/번호 hanging indent
 
-        lvlText = OxmlElement('w:lvlText')
-        lvlText.set(qn('w:val'), bullet_chars[lvl % len(bullet_chars)])
-        level_elm.append(lvlText)
-
-        lvlJc = OxmlElement('w:lvlJc')
-        lvlJc.set(qn('w:val'), 'left')
-        level_elm.append(lvlJc)
-
-        pPr = OxmlElement('w:pPr')
-        ind = OxmlElement('w:ind')
-        ind.set(qn('w:left'), str(720 * (lvl + 1)))  # 들여쓰기
-        ind.set(qn('w:hanging'), '360')
-        pPr.append(ind)
-        level_elm.append(pPr)
-
-        bullet_abstract.append(level_elm)
-
-    # 번호 리스트용 abstractNum (abstractNumId=1)
-    number_abstract = OxmlElement('w:abstractNum')
-    number_abstract.set(qn('w:abstractNumId'), '1')
-
-    num_formats = ['decimal', 'lowerLetter', 'lowerRoman', 'decimal', 'lowerLetter', 'lowerRoman', 'decimal', 'lowerLetter', 'lowerRoman']
-    for lvl in range(9):
-        level_elm = OxmlElement('w:lvl')
-        level_elm.set(qn('w:ilvl'), str(lvl))
-
-        start = OxmlElement('w:start')
-        start.set(qn('w:val'), '1')
-        level_elm.append(start)
-
-        numFmt = OxmlElement('w:numFmt')
-        numFmt.set(qn('w:val'), num_formats[lvl])
-        level_elm.append(numFmt)
-
-        lvlText = OxmlElement('w:lvlText')
-        lvlText.set(qn('w:val'), f'%{lvl+1}.')
-        level_elm.append(lvlText)
-
-        lvlJc = OxmlElement('w:lvlJc')
-        lvlJc.set(qn('w:val'), 'left')
-        level_elm.append(lvlJc)
-
-        pPr = OxmlElement('w:pPr')
-        ind = OxmlElement('w:ind')
-        ind.set(qn('w:left'), str(720 * (lvl + 1)))
-        ind.set(qn('w:hanging'), '360')
-        pPr.append(ind)
-        level_elm.append(pPr)
-
-        number_abstract.append(level_elm)
-
-    # abstractNum들 추가 (기존 것들 앞에)
-    first_child = numbering_elm[0] if len(numbering_elm) > 0 else None
-    if first_child is not None:
-        first_child.addprevious(bullet_abstract)
-        first_child.addprevious(number_abstract)
+    # 불릿 문자 추가
+    if is_bullet:
+        p.add_run(f"{bullet_char} ")
     else:
-        numbering_elm.append(bullet_abstract)
-        numbering_elm.append(number_abstract)
+        p.add_run(f"• ")  # 번호 리스트도 일단 불릿으로 (번호 자동 매기기는 복잡)
 
-    # num 요소들 추가 (abstractNumId 참조)
-    for num_id, abstract_id in [(1, 0), (2, 1)]:
-        num_elm = OxmlElement('w:num')
-        num_elm.set(qn('w:numId'), str(num_id))
-        abstractNumId = OxmlElement('w:abstractNumId')
-        abstractNumId.set(qn('w:val'), str(abstract_id))
-        num_elm.append(abstractNumId)
-        numbering_elm.append(num_elm)
+    # 내용 추가 (볼드 처리 포함)
+    parts = re.split(r'(\*\*.*?\*\*)', content)
+    for part in parts:
+        if part.startswith('**') and part.endswith('**'):
+            run = p.add_run(part[2:-2])
+            run.bold = True
+        else:
+            p.add_run(part)
 
-    return 1, 2  # bullet numId, number numId
-
-def set_list_level(paragraph, level, num_id):
-    """리스트 수준 설정 (num_id: 1=불릿, 2=번호)"""
-    pPr = paragraph._p.get_or_add_pPr()
-    numPr = pPr.get_or_add_numPr()
-
-    ilvl = numPr.get_or_add_ilvl()
-    ilvl.val = level
-
-    numId = numPr.get_or_add_numId()
-    numId.val = num_id
+    return p
 
 def create_docx(markdown_text):
     doc = Document()
-
-    # numbering definition 생성 (불릿/번호 리스트 수준 지원)
-    bullet_num_id, number_num_id = create_numbering_definitions(doc)
-
     lines = markdown_text.split('\n')
     i = 0
 
@@ -385,7 +351,6 @@ def create_docx(markdown_text):
             i += 1
         # 로마 숫자 헤더 처리 (I. Executive Summary 등)
         elif roman_header_pattern.match(line):
-            match = roman_header_pattern.match(line)
             doc.add_heading(line, level=1)
             i += 1
         elif line.startswith('|'):
@@ -420,15 +385,7 @@ def create_docx(markdown_text):
                 level = len(spaces) // 2
                 if level > 8: level = 8
                 is_bullet = marker in ['-', '*']
-                p = doc.add_paragraph()
-                num_id = bullet_num_id if is_bullet else number_num_id
-                set_list_level(p, level, num_id)
-                parts = re.split(r'(\*\*.*?\*\*)', content)
-                for part in parts:
-                    if part.startswith('**') and part.endswith('**'):
-                        run = p.add_run(part[2:-2])
-                        run.bold = True
-                    else: p.add_run(part)
+                add_list_paragraph(doc, content, level, is_bullet)
             i += 1
         else:
             if line:

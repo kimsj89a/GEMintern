@@ -18,15 +18,22 @@ def extract_structure(api_key, structure_file):
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files, read_content=True, api_key=None):
-    """파일 목록 파싱 (OCR 지원)"""
+def parse_all_files(uploaded_files, read_content=True, api_key=None, docai_config=None):
+    """파일 목록 파싱 (OCR 지원)
+
+    Args:
+        uploaded_files: 업로드된 파일 목록
+        read_content: 파일 내용 읽기 여부
+        api_key: Google API 키 (Gemini OCR용)
+        docai_config: Document AI 설정 (선택사항)
+    """
     all_text = ""
     file_list_str = ""
     if uploaded_files:
         for file in uploaded_files:
             file_list_str += f"- {file.name}\n"
             if read_content:
-                parsed = utils.parse_uploaded_file(file, api_key=api_key)
+                parsed = utils.parse_uploaded_file(file, api_key=api_key, docai_config=docai_config)
                 all_text += parsed
 
     if not read_content:

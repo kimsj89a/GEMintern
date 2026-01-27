@@ -144,7 +144,43 @@ def render_settings():
         else:
             st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
 
-    return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
+        # Document AI 설정 (고급)
+        st.markdown("---")
+        use_docai = st.checkbox("🔬 Document AI OCR 사용 (고품질 PDF/이미지 OCR)", value=False)
+
+        docai_config = None
+        if use_docai:
+            dc1, dc2 = st.columns(2)
+            with dc1:
+                docai_project_id = st.text_input("GCP 프로젝트 ID", key="docai_project")
+                docai_location = st.selectbox("위치", ["us", "eu"], key="docai_location")
+            with dc2:
+                docai_processor_id = st.text_input("프로세서 ID", key="docai_processor")
+                docai_creds_file = st.file_uploader("서비스 계정 JSON", type=['json'], key="docai_creds")
+
+            docai_creds_json = None
+            if docai_creds_file:
+                docai_creds_json = docai_creds_file.read().decode('utf-8')
+                docai_creds_file.seek(0)
+
+            if docai_project_id and docai_processor_id and docai_creds_json:
+                docai_config = {
+                    'project_id': docai_project_id,
+                    'location': docai_location,
+                    'processor_id': docai_processor_id,
+                    'credentials_json': docai_creds_json
+                }
+                st.success("✅ Document AI 설정 완료")
+            elif use_docai:
+                st.warning("⚠️ Document AI 사용을 위해 모든 필드를 입력해주세요")
+
+    return {
+        "api_key": api_key,
+        "model_name": model_name,
+        "thinking_level": "High" if "High" in thinking_level else "Low",
+        "use_diagram": use_diagram,
+        "docai_config": docai_config
+    }
 
 def _on_template_change(template_key, struct_key, custom_input_key=None):
     """템플릿 변경 시 구조 텍스트 강제 업데이트 콜백"""

@@ -1,5 +1,7 @@
 streamlit
 google-genai
+google-cloud-documentai
+markitdown
 python-docx
 python-pptx
 pandas
