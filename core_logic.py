@@ -57,6 +57,7 @@ def _get_system_prompt(template_opt):
         'im': 'im_system',
         'management': 'management_system',
         'presentation': 'ppt_system',
+        'free_summary': 'free_summary_system',
         'custom': 'custom_system'
     }
     prompt_key = prompt_map.get(template_opt, 'custom_system')

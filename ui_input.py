@@ -365,7 +365,7 @@ def render_im_ppt_panel(container, settings):
         template_options = {
             'im': '1. IM (투자제안서)',
             'presentation': '2. 투자심의 발표자료 (PPT)',
-            'management': '3. 사후관리보고서'
+            'free_summary': '3. 자유 구조화 (요약)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",
