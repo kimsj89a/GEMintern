@@ -95,8 +95,14 @@ def _gpt_postprocess(raw_text: str, mode: str, model: str, api_key: str, api_typ
         return resp.choices[0].message.content.strip()
 
 
-def render_audio_transcription_panel():
-    """텍스트 후처리 UI 패널"""
+def render_audio_transcription_panel(settings=None):
+    """텍스트 후처리 UI 패널
+
+    Args:
+        settings: 메인 설정 (api_key, model_name 등 포함)
+    """
+    # 메인 설정에서 API Key 가져오기
+    main_api_key = settings.get('api_key', '') if settings else ''
     st.markdown("### 📝 텍스트 후처리 (Text Processing)")
     st.markdown("""
         <div style='background-color: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0068c9;'>
@@ -134,12 +140,40 @@ def render_audio_transcription_panel():
 
         if uploaded_file:
             try:
-                # UTF-8로 먼저 시도, 실패시 cp949
+                # 다양한 인코딩 시도: UTF-8 → UTF-16 → CP949
+                raw_bytes = uploaded_file.read()
+                input_text = None
+
+                # 1. UTF-8 (BOM 포함/미포함)
                 try:
-                    input_text = uploaded_file.read().decode('utf-8')
+                    input_text = raw_bytes.decode('utf-8-sig')
                 except UnicodeDecodeError:
-                    uploaded_file.seek(0)
-                    input_text = uploaded_file.read().decode('cp949')
+                    pass
+
+                # 2. UTF-16 (BOM 자동 감지 - 0xFE 0xFF 또는 0xFF 0xFE)
+                if input_text is None:
+                    try:
+                        input_text = raw_bytes.decode('utf-16')
+                    except UnicodeDecodeError:
+                        pass
+
+                # 3. CP949 (한국어 Windows 기본)
+                if input_text is None:
+                    try:
+                        input_text = raw_bytes.decode('cp949')
+                    except UnicodeDecodeError:
+                        pass
+
+                # 4. EUC-KR (레거시 한국어)
+                if input_text is None:
+                    try:
+                        input_text = raw_bytes.decode('euc-kr')
+                    except UnicodeDecodeError:
+                        pass
+
+                # 5. 최후 수단: errors='replace'로 UTF-8
+                if input_text is None:
+                    input_text = raw_bytes.decode('utf-8', errors='replace')
 
                 st.success(f"✅ 파일 로드 완료: {uploaded_file.name} ({len(input_text):,}자)")
 
@@ -165,79 +199,20 @@ def render_audio_transcription_panel():
         st.markdown("---")
         st.markdown("## 2️⃣ AI 후처리 설정")
 
-        # 후처리 엔진 선택
-        col_engine, col_model = st.columns([1, 1])
+        # 후처리 모델 선택 (Gemini 사용 - 메인 설정의 API Key 활용)
+        post_model = st.selectbox(
+            "🤖 모델 선택",
+            options=["gemini-3-flash-preview", "gemini-1.5-pro", "gemini-1.5-flash"],
+            index=0,
+            key="text_post_model_gemini"
+        )
 
-        with col_engine:
-            post_engine = st.selectbox(
-                "🤖 AI 엔진 선택",
-                options=[
-                    ("Google Gemini", "gemini"),
-                    ("OpenAI GPT", "openai")
-                ],
-                format_func=lambda x: x[0],
-                key="text_post_engine"
-            )
-
-        with col_model:
-            if post_engine[1] == "openai":
-                post_model = st.selectbox(
-                    "모델 선택",
-                    options=["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
-                    index=0,
-                    key="text_post_model_openai"
-                )
-            else:
-                post_model = st.selectbox(
-                    "모델 선택",
-                    options=["gemini-3-flash-preview", "gemini-1.5-pro", "gemini-1.5-flash"],
-                    index=0,
-                    key="text_post_model_gemini"
-                )
-
-        # API 키 입력
-        query_params = st.query_params
-
-        if post_engine[1] == "openai":
-            cached_key = query_params.get("openai_api_key", "")
-            if isinstance(cached_key, list):
-                cached_key = cached_key[0]
-
-            col_key, col_save = st.columns([4, 1])
-            with col_key:
-                api_key = st.text_input(
-                    "OpenAI API Key",
-                    value=cached_key,
-                    type="password",
-                    placeholder="sk-...",
-                    key="text_openai_key"
-                )
-            with col_save:
-                st.write("")
-                st.write("")
-                if st.checkbox("🔑 저장", value=bool(cached_key), key="text_save_openai"):
-                    if api_key:
-                        st.query_params["openai_api_key"] = api_key
+        # API Key는 메인 설정에서 가져옴
+        api_key = main_api_key
+        if api_key:
+            st.success("✅ 메인 설정의 API Key 사용")
         else:
-            cached_key = query_params.get("gemini_api_key", "")
-            if isinstance(cached_key, list):
-                cached_key = cached_key[0]
-
-            col_key, col_save = st.columns([4, 1])
-            with col_key:
-                api_key = st.text_input(
-                    "Gemini API Key",
-                    value=cached_key,
-                    type="password",
-                    placeholder="AI...",
-                    key="text_gemini_key"
-                )
-            with col_save:
-                st.write("")
-                st.write("")
-                if st.checkbox("🔑 저장", value=bool(cached_key), key="text_save_gemini"):
-                    if api_key:
-                        st.query_params["gemini_api_key"] = api_key
+            st.warning("⚠️ 상단 설정에서 Google API Key를 입력해주세요")
 
         # 후처리 방식 선택
         st.markdown("#### 후처리 방식")
@@ -258,16 +233,16 @@ def render_audio_transcription_panel():
         st.markdown("")
         if st.button("🚀 AI 후처리 시작", use_container_width=True, type="primary", key="text_process_btn"):
             if not api_key:
-                st.error("⚠️ API Key를 입력해주세요")
+                st.error("⚠️ 상단 설정에서 API Key를 입력해주세요")
             else:
-                with st.spinner(f"🤖 {post_engine[0]}로 후처리 중..."):
+                with st.spinner("🤖 Gemini로 후처리 중..."):
                     try:
                         processed_text = _gpt_postprocess(
                             raw_text=input_text,
                             mode=gpt_mode[1],
                             model=post_model,
                             api_key=api_key,
-                            api_type=post_engine[1]
+                            api_type="gemini"
                         )
 
                         st.session_state['processed_result'] = processed_text

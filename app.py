@@ -64,7 +64,7 @@ def main():
         ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
 
     with tab4:
-        ui_audio.render_audio_transcription_panel()
+        ui_audio.render_audio_transcription_panel(settings)
 
 if __name__ == "__main__":
     main()
