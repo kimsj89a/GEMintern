@@ -3,42 +3,26 @@
 TXT 파일 업로드 또는 직접 입력 → AI 후처리 (회의록, 요약 등)
 """
 import streamlit as st
-
-# Gemini 지원
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-
-# OpenAI 지원
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
+from google import genai
 
 
-def _gpt_postprocess(raw_text: str, mode: str, model: str, api_key: str, api_type: str = "gemini") -> str:
-    """AI 후처리 함수"""
-
-    if mode == "clean":
-        instruction = (
+def _get_instruction(mode: str) -> str:
+    """후처리 모드별 instruction 반환"""
+    instructions = {
+        "clean": (
             "다음 한국어 텍스트를 의미를 바꾸지 말고, "
             "띄어쓰기/문장부호를 자연스럽게 다듬고, 중복 표현을 최소화해 주세요. "
             "새로운 사실을 추가하지 마세요."
-        )
-    elif mode == "summary":
-        instruction = (
+        ),
+        "summary": (
             "다음 한국어 텍스트를 바탕으로 "
             "1) 핵심 요약(불릿 5~10개) "
             "2) 결정사항(있으면) "
             "3) 액션아이템(담당/기한이 언급되면 포함) "
             "형태로 정리해 주세요. 없는 항목은 '없음'으로 표시하세요. "
             "새로운 사실을 추가하지 마세요."
-        )
-    elif mode == "meeting_summary":
-        instruction = (
+        ),
+        "meeting_summary": (
             "다음은 회의 녹음의 전사 텍스트입니다.\n"
             "이 내용을 바탕으로 다음 형식의 회의록을 작성해주세요.\n\n"
             "1. 📌 3줄 핵심 요약\n"
@@ -48,51 +32,35 @@ def _gpt_postprocess(raw_text: str, mode: str, model: str, api_key: str, api_typ
             "   - 타임스탬프가 있다면 [mm:ss ~ mm:ss] 형식으로 헤더에 표시\n"
             "   - 내용은 Q&A 형식 또는 핵심 내용 서술형으로 상세히 정리\n"
             "   - 전사된 내용의 팩트를 기반으로 작성하되, 문장은 깔끔하게 다듬을 것"
-        )
-    elif mode == "qa_format":
-        instruction = (
+        ),
+        "qa_format": (
             "다음 텍스트를 Q&A 형식으로 정리해주세요.\n"
             "- 주요 질문과 답변을 추출하여 구조화\n"
             "- Q: 질문 / A: 답변 형식으로 작성\n"
             "- 관련 주제별로 그룹화"
-        )
-    elif mode == "presentation_format":
-        instruction = (
+        ),
+        "presentation_format": (
             "다음 텍스트를 발표자료 형식으로 변환해주세요.\n"
             "- 슬라이드별로 구분 (## 슬라이드 1, ## 슬라이드 2...)\n"
             "- 각 슬라이드는 제목과 3-5개의 불릿포인트로 구성\n"
             "- 핵심 메시지 중심으로 간결하게 정리"
-        )
-    else:
-        instruction = "다음 텍스트를 의미를 바꾸지 말고 정리해 주세요."
+        ),
+    }
+    return instructions.get(mode, "다음 텍스트를 의미를 바꾸지 말고 정리해 주세요.")
 
-    # Gemini 모델 사용
-    if api_type == "gemini":
-        if not GEMINI_AVAILABLE:
-            raise RuntimeError("google-generativeai 패키지가 설치되지 않았습니다.")
 
-        genai.configure(api_key=api_key)
-        gemini_model = genai.GenerativeModel(
-            model_name=model,
-            system_instruction=instruction
-        )
-        response = gemini_model.generate_content(raw_text)
-        return response.text.strip()
+def _postprocess_with_gemini(raw_text: str, mode: str, model: str, api_key: str) -> str:
+    """Gemini를 사용한 텍스트 후처리 (core_logic.py와 동일한 방식)"""
+    client = genai.Client(api_key=api_key)
+    instruction = _get_instruction(mode)
 
-    # OpenAI 모델 사용
-    else:
-        if not OPENAI_AVAILABLE:
-            raise RuntimeError("openai 패키지가 설치되지 않았습니다.")
+    prompt = f"{instruction}\n\n[텍스트]\n{raw_text}"
 
-        client = OpenAI(api_key=api_key)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": instruction},
-                {"role": "user", "content": raw_text},
-            ],
-        )
-        return resp.choices[0].message.content.strip()
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt
+    )
+    return response.text.strip()
 
 
 def render_audio_transcription_panel(settings=None):
@@ -103,6 +71,7 @@ def render_audio_transcription_panel(settings=None):
     """
     # 메인 설정에서 API Key 가져오기
     main_api_key = settings.get('api_key', '') if settings else ''
+
     st.markdown("### 📝 텍스트 후처리 (Text Processing)")
     st.markdown("""
         <div style='background-color: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0068c9;'>
@@ -111,7 +80,7 @@ def render_audio_transcription_panel(settings=None):
         <b>2단계:</b> AI 후처리 방식 선택 (회의록, 요약, Q&A 등)<br/>
         <b>3단계:</b> 결과 확인 및 다운로드
         <hr style='margin: 10px 0; border: none; border-top: 1px solid #ccc;'>
-        <small>✓ Gemini & GPT 지원 | ✓ 다양한 후처리 옵션 | ✓ 즉시 다운로드</small>
+        <small>✓ Gemini 지원 | ✓ 다양한 후처리 옵션 | ✓ 즉시 다운로드</small>
         </div>
     """, unsafe_allow_html=True)
 
@@ -199,10 +168,10 @@ def render_audio_transcription_panel(settings=None):
         st.markdown("---")
         st.markdown("## 2️⃣ AI 후처리 설정")
 
-        # 후처리 모델 선택 (Gemini 사용 - 메인 설정의 API Key 활용)
+        # 후처리 모델 선택
         post_model = st.selectbox(
             "🤖 모델 선택",
-            options=["gemini-3-flash-preview", "gemini-1.5-pro", "gemini-1.5-flash"],
+            options=["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
             index=0,
             key="text_post_model_gemini"
         )
@@ -237,12 +206,11 @@ def render_audio_transcription_panel(settings=None):
             else:
                 with st.spinner("🤖 Gemini로 후처리 중..."):
                     try:
-                        processed_text = _gpt_postprocess(
+                        processed_text = _postprocess_with_gemini(
                             raw_text=input_text,
                             mode=gpt_mode[1],
                             model=post_model,
-                            api_key=api_key,
-                            api_type="gemini"
+                            api_key=api_key
                         )
 
                         st.session_state['processed_result'] = processed_text
