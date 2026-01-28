@@ -12,6 +12,13 @@ try:
 except ImportError:
     BS4_AVAILABLE = False
 
+# lxml 라이브러리 확인 (XPath용)
+try:
+    from lxml import html
+    LXML_AVAILABLE = True
+except ImportError:
+    LXML_AVAILABLE = False
+
 def render_crawler_panel(settings):
     """웹 크롤러 UI 패널 (Internal)"""
     st.markdown("### 🌐 웹 사이트 크롤러 (Web Crawler)")
@@ -40,6 +47,12 @@ def render_crawler_panel(settings):
         with col2:
             depth = st.number_input("Depth (링크 추적 깊이)", min_value=1, max_value=3, value=1, help="너무 깊게 설정하면 시간이 오래 걸립니다.")
             max_pages = st.number_input("Max Pages (URL당 최대)", min_value=1, max_value=50, value=5)
+        
+        col3, col4 = st.columns([3, 1])
+        with col3:
+            xpath_input = st.text_input("XPath (선택사항 - 특정 영역 추출)", placeholder="//div[@id='content']", help="입력 시 해당 XPath 경로의 텍스트만 추출합니다. (lxml 필요)")
+        with col4:
+            clean_mode = st.checkbox("🧹 불필요 요소 제거", value=True, help="Script, Style, Nav, Footer 등을 자동으로 제거합니다.")
             
         if st.button("🕷️ 크롤링 시작", use_container_width=True, type="primary"):
             if not target_urls_input.strip():
@@ -53,7 +66,7 @@ def render_crawler_panel(settings):
                 
                 for i, start_url in enumerate(urls):
                     # 내부 크롤링 로직 실행
-                    df_res = _crawl_internal(start_url, depth, max_pages)
+                    df_res = _crawl_internal(start_url, depth, max_pages, xpath_input, clean_mode)
                     all_results.append(df_res)
                     progress_bar.progress((i + 1) / len(urls))
                 
@@ -147,7 +160,7 @@ def render_crawler_panel(settings):
         else:
             st.info("📭 수집된 데이터가 없습니다. '크롤링 실행' 탭에서 작업을 시작해주세요.")
 
-def _crawl_internal(start_url, max_depth, max_pages):
+def _crawl_internal(start_url, max_depth, max_pages, xpath=None, clean=True):
     """실제 크롤링 수행 함수"""
     visited = set()
     queue = [(start_url, 0)]
@@ -166,20 +179,60 @@ def _crawl_internal(start_url, max_depth, max_pages):
             try:
                 resp = requests.get(url, headers=headers, timeout=5)
                 if resp.status_code == 200:
-                    soup = BeautifulSoup(resp.text, 'html.parser')
-                    title = soup.title.string.strip() if soup.title else url
-                    text = soup.get_text(separator=' ', strip=True)
+                    text_content = ""
+                    title = ""
+                    found_links = []
+
+                    # 1. XPath Mode (lxml)
+                    if xpath and LXML_AVAILABLE:
+                        try:
+                            tree = html.fromstring(resp.content)
+                            t_nodes = tree.xpath('//title/text()')
+                            title = t_nodes[0].strip() if t_nodes else url
+                            
+                            if depth < max_depth:
+                                found_links = tree.xpath('//a/@href')
+
+                            if clean:
+                                for bad in tree.xpath('//script|//style|//nav|//footer|//header|//aside|//iframe|//noscript'):
+                                    bad.drop_tree()
+                            
+                            elements = tree.xpath(xpath)
+                            extracted = []
+                            for e in elements:
+                                if isinstance(e, str): extracted.append(e.strip())
+                                elif hasattr(e, 'text_content'): extracted.append(e.text_content().strip())
+                            text_content = "\n".join([t for t in extracted if t])
+                        except Exception as e:
+                            text_content = f"XPath Error: {e}"
+
+                    # 2. BS4 Mode
+                    elif BS4_AVAILABLE:
+                        soup = BeautifulSoup(resp.text, 'html.parser')
+                        title = soup.title.string.strip() if soup.title else url
+                        
+                        if depth < max_depth:
+                            found_links = [a['href'] for a in soup.find_all('a', href=True)]
+
+                        if clean:
+                            for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript", "form"]):
+                                tag.decompose()
+                        
+                        if xpath and not LXML_AVAILABLE:
+                            text_content = "[Error] XPath를 사용하려면 'lxml' 라이브러리가 필요합니다."
+                        else:
+                            text_content = soup.get_text(separator=' ', strip=True)
                     
                     results.append({
                         "url": url,
                         "title": title,
                         "depth": depth,
-                        "content": text[:2000] + "..." if len(text) > 2000 else text
+                        "content": text_content
                     })
                     
                     if depth < max_depth:
-                        for link in soup.find_all('a', href=True):
-                            next_url = urljoin(url, link['href'])
+                        for link in found_links:
+                            next_url = urljoin(url, link)
                             if next_url.startswith("http") and next_url not in visited:
                                 queue.append((next_url, depth + 1))
                 else:
