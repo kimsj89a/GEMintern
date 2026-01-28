@@ -11,7 +11,9 @@
       "Bash(dir /b \"c:\\\\Users\\\\kimsj\\\\GEMintern\\\\GEMintern\\\\*.py\")",
       "Bash(ls:*)",
       "Bash(pip install:*)",
-      "Bash(xcopy:*)"
+      "Bash(xcopy:*)",
+      "Bash(c:UserskimsjGEMinternGEMintern.venvScriptspip install google-generativeai)",
+      "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/pip.exe\" install google-generativeai)"
     ]
   }
 }
