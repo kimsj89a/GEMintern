@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import time
 from urllib.parse import urljoin
+import core_logic
 
 # BeautifulSoup 라이브러리 확인
 try:
@@ -70,15 +71,79 @@ def render_crawler_panel(settings):
             st.dataframe(df, use_container_width=True)
             st.caption(f"📊 총 {len(df)}행")
             
-            # CSV 다운로드
-            csv = df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                "📥 CSV 다운로드",
-                csv,
-                "crawled_results.csv",
-                "text/csv",
-                key='download-csv'
-            )
+            col1, col2 = st.columns(2)
+            with col1:
+                # CSV 다운로드
+                csv = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    "📥 CSV 다운로드",
+                    csv,
+                    "crawled_results.csv",
+                    "text/csv",
+                    key='download-csv',
+                    use_container_width=True
+                )
+            with col2:
+                # TXT 다운로드 (전체 내용 보존)
+                txt_output = ""
+                for _, row in df.iterrows():
+                    txt_output += f"Title: {row.get('title', 'No Title')}\n"
+                    txt_output += f"URL: {row.get('url', 'No URL')}\n"
+                    txt_output += f"Content:\n{row.get('content', '')}\n"
+                    txt_output += "="*80 + "\n\n"
+                
+                st.download_button(
+                    "📥 TXT 다운로드 (전체 내용)",
+                    txt_output,
+                    "crawled_results.txt",
+                    "text/plain",
+                    key='download-txt',
+                    use_container_width=True
+                )
+
+            # Gemini 요약 리포트 생성
+            st.markdown("---")
+            st.markdown("#### 🤖 AI 요약 보고서 작성")
+            
+            api_key = settings.get("api_key")
+            if not api_key:
+                st.warning("⚠️ 상단 설정에서 Google API Key를 입력하면 요약 기능을 사용할 수 있습니다.")
+            else:
+                if st.button("📝 수집 데이터 요약하기", type="primary", use_container_width=True):
+                    with st.spinner("Gemini가 수집된 데이터를 분석 중입니다..."):
+                        try:
+                            # 텍스트 통합
+                            combined_text = ""
+                            for _, row in df.iterrows():
+                                combined_text += f"Title: {row.get('title', '')}\nURL: {row.get('url', '')}\nContent:\n{row.get('content', '')}\n\n"
+                            
+                            # Gemini 호출
+                            client = core_logic.get_client(api_key)
+                            model_name = settings.get("model_name", "gemini-3-pro-preview")
+                            
+                            prompt = f"""
+                            당신은 정보 분석 전문가입니다. 다음은 웹 크롤링을 통해 수집된 데이터입니다.
+                            이 내용을 바탕으로 핵심 내용을 요약하고, 주요 인사이트를 도출하는 보고서를 작성해주세요.
+                            
+                            [작성 형식]
+                            1. Executive Summary (요약)
+                            2. 주요 수집 내용 및 팩트 정리
+                            3. 인사이트 및 시사점
+                            
+                            [수집 데이터]
+                            {combined_text[:500000]}
+                            """
+                            
+                            response = client.models.generate_content(
+                                model=model_name,
+                                contents=prompt
+                            )
+                            
+                            st.markdown("### 📄 요약 보고서")
+                            st.container(border=True).markdown(response.text)
+                            
+                        except Exception as e:
+                            st.error(f"요약 생성 중 오류 발생: {e}")
         else:
             st.info("📭 수집된 데이터가 없습니다. '크롤링 실행' 탭에서 작업을 시작해주세요.")
 
