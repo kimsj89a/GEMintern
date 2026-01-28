@@ -1,22 +1,29 @@
 import streamlit as st
-import os
-import sys
-import subprocess
 import pandas as pd
-import glob
+import requests
+import time
+from urllib.parse import urljoin
+
+# BeautifulSoup 라이브러리 확인
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
 
 def render_crawler_panel(settings):
-    """웹 크롤러 UI 패널"""
+    """웹 크롤러 UI 패널 (Internal)"""
     st.markdown("### 🌐 웹 사이트 크롤러 (Web Crawler)")
     
-    # 사용자 지정 경로
-    crawler_path = r"C:\Users\kimsj\WebSiteCrawler"
+    if not BS4_AVAILABLE:
+        st.error("❌ `beautifulsoup4` 라이브러리가 설치되지 않았습니다.")
+        st.code("pip install beautifulsoup4 requests", language="bash")
+        return
     
     st.markdown(f"""
-        <div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff4b4b;'>
-        <h4 style='margin-top: 0; color: #ff4b4b;'>🕷️ WebSiteCrawler 연동</h4>
-        <b>지정 경로:</b> <code>{crawler_path}</code><br/>
-        외부 크롤러 프로젝트를 실행하고 결과를 통합합니다.
+        <div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0068c9;'>
+        <h4 style='margin-top: 0; color: #0068c9;'>🕷️ 내장 크롤러 (Built-in)</h4>
+        외부 스크립트 경로 의존성 없이, URL을 입력하면 즉시 크롤링하여 결과를 보여줍니다.
         </div>
     """, unsafe_allow_html=True)
 
@@ -30,59 +37,91 @@ def render_crawler_panel(settings):
         with col1:
             target_urls_input = st.text_area("Target URLs (한 줄에 하나씩 입력)", placeholder="https://www.example.com\nhttps://www.google.com", height=100)
         with col2:
-            depth = st.number_input("Depth", min_value=1, max_value=10, value=1)
+            depth = st.number_input("Depth (링크 추적 깊이)", min_value=1, max_value=3, value=1, help="너무 깊게 설정하면 시간이 오래 걸립니다.")
+            max_pages = st.number_input("Max Pages (URL당 최대)", min_value=1, max_value=50, value=5)
             
         if st.button("🕷️ 크롤링 시작", use_container_width=True, type="primary"):
-            if not os.path.exists(crawler_path):
-                st.error(f"❌ 경로를 찾을 수 없습니다: {crawler_path}")
-                st.warning("해당 경로에 크롤러 프로젝트 폴더가 존재하는지 확인해주세요.")
-            elif not target_urls_input.strip():
+            if not target_urls_input.strip():
                 st.warning("⚠️ URL을 입력해주세요.")
             else:
                 urls = [url.strip() for url in target_urls_input.split('\n') if url.strip()]
-                st.info(f"📡 총 {len(urls)}개의 URL에 대해 크롤링을 시작합니다... (경로: {crawler_path})")
+                st.info(f"📡 총 {len(urls)}개의 시작 URL에 대해 크롤링을 시작합니다...")
                 
+                all_results = []
                 progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                for i, target_url in enumerate(urls):
-                    status_text.text(f"🕷️ ({i+1}/{len(urls)}) '{target_url}' 크롤링 중...")
-                    try:
-                        # 실제 크롤러 실행 (main.py 가정)
-                        result = subprocess.run(
-                            ["python", "main.py", "--url", target_url, "--depth", str(depth)],
-                            capture_output=True, text=True, cwd=crawler_path, encoding='utf-8', errors='replace'
-                        )
-                        if result.returncode == 0:
-                            st.toast(f"✅ 완료: {target_url}")
-                        else:
-                            st.error(f"❌ 실패 ({target_url}):\n{result.stderr}")
-                    except Exception as e:
-                        st.error(f"실행 오류 ({target_url}): {e}")
-                    
+                
+                for i, start_url in enumerate(urls):
+                    # 내부 크롤링 로직 실행
+                    df_res = _crawl_internal(start_url, depth, max_pages)
+                    all_results.append(df_res)
                     progress_bar.progress((i + 1) / len(urls))
                 
-                status_text.success("🎉 모든 작업이 완료되었습니다!")
+                if all_results:
+                    final_df = pd.concat(all_results, ignore_index=True)
+                    st.session_state['crawled_data'] = final_df
+                    st.success(f"🎉 완료! 총 {len(final_df)}개의 페이지를 수집했습니다.")
+                    st.rerun() # 결과 탭 갱신을 위해 리런
 
     with tab_view:
         st.markdown("#### 수집 데이터 뷰어")
         
-        if os.path.exists(crawler_path):
-            # CSV 파일 검색 (루트 및 output 폴더)
-            csv_files = glob.glob(os.path.join(crawler_path, "*.csv"))
-            csv_files += glob.glob(os.path.join(crawler_path, "output", "*.csv"))
-            csv_files.sort(key=os.path.getmtime, reverse=True)
-
-            if csv_files:
-                selected_csv = st.selectbox("📂 결과 파일 선택", csv_files, format_func=lambda x: os.path.basename(x))
-                if selected_csv:
-                    try:
-                        df = pd.read_csv(selected_csv)
-                        st.dataframe(df, use_container_width=True)
-                        st.caption(f"📊 총 {len(df)}행 | 경로: {selected_csv}")
-                    except Exception as e:
-                        st.error(f"파일 읽기 오류: {e}")
-            else:
-                st.info("📭 표시할 CSV 파일이 없습니다. 크롤링을 먼저 실행해주세요.")
+        if 'crawled_data' in st.session_state and not st.session_state['crawled_data'].empty:
+            df = st.session_state['crawled_data']
+            st.dataframe(df, use_container_width=True)
+            st.caption(f"📊 총 {len(df)}행")
+            
+            # CSV 다운로드
+            csv = df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                "📥 CSV 다운로드",
+                csv,
+                "crawled_results.csv",
+                "text/csv",
+                key='download-csv'
+            )
         else:
-            st.error(f"경로를 찾을 수 없습니다: {crawler_path}")
+            st.info("📭 수집된 데이터가 없습니다. '크롤링 실행' 탭에서 작업을 시작해주세요.")
+
+def _crawl_internal(start_url, max_depth, max_pages):
+    """실제 크롤링 수행 함수"""
+    visited = set()
+    queue = [(start_url, 0)]
+    results = []
+    
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    
+    with st.status(f"Processing: {start_url}") as status:
+        while queue and len(visited) < max_pages:
+            url, depth = queue.pop(0)
+            if url in visited: continue
+            visited.add(url)
+            
+            status.update(label=f"Fetching ({len(visited)}/{max_pages}): {url}")
+            
+            try:
+                resp = requests.get(url, headers=headers, timeout=5)
+                if resp.status_code == 200:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    title = soup.title.string.strip() if soup.title else url
+                    text = soup.get_text(separator=' ', strip=True)
+                    
+                    results.append({
+                        "url": url,
+                        "title": title,
+                        "depth": depth,
+                        "content": text[:2000] + "..." if len(text) > 2000 else text
+                    })
+                    
+                    if depth < max_depth:
+                        for link in soup.find_all('a', href=True):
+                            next_url = urljoin(url, link['href'])
+                            if next_url.startswith("http") and next_url not in visited:
+                                queue.append((next_url, depth + 1))
+                else:
+                    results.append({"url": url, "title": f"Error {resp.status_code}", "depth": depth, "content": ""})
+            except Exception as e:
+                results.append({"url": url, "title": "Error", "depth": depth, "content": str(e)})
+                
+            time.sleep(0.2)
+            
+    return pd.DataFrame(results)
