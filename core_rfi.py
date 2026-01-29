@@ -20,7 +20,7 @@ def analyze_rfi_status(client, existing_rfi, file_index_str):
     """
     try:
         resp = client.models.generate_content(
-            model="gemini-2.0-flash-exp", 
+            model="gemini-3-flash-preview", 
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.1)
         )
