@@ -1,4 +1,4 @@
-﻿from google import genai
+﻿﻿from google import genai
 from google.genai import types
 import utils
 import core_rfi
@@ -71,7 +71,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 
     # [RFI Mode] - 蹂꾨룄 泥섎━
     if template_opt == 'rfi':
-        stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level)
+        stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level, file_context)
         for chunk in stream:
             yield chunk
         return
@@ -150,5 +150,3 @@ def refine_report(api_key, model_name, current_text, refine_query):
     )
     resp = client.models.generate_content(model=model_name, contents=refine_prompt)
     return resp.text
-
-

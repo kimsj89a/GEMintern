@@ -340,8 +340,12 @@ def render_rfi_panel(container, settings):
         # 결과 입력창
         rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...", key="rfi_filelist")
 
-        # 3. 추가 질문 및 확인 사항
-        st.markdown("##### 3. 추가 질문 및 확인 사항")
+        # 3. 자료 내용 분석 (선택사항)
+        st.markdown("##### 3. 자료 내용 분석 (선택사항)")
+        uploaded_files = st.file_uploader("내용을 분석할 파일 업로드 (PDF, Word 등)", accept_multiple_files=True, key="rfi_content_files")
+
+        # 4. 추가 질문 및 확인 사항
+        st.markdown("##### 4. 추가 질문 및 확인 사항")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="rfi_context")
 
         st.markdown("---")
@@ -350,7 +354,7 @@ def render_rfi_panel(container, settings):
         return {
             "template_option": template_option,
             "structure_text": "",
-            "uploaded_files": [],
+            "uploaded_files": uploaded_files,
             "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
             "rfi_existing": rfi_existing,

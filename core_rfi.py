@@ -28,7 +28,7 @@ def analyze_rfi_status(client, existing_rfi, file_index_str):
     except Exception as e:
         return f"인덱싱 오류: {str(e)}"
 
-def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
+def generate_rfi_stream(api_key, model_name, inputs, thinking_level, file_context=""):
     """RFI 생성 메인 로직"""
     client = get_client(api_key)
     
@@ -56,6 +56,9 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level):
     
     [1차 자료 점검 결과]
     {rfi_status_table}
+
+    [업로드된 파일 내용 (분석용)]
+    {file_context[:50000]}
 
     [사용자 추가 질문/맥락]
     {inputs['context_text']}

@@ -75,12 +75,22 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                         docai_config = settings.get('docai_config')
 
                         if is_rfi_mode:
-                            st.write("📁 1. (Fast Mode) 파일 내용은 건너뛰고 파일명만 추출합니다..")
-                            file_context, _ = core_logic.parse_all_files(
-                                inputs['uploaded_files'],
-                                read_content=False,
-                                template_option=inputs['template_option'],
-                            )
+                            if inputs.get('uploaded_files'):
+                                st.write("📁 1. 업로드된 파일의 내용을 분석 중입니다 (OCR/Text)...")
+                                file_context, _ = core_logic.parse_all_files(
+                                    inputs['uploaded_files'],
+                                    read_content=True,
+                                    api_key=settings['api_key'],
+                                    docai_config=docai_config,
+                                    template_option=inputs['template_option'],
+                                )
+                            else:
+                                st.write("📁 1. (Fast Mode) 파일 내용은 건너뛰고 파일명만 추출합니다..")
+                                file_context, _ = core_logic.parse_all_files(
+                                    inputs['uploaded_files'],
+                                    read_content=False,
+                                    template_option=inputs['template_option'],
+                                )
                         else:
                             # OCR 방식 표시
                             if docai_config:
