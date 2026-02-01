@@ -79,6 +79,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 st.write("📁 1. 업로드된 파일의 내용을 분석 중입니다 (OCR/Text)...")
                                 file_context, _ = core_logic.parse_all_files(
                                     inputs['uploaded_files'],
+                                    saved_files=inputs.get('selected_saved_files'),
                                     read_content=True,
                                     api_key=settings['api_key'],
                                     docai_config=docai_config,
@@ -88,6 +89,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 st.write("📁 1. (Fast Mode) 파일 내용은 건너뛰고 파일명만 추출합니다..")
                                 file_context, _ = core_logic.parse_all_files(
                                     inputs['uploaded_files'],
+                                    saved_files=inputs.get('selected_saved_files'),
                                     read_content=False,
                                     template_option=inputs['template_option'],
                                 )
@@ -101,6 +103,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 st.write("📁 1. 파일을 분석 중입니다 (텍스트 추출 + OCR)...")
                             file_context, _ = core_logic.parse_all_files(
                                 inputs['uploaded_files'],
+                                saved_files=inputs.get('selected_saved_files'),
                                 read_content=True,
                                 api_key=settings['api_key'],
                                 docai_config=docai_config,
@@ -175,6 +178,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 docai_config = settings.get('docai_config')
                                 file_context, _ = core_logic.parse_all_files(
                                     inputs['uploaded_files'],
+                                    saved_files=inputs.get('selected_saved_files'),
                                     read_content=True,
                                     api_key=settings['api_key'],
                                     docai_config=docai_config,

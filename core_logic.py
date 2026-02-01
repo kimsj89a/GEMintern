@@ -1,4 +1,4 @@
-﻿from google import genai
+﻿﻿from google import genai
 from google.genai import types
 import utils
 import core_rfi
@@ -18,20 +18,23 @@ def extract_structure(api_key, structure_file):
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files, read_content=True, api_key=None, docai_config=None, template_option=None):
-    """파일 목록 파싱 (OCR 지원)
+def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key=None, docai_config=None, template_option=None):
+    """파일 목록 파싱 및 로컬 저장/로드 (RAG 지원)
 
     Args:
         uploaded_files: 업로드된 파일 목록
+        saved_files: 로컬에 저장된 파일명 목록 (선택됨)
         read_content: 파일 내용 읽기 여부
         api_key: Google API 키 (Gemini OCR용)
         docai_config: Document AI 설정 (선택사항)
     """
     all_text = ""
     file_list_str = ""
+    
+    # 1. 새로 업로드된 파일 처리 (파싱 -> 저장 -> 텍스트 추가)
     if uploaded_files:
         for file in uploaded_files:
-            file_list_str += f"- {file.name}\n"
+            file_list_str += f"- [New] {file.name}\n"
             if read_content:
                 parsed = utils.parse_uploaded_file(
                     file,
@@ -39,7 +42,16 @@ def parse_all_files(uploaded_files, read_content=True, api_key=None, docai_confi
                     docai_config=docai_config,
                     template_option=template_option,
                 )
+                # 로컬 스토리지에 저장 (RAG)
+                utils.save_to_local_storage(file.name, parsed)
                 all_text += parsed
+
+    # 2. 저장된 파일 불러오기 (로드 -> 텍스트 추가)
+    if saved_files and read_content:
+        for fname in saved_files:
+            file_list_str += f"- [Saved] {fname}\n"
+            content = utils.load_saved_doc(fname)
+            all_text += f"\n\n{content}\n"
 
     if not read_content:
         all_text = "(RFI 모드: 내용은 읽지 않음)"

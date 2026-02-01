@@ -273,6 +273,18 @@ def render_investment_report_panel(container, settings):
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
         uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="report_files")
 
+        # [NEW] Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", 
+                    saved_docs,
+                    key="report_saved_files",
+                    placeholder="저장된 문서 선택..."
+                )
+
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="report_context")
@@ -304,7 +316,8 @@ def render_investment_report_panel(container, settings):
             "context_text": context_text,
             "rfi_existing": "",
             "generate_btn": generate_btn,
-            "generation_mode": generation_mode
+            "generation_mode": generation_mode,
+            "selected_saved_files": selected_saved_files
         }
 
 def render_rfi_panel(container, settings):
@@ -403,6 +416,18 @@ def render_im_ppt_panel(container, settings):
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
         uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="im_files")
 
+        # [NEW] Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", 
+                    saved_docs,
+                    key="im_saved_files",
+                    placeholder="저장된 문서 선택..."
+                )
+
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="im_context")
@@ -418,7 +443,8 @@ def render_im_ppt_panel(container, settings):
             "context_text": context_text,
             "rfi_existing": "",
             "generate_btn": generate_btn,
-            "generation_mode": "single"
+            "generation_mode": "single",
+            "selected_saved_files": selected_saved_files
         }
 
 def render_input_panel(container, settings):
