@@ -357,6 +357,18 @@ def render_rfi_panel(container, settings):
         st.markdown("##### 3. 자료 내용 분석 (선택사항)")
         uploaded_files = st.file_uploader("내용을 분석할 파일 업로드 (PDF, Word 등)", accept_multiple_files=True, key="rfi_content_files")
 
+        # [NEW] Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", 
+                    saved_docs,
+                    key="rfi_saved_files",
+                    placeholder="저장된 문서 선택..."
+                )
+
         # 4. 추가 질문 및 확인 사항
         st.markdown("##### 4. 추가 질문 및 확인 사항")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="rfi_context")
