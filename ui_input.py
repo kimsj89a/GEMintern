@@ -372,7 +372,8 @@ def render_rfi_panel(container, settings):
             "context_text": context_text,
             "rfi_existing": rfi_existing,
             "generate_btn": generate_btn,
-            "generation_mode": "single"
+            "generation_mode": "single",
+            "selected_saved_files": selected_saved_files
         }
 
 def render_im_ppt_panel(container, settings):

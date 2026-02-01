@@ -534,3 +534,36 @@ def load_saved_doc(filename):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     return ""
+
+# ========================================
+# Local Storage Management (RAG)
+# ========================================
+SAVED_DOCS_DIR = "saved_documents"
+
+def ensure_saved_docs_dir():
+    if not os.path.exists(SAVED_DOCS_DIR):
+        os.makedirs(SAVED_DOCS_DIR)
+
+def save_to_local_storage(filename, content):
+    """파싱된 텍스트를 로컬 MD 파일로 저장"""
+    ensure_saved_docs_dir()
+    safe_name = os.path.basename(filename)
+    base, _ = os.path.splitext(safe_name)
+    save_path = os.path.join(SAVED_DOCS_DIR, f"{base}.md")
+    
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return save_path
+
+def list_saved_docs():
+    ensure_saved_docs_dir()
+    files = [f for f in os.listdir(SAVED_DOCS_DIR) if f.endswith(".md")]
+    return sorted(files)
+
+def load_saved_doc(filename):
+    ensure_saved_docs_dir()
+    path = os.path.join(SAVED_DOCS_DIR, filename)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
