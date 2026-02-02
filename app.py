@@ -4,6 +4,7 @@ import ui_output
 import ui_audio
 import ui_crawler
 import ui_ocr
+import ui_markdown
 
 # --- 페이지 설정 ---
 st.set_page_config(layout="wide", page_title="GEM Intern v5.14", page_icon="💎")
@@ -36,14 +37,15 @@ def main():
     # 공통 설정 (탭 위에 고정)
     settings = ui_input.render_settings()
 
-    # 탭 기반 UI - 5개 탭으로 분리
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    # 탭 기반 UI - 7개 탭으로 분리
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 투자분석 보고서",
         "📋 RFI 작성",
         "📈 IM/PPT 생성",
         "🎤 오디오 전사",
         "🌐 웹 크롤러",
-        "👁️ 문서 OCR"
+        "👁️ 문서 OCR",
+        "📝 MD to Word"
     ])
 
     with tab1:
@@ -75,6 +77,9 @@ def main():
 
     with tab6:
         ui_ocr.render_ocr_panel(settings)
+
+    with tab7:
+        ui_markdown.render_markdown_converter_panel(settings)
 
 if __name__ == "__main__":
     main()
