@@ -64,11 +64,12 @@ def _postprocess_with_gemini(raw_text: str, mode: str, model: str, api_key: str)
     
     full_instruction = base_instruction + additional_instruction
 
-    # Chunking (1000자 기준)
-    chunk_size = 1000
+    # Chunking (5000자 기준 - 속도 개선)
+    chunk_size = 5000
     chunks = [raw_text[i:i+chunk_size] for i in range(0, len(raw_text), chunk_size)]
     
     processed_results = []
+    prev_context = ""
     
     # 진행상황 표시
     progress_bar = st.progress(0)
@@ -77,11 +78,21 @@ def _postprocess_with_gemini(raw_text: str, mode: str, model: str, api_key: str)
 
     for i, chunk in enumerate(chunks):
         status_text.text(f"Processing chunk {i+1}/{total_chunks}...")
-        prompt = f"{full_instruction}\n\n[텍스트 (Part {i+1}/{total_chunks})]\n{chunk}"
+        
+        # 문맥 연결을 위한 프롬프트 구성
+        prompt = f"{full_instruction}\n"
+        if prev_context:
+            prompt += f"\n[이전 처리 내용 (문맥 연결용)]\n...{prev_context}\n\n(위 내용과 문맥이 자연스럽게 이어지도록 작성하세요)\n"
+            
+        prompt += f"\n[텍스트 (Part {i+1}/{total_chunks})]\n{chunk}"
+        
         try:
             response = client.models.generate_content(model=model, contents=prompt)
             if response.text:
-                processed_results.append(response.text.strip())
+                result_text = response.text.strip()
+                processed_results.append(result_text)
+                # 다음 청크를 위해 마지막 500자를 문맥으로 저장
+                prev_context = result_text[-500:] if len(result_text) > 500 else result_text
         except Exception as e:
             processed_results.append(f"[Error in chunk {i+1}: {str(e)}]")
         progress_bar.progress((i + 1) / total_chunks)
