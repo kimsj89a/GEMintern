@@ -50,17 +50,46 @@ def _get_instruction(mode: str) -> str:
 
 
 def _postprocess_with_gemini(raw_text: str, mode: str, model: str, api_key: str) -> str:
-    """Gemini를 사용한 텍스트 후처리 (core_logic.py와 동일한 방식)"""
+    """Gemini를 사용한 텍스트 후처리 (Chunking 적용)"""
     client = genai.Client(api_key=api_key)
-    instruction = _get_instruction(mode)
+    base_instruction = _get_instruction(mode)
 
-    prompt = f"{instruction}\n\n[텍스트]\n{raw_text}"
-
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt
+    # 사용자 요청 반영: 뉘앙스, 데이터, 고유명사 유지
+    additional_instruction = (
+        "\n\n[중요 원칙]\n"
+        "1. 원문의 뉘앙스를 최대한 유지하세요.\n"
+        "2. 언급된 상세 데이터(수치 등)와 고유명사는 절대 변경하거나 생략하지 말고 그대로 기재하세요.\n"
+        "3. 텍스트가 분할되어 입력될 수 있으니, 문맥이 자연스럽게 이어지도록 하세요."
     )
-    return response.text.strip()
+    
+    full_instruction = base_instruction + additional_instruction
+
+    # Chunking (1000자 기준)
+    chunk_size = 1000
+    chunks = [raw_text[i:i+chunk_size] for i in range(0, len(raw_text), chunk_size)]
+    
+    processed_results = []
+    
+    # 진행상황 표시
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    total_chunks = len(chunks)
+
+    for i, chunk in enumerate(chunks):
+        status_text.text(f"Processing chunk {i+1}/{total_chunks}...")
+        prompt = f"{full_instruction}\n\n[텍스트 (Part {i+1}/{total_chunks})]\n{chunk}"
+        try:
+            response = client.models.generate_content(model=model, contents=prompt)
+            if response.text:
+                processed_results.append(response.text.strip())
+        except Exception as e:
+            processed_results.append(f"[Error in chunk {i+1}: {str(e)}]")
+        progress_bar.progress((i + 1) / total_chunks)
+    
+    status_text.empty()
+    progress_bar.empty()
+
+    return "\n\n".join(processed_results)
 
 
 def render_audio_transcription_panel(settings=None):
@@ -171,7 +200,7 @@ def render_audio_transcription_panel(settings=None):
         # 후처리 모델 선택
         post_model = st.selectbox(
             "🤖 모델 선택",
-            options=["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
+            options=["gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.5-pro"],
             index=0,
             key="text_post_model_gemini"
         )
