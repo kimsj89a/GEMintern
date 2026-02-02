@@ -1,21 +1,31 @@
 import streamlit as st
 import io
 import re
+import os
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
 
+# 기본 템플릿 경로
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
 
-def markdown_to_docx(markdown_text: str) -> bytes:
+
+def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
     """마크다운 텍스트를 Word 문서로 변환"""
-    doc = Document()
-
-    # 스타일 설정
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = '맑은 고딕'
-    font.size = Pt(11)
+    # 템플릿 사용 여부에 따라 Document 생성
+    if use_template and os.path.exists(TEMPLATE_PATH):
+        doc = Document(TEMPLATE_PATH)
+        # 템플릿의 기존 내용 삭제 (스타일은 유지)
+        for element in doc.element.body[:]:
+            doc.element.body.remove(element)
+    else:
+        doc = Document()
+        # 템플릿 없을 때만 기본 스타일 설정
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = '맑은 고딕'
+        font.size = Pt(11)
 
     lines = markdown_text.split('\n')
     i = 0
@@ -262,6 +272,17 @@ def render_markdown_converter_panel(settings):
             value=file_name,
             key="md_output_filename"
         )
+    with col2:
+        template_exists = os.path.exists(TEMPLATE_PATH)
+        use_template = st.checkbox(
+            "기본 템플릿 사용 (Normal.dotm)",
+            value=template_exists,
+            disabled=not template_exists,
+            help="template/Normal.dotm 파일의 스타일을 적용합니다." if template_exists else "템플릿 파일이 없습니다.",
+            key="md_use_template"
+        )
+        if template_exists:
+            st.caption(f"📄 템플릿: `template/Normal.dotm`")
 
     # 변환 버튼
     st.markdown("---")
@@ -272,10 +293,10 @@ def render_markdown_converter_panel(settings):
 
         with st.spinner("변환 중..."):
             try:
-                docx_bytes = markdown_to_docx(markdown_text)
+                docx_bytes = markdown_to_docx(markdown_text, use_template=use_template)
                 st.session_state['md_converted_docx'] = docx_bytes
                 st.session_state['md_converted_filename'] = output_filename
-                st.success("변환 완료!")
+                st.success("변환 완료!" + (" (템플릿 적용됨)" if use_template else ""))
             except Exception as e:
                 st.error(f"변환 중 오류 발생: {e}")
 
