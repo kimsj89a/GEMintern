@@ -11,7 +11,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from google import genai
 
 # 기본 템플릿 경로 (.docx만 지원, .dotm은 python-docx 미지원)
-TEMPLATE_PATH_DOTM = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
 TEMPLATE_PATH_DOCX = os.path.join(os.path.dirname(__file__), "template", "Normal.docx")
 
 def get_template_path():
