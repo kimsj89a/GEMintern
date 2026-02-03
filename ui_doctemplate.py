@@ -6,12 +6,87 @@ import streamlit as st
 import io
 import os
 import json
+import re
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # 기본 템플릿 경로
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
+
+# 지원 파일 형식
+SUPPORTED_FILE_TYPES = ['docx', 'pdf', 'pptx', 'xlsx', 'xls', 'txt', 'md']
+
+
+def extract_text_from_file(uploaded_file) -> str:
+    """업로드된 파일에서 텍스트 추출"""
+    filename = uploaded_file.name.lower()
+    content = ""
+
+    try:
+        if filename.endswith('.txt') or filename.endswith('.md'):
+            # 텍스트 파일
+            raw_bytes = uploaded_file.read()
+            # 인코딩 시도
+            for encoding in ['utf-8-sig', 'utf-8', 'cp949', 'euc-kr']:
+                try:
+                    content = raw_bytes.decode(encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if not content:
+                content = raw_bytes.decode('utf-8', errors='replace')
+
+        elif filename.endswith('.docx'):
+            # Word 문서
+            doc = Document(io.BytesIO(uploaded_file.read()))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            content = '\n\n'.join(paragraphs)
+
+        elif filename.endswith('.pdf'):
+            # PDF - PyMuPDF 사용 시도
+            try:
+                import fitz  # PyMuPDF
+                pdf_bytes = uploaded_file.read()
+                pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                text_parts = []
+                for page in pdf_doc:
+                    text_parts.append(page.get_text())
+                content = '\n'.join(text_parts)
+                pdf_doc.close()
+            except ImportError:
+                content = "[PDF 읽기 실패: PyMuPDF(fitz) 라이브러리가 필요합니다]"
+
+        elif filename.endswith('.pptx'):
+            # PowerPoint
+            try:
+                from pptx import Presentation
+                prs = Presentation(io.BytesIO(uploaded_file.read()))
+                text_parts = []
+                for slide in prs.slides:
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text.strip():
+                            text_parts.append(shape.text)
+                content = '\n\n'.join(text_parts)
+            except ImportError:
+                content = "[PPT 읽기 실패: python-pptx 라이브러리가 필요합니다]"
+
+        elif filename.endswith('.xlsx') or filename.endswith('.xls'):
+            # Excel
+            try:
+                import pandas as pd
+                df = pd.read_excel(io.BytesIO(uploaded_file.read()), sheet_name=None)
+                text_parts = []
+                for sheet_name, sheet_df in df.items():
+                    text_parts.append(f"[{sheet_name}]\n{sheet_df.to_string()}")
+                content = '\n\n'.join(text_parts)
+            except ImportError:
+                content = "[Excel 읽기 실패: pandas, openpyxl 라이브러리가 필요합니다]"
+
+    except Exception as e:
+        content = f"[파일 읽기 오류: {str(e)}]"
+
+    return content
 
 
 def extract_document_structure(doc: Document) -> list:
@@ -160,7 +235,7 @@ def render_doctemplate_panel(settings):
         <b>사용 방법:</b><br/>
         1️⃣ 양식 문서(.docx) 업로드<br/>
         2️⃣ 추출된 구조 확인 및 편집<br/>
-        3️⃣ 플레이스홀더에 내용 입력<br/>
+        3️⃣ 콘텐츠 파일 업로드 (Word/PDF/PPT/Excel/Text)<br/>
         4️⃣ 새 문서 생성 및 다운로드<br/><br/>
         <b>플레이스홀더 사용법:</b> <code>{{변수명}}</code> 또는 <code>[변수명]</code> 형식으로 양식 문서에 작성
         </div>
@@ -248,37 +323,88 @@ def render_doctemplate_panel(settings):
 
                 st.session_state['doc_structure'] = edited_structure
 
-            # 3단계: 플레이스홀더 입력
+            # 3단계: 콘텐츠 파일 업로드
+            st.markdown("---")
+            st.markdown("## 3️⃣ 콘텐츠 파일 업로드")
+
+            st.markdown("플레이스홀더에 들어갈 내용이 담긴 파일을 업로드하세요.")
+            st.caption("지원 형식: Word(.docx), PDF, PowerPoint(.pptx), Excel(.xlsx), 텍스트(.txt, .md)")
+
+            inputs = {}
+            uploaded_content_files = []
+
             if placeholders:
-                st.markdown("---")
-                st.markdown("## 3️⃣ 플레이스홀더 입력")
+                for ph in placeholders:
+                    st.markdown(f"#### 📝 {ph}")
+                    col1, col2 = st.columns([2, 1])
 
-                st.markdown("문서에서 감지된 플레이스홀더에 값을 입력하세요.")
-
-                inputs = {}
-                cols = st.columns(2)
-                for i, ph in enumerate(placeholders):
-                    with cols[i % 2]:
-                        inputs[ph] = st.text_area(
-                            f"📝 {ph}",
-                            height=100,
-                            key=f"placeholder_{ph}",
-                            placeholder=f"{ph}에 들어갈 내용을 입력하세요..."
+                    with col1:
+                        content_file = st.file_uploader(
+                            f"{ph} 파일",
+                            type=SUPPORTED_FILE_TYPES,
+                            key=f"content_file_{ph}",
+                            label_visibility="collapsed"
                         )
 
+                    with col2:
+                        input_method = st.radio(
+                            "입력 방식",
+                            ["파일", "직접입력"],
+                            horizontal=True,
+                            key=f"input_method_{ph}",
+                            label_visibility="collapsed"
+                        )
+
+                    if input_method == "파일" and content_file:
+                        extracted_text = extract_text_from_file(content_file)
+                        inputs[ph] = extracted_text
+                        uploaded_content_files.append(content_file.name)
+
+                        with st.expander(f"📄 {content_file.name} 미리보기", expanded=False):
+                            st.text(extracted_text[:1000] + ("..." if len(extracted_text) > 1000 else ""))
+
+                    elif input_method == "직접입력":
+                        inputs[ph] = st.text_area(
+                            f"{ph} 직접 입력",
+                            height=150,
+                            key=f"direct_input_{ph}",
+                            placeholder=f"{ph}에 들어갈 내용을 입력하세요...",
+                            label_visibility="collapsed"
+                        )
+                    else:
+                        inputs[ph] = ""
+
                 st.session_state['doc_inputs'] = inputs
+                st.session_state['uploaded_content_files'] = uploaded_content_files
             else:
+                # 플레이스홀더 없을 때도 파일 업로드 가능
+                st.info("양식 문서에 플레이스홀더가 없습니다. 구조만 복사됩니다.")
+                content_file = st.file_uploader(
+                    "추가 콘텐츠 파일 (선택)",
+                    type=SUPPORTED_FILE_TYPES,
+                    key="content_file_general"
+                )
+                if content_file:
+                    uploaded_content_files.append(content_file.name)
                 st.session_state['doc_inputs'] = {}
+                st.session_state['uploaded_content_files'] = uploaded_content_files
 
             # 4단계: 문서 생성
             st.markdown("---")
             st.markdown("## 4️⃣ 새 문서 생성")
 
+            # 기본 출력 파일명: 3단계 업로드 파일명 사용 (없으면 양식 파일명)
+            content_files = st.session_state.get('uploaded_content_files', [])
+            if content_files:
+                default_filename = os.path.splitext(content_files[0])[0]
+            else:
+                default_filename = f"new_{uploaded_file.name.replace('.docx', '')}"
+
             col1, col2 = st.columns(2)
             with col1:
                 output_filename = st.text_input(
                     "출력 파일명",
-                    value=f"new_{uploaded_file.name.replace('.docx', '')}",
+                    value=default_filename,
                     key="doctemplate_output_filename"
                 )
             with col2:
