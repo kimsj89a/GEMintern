@@ -273,7 +273,7 @@ def render_doctemplate_panel(settings):
     # 모델 선택
     model = st.selectbox(
         "🤖 AI 모델",
-        ["gemini-2.5-flash-preview-05-20", "gemini-2.5-pro-preview-05-06"],
+        ["gemini-3-flash-preview", "gemini-3-pro-preview"],
         key="doctemplate_model"
     )
 
