@@ -10,8 +10,15 @@ from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from google import genai
 
-# 기본 템플릿 경로
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
+# 기본 템플릿 경로 (.docx만 지원, .dotm은 python-docx 미지원)
+TEMPLATE_PATH_DOTM = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
+TEMPLATE_PATH_DOCX = os.path.join(os.path.dirname(__file__), "template", "Normal.docx")
+
+def get_template_path():
+    """사용 가능한 템플릿 경로 반환 (.docx 우선)"""
+    if os.path.exists(TEMPLATE_PATH_DOCX):
+        return TEMPLATE_PATH_DOCX
+    return None  # .dotm은 python-docx 미지원
 
 # 지원 파일 형식
 SUPPORTED_FILE_TYPES = ['docx', 'pdf', 'pptx', 'xlsx', 'xls', 'txt', 'md']
@@ -171,8 +178,9 @@ def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
     """마크다운을 Word 문서로 변환"""
     import re
 
-    if use_template and os.path.exists(TEMPLATE_PATH):
-        doc = Document(TEMPLATE_PATH)
+    template_path = get_template_path()
+    if use_template and template_path:
+        doc = Document(template_path)
         for element in doc.element.body[:]:
             doc.element.body.remove(element)
     else:
@@ -375,11 +383,13 @@ def render_doctemplate_panel(settings):
                             key="doctemplate_output_filename"
                         )
                     with col2:
-                        template_exists = os.path.exists(TEMPLATE_PATH)
+                        template_path = get_template_path()
+                        template_exists = template_path is not None
                         use_template = st.checkbox(
                             "기본 템플릿 스타일 적용",
                             value=template_exists,
                             disabled=not template_exists,
+                            help="template/Normal.docx 파일이 필요합니다." if not template_exists else None,
                             key="doctemplate_use_template"
                         )
 

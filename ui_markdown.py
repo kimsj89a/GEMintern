@@ -7,15 +7,22 @@ from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
 
-# 기본 템플릿 경로
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
+# 기본 템플릿 경로 (.docx만 지원, .dotm은 python-docx 미지원)
+TEMPLATE_PATH_DOCX = os.path.join(os.path.dirname(__file__), "template", "Normal.docx")
+
+def get_template_path():
+    """사용 가능한 템플릿 경로 반환 (.docx만 지원)"""
+    if os.path.exists(TEMPLATE_PATH_DOCX):
+        return TEMPLATE_PATH_DOCX
+    return None
 
 
 def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
     """마크다운 텍스트를 Word 문서로 변환"""
     # 템플릿 사용 여부에 따라 Document 생성
-    if use_template and os.path.exists(TEMPLATE_PATH):
-        doc = Document(TEMPLATE_PATH)
+    template_path = get_template_path()
+    if use_template and template_path:
+        doc = Document(template_path)
         # 템플릿의 기존 내용 삭제 (스타일은 유지)
         for element in doc.element.body[:]:
             doc.element.body.remove(element)
@@ -273,16 +280,17 @@ def render_markdown_converter_panel(settings):
             key="md_output_filename"
         )
     with col2:
-        template_exists = os.path.exists(TEMPLATE_PATH)
+        template_path = get_template_path()
+        template_exists = template_path is not None
         use_template = st.checkbox(
-            "기본 템플릿 사용 (Normal.dotm)",
+            "기본 템플릿 사용 (Normal.docx)",
             value=template_exists,
             disabled=not template_exists,
-            help="template/Normal.dotm 파일의 스타일을 적용합니다." if template_exists else "템플릿 파일이 없습니다.",
+            help="template/Normal.docx 파일의 스타일을 적용합니다." if template_exists else "템플릿 파일이 없습니다.",
             key="md_use_template"
         )
         if template_exists:
-            st.caption(f"📄 템플릿: `template/Normal.dotm`")
+            st.caption(f"📄 템플릿: `template/Normal.docx`")
 
     # 변환 버튼
     st.markdown("---")
