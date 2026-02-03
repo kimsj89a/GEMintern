@@ -1,15 +1,14 @@
 """
 문서양식 복사기 모듈
-기존 문서 양식 업로드 -> 구조 추출 -> 사용자 입력 -> 새 문서 생성
+기존 문서 양식 업로드 -> AI가 형식 분석 -> 콘텐츠 파일 분석 -> 새 문서 생성
 """
 import streamlit as st
 import io
 import os
-import json
-import re
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from google import genai
 
 # 기본 템플릿 경로
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template", "Normal.dotm")
@@ -24,10 +23,10 @@ def extract_text_from_file(uploaded_file) -> str:
     content = ""
 
     try:
+        uploaded_file.seek(0)  # 파일 포인터 리셋
+
         if filename.endswith('.txt') or filename.endswith('.md'):
-            # 텍스트 파일
             raw_bytes = uploaded_file.read()
-            # 인코딩 시도
             for encoding in ['utf-8-sig', 'utf-8', 'cp949', 'euc-kr']:
                 try:
                     content = raw_bytes.decode(encoding)
@@ -38,15 +37,13 @@ def extract_text_from_file(uploaded_file) -> str:
                 content = raw_bytes.decode('utf-8', errors='replace')
 
         elif filename.endswith('.docx'):
-            # Word 문서
             doc = Document(io.BytesIO(uploaded_file.read()))
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             content = '\n\n'.join(paragraphs)
 
         elif filename.endswith('.pdf'):
-            # PDF - PyMuPDF 사용 시도
             try:
-                import fitz  # PyMuPDF
+                import fitz
                 pdf_bytes = uploaded_file.read()
                 pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
                 text_parts = []
@@ -55,10 +52,9 @@ def extract_text_from_file(uploaded_file) -> str:
                 content = '\n'.join(text_parts)
                 pdf_doc.close()
             except ImportError:
-                content = "[PDF 읽기 실패: PyMuPDF(fitz) 라이브러리가 필요합니다]"
+                content = "[PDF 읽기 실패: PyMuPDF 필요]"
 
         elif filename.endswith('.pptx'):
-            # PowerPoint
             try:
                 from pptx import Presentation
                 prs = Presentation(io.BytesIO(uploaded_file.read()))
@@ -69,10 +65,9 @@ def extract_text_from_file(uploaded_file) -> str:
                             text_parts.append(shape.text)
                 content = '\n\n'.join(text_parts)
             except ImportError:
-                content = "[PPT 읽기 실패: python-pptx 라이브러리가 필요합니다]"
+                content = "[PPT 읽기 실패: python-pptx 필요]"
 
         elif filename.endswith('.xlsx') or filename.endswith('.xls'):
-            # Excel
             try:
                 import pandas as pd
                 df = pd.read_excel(io.BytesIO(uploaded_file.read()), sheet_name=None)
@@ -81,7 +76,7 @@ def extract_text_from_file(uploaded_file) -> str:
                     text_parts.append(f"[{sheet_name}]\n{sheet_df.to_string()}")
                 content = '\n\n'.join(text_parts)
             except ImportError:
-                content = "[Excel 읽기 실패: pandas, openpyxl 라이브러리가 필요합니다]"
+                content = "[Excel 읽기 실패: pandas 필요]"
 
     except Exception as e:
         content = f"[파일 읽기 오류: {str(e)}]"
@@ -89,139 +84,168 @@ def extract_text_from_file(uploaded_file) -> str:
     return content
 
 
-def extract_document_structure(doc: Document) -> list:
-    """Word 문서에서 구조 추출"""
-    structure = []
+def analyze_document_format(raw_text: str, api_key: str, model: str) -> str:
+    """AI로 문서 형식을 마크다운으로 분석"""
+    client = genai.Client(api_key=api_key)
 
-    for i, para in enumerate(doc.paragraphs):
-        text = para.text.strip()
-        if not text:
-            continue
+    prompt = """다음 문서의 **형식과 구조**를 분석해서 마크다운 템플릿으로 변환해주세요.
 
-        # 스타일 분석
-        style_name = para.style.name if para.style else "Normal"
+[분석 원칙]
+1. 문서의 전체적인 구조(섹션, 제목, 소제목 등)를 파악
+2. 각 섹션에 어떤 종류의 내용이 들어가는지 파악 (예: 회사 개요, 재무 현황, 결론 등)
+3. 반복되는 패턴이나 표 형식이 있다면 구조 파악
+4. 실제 내용은 {{섹션명}} 형태의 플레이스홀더로 대체
 
-        # 헤더 레벨 판별
-        if "Heading" in style_name:
-            level = int(style_name.replace("Heading ", "")) if style_name != "Heading" else 1
-            element_type = f"heading_{level}"
-        elif para.runs and para.runs[0].bold:
-            element_type = "bold_text"
-        else:
-            element_type = "paragraph"
+[출력 형식]
+- 마크다운 형식으로 출력
+- 각 섹션의 제목은 그대로 유지
+- 내용이 들어갈 부분은 {{해당_섹션_설명}} 형태로 표시
+- 문서의 톤앤매너, 형식적 특징도 주석으로 메모
 
-        # 플레이스홀더 감지 ({{변수명}} 또는 [변수명] 패턴)
-        import re
-        placeholders = re.findall(r'\{\{(.+?)\}\}|\[(.+?)\]', text)
-        placeholder_names = [p[0] or p[1] for p in placeholders]
+[문서 내용]
+""" + raw_text[:15000]  # 토큰 제한
 
-        structure.append({
-            "index": i,
-            "type": element_type,
-            "style": style_name,
-            "original_text": text,
-            "placeholders": placeholder_names,
-            "editable": True,
-            "include": True
-        })
-
-    # 테이블 추출
-    for i, table in enumerate(doc.tables):
-        table_data = []
-        for row in table.rows:
-            row_data = [cell.text.strip() for cell in row.cells]
-            table_data.append(row_data)
-
-        structure.append({
-            "index": f"table_{i}",
-            "type": "table",
-            "style": "Table",
-            "original_text": f"[테이블 {i+1}] {len(table.rows)}행 x {len(table.columns)}열",
-            "table_data": table_data,
-            "placeholders": [],
-            "editable": True,
-            "include": True
-        })
-
-    return structure
+    try:
+        response = client.models.generate_content(model=model, contents=prompt)
+        return response.text.strip() if response.text else ""
+    except Exception as e:
+        return f"[형식 분석 오류: {str(e)}]"
 
 
-def generate_document_from_structure(structure: list, inputs: dict, use_template: bool = True) -> bytes:
-    """구조와 입력값을 바탕으로 새 문서 생성"""
-    # 템플릿 사용 여부에 따라 Document 생성
+def extract_content_as_markdown(raw_text: str, api_key: str, model: str) -> str:
+    """AI로 콘텐츠를 마크다운으로 정리"""
+    client = genai.Client(api_key=api_key)
+
+    prompt = """다음 문서의 **내용**을 마크다운 형식으로 깔끔하게 정리해주세요.
+
+[정리 원칙]
+1. 핵심 정보와 데이터를 빠짐없이 추출
+2. 논리적 구조로 재정리 (제목, 소제목, 불릿 포인트 활용)
+3. 숫자, 고유명사, 날짜 등은 정확히 유지
+4. 불필요한 반복이나 형식적 문구는 제거
+5. 표 형식 데이터는 마크다운 테이블로 변환
+
+[문서 내용]
+""" + raw_text[:15000]
+
+    try:
+        response = client.models.generate_content(model=model, contents=prompt)
+        return response.text.strip() if response.text else ""
+    except Exception as e:
+        return f"[콘텐츠 추출 오류: {str(e)}]"
+
+
+def generate_final_document(format_md: str, content_md: str, api_key: str, model: str) -> str:
+    """형식 템플릿 + 콘텐츠 = 최종 문서 생성"""
+    client = genai.Client(api_key=api_key)
+
+    prompt = f"""다음 두 가지를 결합하여 완성된 문서를 마크다운으로 작성해주세요.
+
+[문서 형식 템플릿]
+{format_md}
+
+---
+
+[채워 넣을 콘텐츠]
+{content_md}
+
+---
+
+[작성 원칙]
+1. 형식 템플릿의 구조와 스타일을 따름
+2. 콘텐츠의 정보를 적절한 섹션에 배치
+3. 플레이스홀더({{...}})를 실제 내용으로 채움
+4. 콘텐츠에 없는 정보는 추가하지 않음
+5. 자연스럽고 전문적인 문체 유지
+6. 최종 결과는 마크다운 형식으로 출력
+"""
+
+    try:
+        response = client.models.generate_content(model=model, contents=prompt)
+        return response.text.strip() if response.text else ""
+    except Exception as e:
+        return f"[문서 생성 오류: {str(e)}]"
+
+
+def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
+    """마크다운을 Word 문서로 변환"""
+    import re
+
     if use_template and os.path.exists(TEMPLATE_PATH):
         doc = Document(TEMPLATE_PATH)
-        # 템플릿의 기존 내용 삭제 (스타일은 유지)
         for element in doc.element.body[:]:
             doc.element.body.remove(element)
     else:
         doc = Document()
+        style = doc.styles['Normal']
+        style.font.name = '맑은 고딕'
+        style.font.size = Pt(11)
 
-    for item in structure:
-        if not item.get("include", True):
+    lines = markdown_text.split('\n')
+    i = 0
+    in_code_block = False
+    code_content = []
+
+    while i < len(lines):
+        line = lines[i]
+
+        # 코드 블록
+        if line.strip().startswith('```'):
+            if in_code_block:
+                code_text = '\n'.join(code_content)
+                p = doc.add_paragraph()
+                run = p.add_run(code_text)
+                run.font.name = 'Consolas'
+                run.font.size = Pt(10)
+                code_content = []
+                in_code_block = False
+            else:
+                in_code_block = True
+            i += 1
             continue
 
-        item_type = item["type"]
+        if in_code_block:
+            code_content.append(line)
+            i += 1
+            continue
 
-        if item_type == "table":
-            # 테이블 생성
-            table_data = item.get("table_data", [])
-            if table_data:
-                rows = len(table_data)
-                cols = len(table_data[0]) if table_data else 1
-                table = doc.add_table(rows=rows, cols=cols)
-                table.style = 'Table Grid'
+        # 빈 줄
+        if not line.strip():
+            i += 1
+            continue
 
-                for r_idx, row_data in enumerate(table_data):
-                    for c_idx, cell_text in enumerate(row_data):
-                        if c_idx < len(table.rows[r_idx].cells):
-                            # 플레이스홀더 치환
-                            final_text = replace_placeholders(cell_text, inputs)
-                            table.rows[r_idx].cells[c_idx].text = final_text
-                doc.add_paragraph()  # 테이블 후 빈 줄
+        # 헤더
+        if line.startswith('### '):
+            doc.add_paragraph(line[4:].strip(), style='Heading 3')
+        elif line.startswith('## '):
+            doc.add_paragraph(line[3:].strip(), style='Heading 2')
+        elif line.startswith('# '):
+            doc.add_paragraph(line[2:].strip(), style='Heading 1')
+        # 리스트
+        elif line.strip().startswith('- ') or line.strip().startswith('* '):
+            text = line.strip()[2:]
+            doc.add_paragraph(text, style='List Bullet')
+        elif re.match(r'^\s*\d+\.\s', line):
+            text = re.sub(r'^\s*\d+\.\s', '', line)
+            doc.add_paragraph(text, style='List Number')
+        # 수평선
+        elif line.strip() in ['---', '***', '___']:
+            p = doc.add_paragraph('_' * 50)
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # 일반 텍스트
+        else:
+            # 마크다운 포맷 제거
+            clean_text = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+            clean_text = re.sub(r'\*(.+?)\*', r'\1', clean_text)
+            clean_text = re.sub(r'`(.+?)`', r'\1', clean_text)
+            doc.add_paragraph(clean_text)
 
-        elif item_type.startswith("heading_"):
-            level = int(item_type.split("_")[1])
-            text = item.get("edited_text", item["original_text"])
-            text = replace_placeholders(text, inputs)
+        i += 1
 
-            style_name = f"Heading {level}"
-            try:
-                p = doc.add_paragraph(text, style=style_name)
-            except:
-                p = doc.add_paragraph(text)
-                if p.runs:
-                    p.runs[0].bold = True
-
-        elif item_type == "bold_text":
-            text = item.get("edited_text", item["original_text"])
-            text = replace_placeholders(text, inputs)
-            p = doc.add_paragraph()
-            run = p.add_run(text)
-            run.bold = True
-
-        else:  # paragraph
-            text = item.get("edited_text", item["original_text"])
-            text = replace_placeholders(text, inputs)
-            doc.add_paragraph(text)
-
-    # BytesIO로 저장
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
-
-
-def replace_placeholders(text: str, inputs: dict) -> str:
-    """플레이스홀더를 입력값으로 치환"""
-    import re
-
-    # {{변수명}} 패턴 치환
-    for key, value in inputs.items():
-        text = text.replace(f"{{{{{key}}}}}", str(value))
-        text = text.replace(f"[{key}]", str(value))
-
-    return text
 
 
 def render_doctemplate_panel(settings):
@@ -231,246 +255,180 @@ def render_doctemplate_panel(settings):
     st.markdown("""
         <div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0068c9;'>
         <h4 style='margin-top: 0; color: #0068c9;'>📋 기능 안내</h4>
-        <b>기존 문서 양식을 기반으로 새 문서를 생성합니다.</b><br/><br/>
+        <b>기존 문서의 형식을 분석하여 새로운 내용으로 문서를 생성합니다.</b><br/><br/>
         <b>사용 방법:</b><br/>
-        1️⃣ 양식 문서(.docx) 업로드<br/>
-        2️⃣ 추출된 구조 확인 및 편집<br/>
-        3️⃣ 콘텐츠 파일 업로드 (Word/PDF/PPT/Excel/Text)<br/>
-        4️⃣ 새 문서 생성 및 다운로드<br/><br/>
-        <b>플레이스홀더 사용법:</b> <code>{{변수명}}</code> 또는 <code>[변수명]</code> 형식으로 양식 문서에 작성
+        1️⃣ 양식 문서 업로드 (형식/구조 참고용)<br/>
+        2️⃣ AI가 문서 형식을 마크다운으로 분석<br/>
+        3️⃣ 콘텐츠 파일 업로드 (새로 넣을 내용)<br/>
+        4️⃣ AI가 형식 + 콘텐츠를 결합하여 새 문서 생성
         </div>
     """, unsafe_allow_html=True)
 
-    # 1단계: 양식 문서 업로드
-    st.markdown("---")
-    st.markdown("## 1️⃣ 양식 문서 업로드")
+    # API Key 확인
+    api_key = settings.get('api_key', '') if settings else ''
+    if not api_key:
+        st.warning("⚠️ 상단 설정에서 Google API Key를 입력해주세요.")
+        return
 
-    uploaded_file = st.file_uploader(
-        "Word 문서 업로드 (.docx)",
-        type=['docx'],
-        key="doctemplate_upload"
+    # 모델 선택
+    model = st.selectbox(
+        "🤖 AI 모델",
+        ["gemini-2.5-flash-preview-05-20", "gemini-2.5-pro-preview-05-06"],
+        key="doctemplate_model"
     )
 
-    if uploaded_file:
-        try:
-            # 문서 로드
-            doc = Document(io.BytesIO(uploaded_file.read()))
-            st.success(f"✅ 파일 로드 완료: {uploaded_file.name}")
+    # =========================================
+    # 1단계: 양식 문서 업로드
+    # =========================================
+    st.markdown("---")
+    st.markdown("## 1️⃣ 양식 문서 업로드")
+    st.caption("형식과 구조를 참고할 문서를 업로드하세요.")
 
-            # 구조 추출
-            if 'doc_structure' not in st.session_state or st.session_state.get('doc_filename') != uploaded_file.name:
-                structure = extract_document_structure(doc)
-                st.session_state['doc_structure'] = structure
-                st.session_state['doc_filename'] = uploaded_file.name
+    format_file = st.file_uploader(
+        "양식 문서",
+        type=SUPPORTED_FILE_TYPES,
+        key="doctemplate_format_file"
+    )
 
-                # 플레이스홀더 수집
-                all_placeholders = set()
-                for item in structure:
-                    all_placeholders.update(item.get("placeholders", []))
-                st.session_state['doc_placeholders'] = list(all_placeholders)
+    if format_file:
+        format_raw = extract_text_from_file(format_file)
+        st.success(f"✅ 양식 파일 로드: {format_file.name} ({len(format_raw):,}자)")
 
-            structure = st.session_state['doc_structure']
-            placeholders = st.session_state.get('doc_placeholders', [])
+        with st.expander("📄 원본 내용 미리보기", expanded=False):
+            st.text(format_raw[:2000] + ("..." if len(format_raw) > 2000 else ""))
 
-            # 2단계: 구조 확인 및 편집
-            st.markdown("---")
-            st.markdown("## 2️⃣ 문서 구조 확인 및 편집")
+        # =========================================
+        # 2단계: AI 형식 분석
+        # =========================================
+        st.markdown("---")
+        st.markdown("## 2️⃣ 문서 형식 분석")
 
-            st.info(f"📊 추출된 요소: {len(structure)}개 | 플레이스홀더: {len(placeholders)}개")
+        if st.button("🔍 AI로 형식 분석", type="secondary", key="btn_analyze_format"):
+            with st.spinner("문서 형식 분석 중..."):
+                format_md = analyze_document_format(format_raw, api_key, model)
+                st.session_state['doctemplate_format_md'] = format_md
+                st.success("✅ 형식 분석 완료!")
 
-            with st.expander("📄 문서 구조 편집", expanded=True):
-                edited_structure = []
+        if st.session_state.get('doctemplate_format_md'):
+            st.markdown("#### 📝 분석된 문서 형식 (마크다운)")
+            format_md = st.text_area(
+                "형식 템플릿 (편집 가능)",
+                value=st.session_state['doctemplate_format_md'],
+                height=300,
+                key="doctemplate_format_edit"
+            )
+            st.session_state['doctemplate_format_md'] = format_md
 
-                for idx, item in enumerate(structure):
-                    col1, col2, col3 = st.columns([0.5, 3, 1])
-
-                    with col1:
-                        include = st.checkbox(
-                            "포함",
-                            value=item.get("include", True),
-                            key=f"include_{idx}",
-                            label_visibility="collapsed"
-                        )
-
-                    with col2:
-                        type_label = {
-                            "heading_1": "📌 제목1",
-                            "heading_2": "📎 제목2",
-                            "heading_3": "📍 제목3",
-                            "bold_text": "🔹 강조",
-                            "paragraph": "📝 본문",
-                            "table": "📊 테이블"
-                        }.get(item["type"], "📝 기타")
-
-                        if item["type"] == "table":
-                            st.text(f"{type_label}: {item['original_text']}")
-                            edited_text = item["original_text"]
-                        else:
-                            edited_text = st.text_input(
-                                type_label,
-                                value=item.get("edited_text", item["original_text"]),
-                                key=f"edit_{idx}",
-                                label_visibility="collapsed"
-                            )
-
-                    with col3:
-                        st.caption(item["type"])
-
-                    edited_item = item.copy()
-                    edited_item["include"] = include
-                    edited_item["edited_text"] = edited_text
-                    edited_structure.append(edited_item)
-
-                st.session_state['doc_structure'] = edited_structure
-
+            # =========================================
             # 3단계: 콘텐츠 파일 업로드
+            # =========================================
             st.markdown("---")
             st.markdown("## 3️⃣ 콘텐츠 파일 업로드")
+            st.caption("새 문서에 들어갈 내용이 담긴 파일을 업로드하세요.")
 
-            st.markdown("플레이스홀더에 들어갈 내용이 담긴 파일을 업로드하세요.")
-            st.caption("지원 형식: Word(.docx), PDF, PowerPoint(.pptx), Excel(.xlsx), 텍스트(.txt, .md)")
+            content_file = st.file_uploader(
+                "콘텐츠 파일",
+                type=SUPPORTED_FILE_TYPES,
+                key="doctemplate_content_file"
+            )
 
-            inputs = {}
-            uploaded_content_files = []
+            if content_file:
+                content_raw = extract_text_from_file(content_file)
+                st.success(f"✅ 콘텐츠 파일 로드: {content_file.name} ({len(content_raw):,}자)")
+                st.session_state['doctemplate_content_filename'] = content_file.name
 
-            if placeholders:
-                for ph in placeholders:
-                    st.markdown(f"#### 📝 {ph}")
-                    col1, col2 = st.columns([2, 1])
+                with st.expander("📄 콘텐츠 미리보기", expanded=False):
+                    st.text(content_raw[:2000] + ("..." if len(content_raw) > 2000 else ""))
 
+                if st.button("🔍 AI로 콘텐츠 정리", type="secondary", key="btn_analyze_content"):
+                    with st.spinner("콘텐츠 정리 중..."):
+                        content_md = extract_content_as_markdown(content_raw, api_key, model)
+                        st.session_state['doctemplate_content_md'] = content_md
+                        st.success("✅ 콘텐츠 정리 완료!")
+
+                if st.session_state.get('doctemplate_content_md'):
+                    st.markdown("#### 📝 정리된 콘텐츠 (마크다운)")
+                    content_md = st.text_area(
+                        "콘텐츠 (편집 가능)",
+                        value=st.session_state['doctemplate_content_md'],
+                        height=300,
+                        key="doctemplate_content_edit"
+                    )
+                    st.session_state['doctemplate_content_md'] = content_md
+
+                    # =========================================
+                    # 4단계: 문서 생성
+                    # =========================================
+                    st.markdown("---")
+                    st.markdown("## 4️⃣ 새 문서 생성")
+
+                    # 출력 파일명 (콘텐츠 파일명 기반)
+                    default_filename = os.path.splitext(
+                        st.session_state.get('doctemplate_content_filename', 'output')
+                    )[0]
+
+                    col1, col2 = st.columns(2)
                     with col1:
-                        content_file = st.file_uploader(
-                            f"{ph} 파일",
-                            type=SUPPORTED_FILE_TYPES,
-                            key=f"content_file_{ph}",
-                            label_visibility="collapsed"
+                        output_filename = st.text_input(
+                            "출력 파일명",
+                            value=default_filename,
+                            key="doctemplate_output_filename"
                         )
-
                     with col2:
-                        input_method = st.radio(
-                            "입력 방식",
-                            ["파일", "직접입력"],
-                            horizontal=True,
-                            key=f"input_method_{ph}",
-                            label_visibility="collapsed"
+                        template_exists = os.path.exists(TEMPLATE_PATH)
+                        use_template = st.checkbox(
+                            "기본 템플릿 스타일 적용",
+                            value=template_exists,
+                            disabled=not template_exists,
+                            key="doctemplate_use_template"
                         )
 
-                    if input_method == "파일" and content_file:
-                        extracted_text = extract_text_from_file(content_file)
-                        inputs[ph] = extracted_text
-                        uploaded_content_files.append(content_file.name)
+                    if st.button("🚀 문서 생성", type="primary", use_container_width=True, key="btn_generate"):
+                        with st.spinner("AI가 문서를 생성하는 중..."):
+                            final_md = generate_final_document(
+                                st.session_state['doctemplate_format_md'],
+                                st.session_state['doctemplate_content_md'],
+                                api_key,
+                                model
+                            )
+                            st.session_state['doctemplate_final_md'] = final_md
+                            st.success("✅ 문서 생성 완료!")
 
-                        with st.expander(f"📄 {content_file.name} 미리보기", expanded=False):
-                            st.text(extracted_text[:1000] + ("..." if len(extracted_text) > 1000 else ""))
+                    if st.session_state.get('doctemplate_final_md'):
+                        st.markdown("#### 📄 생성된 문서")
 
-                    elif input_method == "직접입력":
-                        inputs[ph] = st.text_area(
-                            f"{ph} 직접 입력",
-                            height=150,
-                            key=f"direct_input_{ph}",
-                            placeholder=f"{ph}에 들어갈 내용을 입력하세요...",
-                            label_visibility="collapsed"
-                        )
-                    else:
-                        inputs[ph] = ""
+                        with st.container(border=True):
+                            st.markdown(st.session_state['doctemplate_final_md'])
 
-                st.session_state['doc_inputs'] = inputs
-                st.session_state['uploaded_content_files'] = uploaded_content_files
-            else:
-                # 플레이스홀더 없을 때도 파일 업로드 가능
-                st.info("양식 문서에 플레이스홀더가 없습니다. 구조만 복사됩니다.")
-                content_file = st.file_uploader(
-                    "추가 콘텐츠 파일 (선택)",
-                    type=SUPPORTED_FILE_TYPES,
-                    key="content_file_general"
-                )
-                if content_file:
-                    uploaded_content_files.append(content_file.name)
-                st.session_state['doc_inputs'] = {}
-                st.session_state['uploaded_content_files'] = uploaded_content_files
+                        # 다운로드 옵션
+                        st.markdown("#### 💾 다운로드")
+                        col1, col2 = st.columns(2)
 
-            # 4단계: 문서 생성
-            st.markdown("---")
-            st.markdown("## 4️⃣ 새 문서 생성")
+                        with col1:
+                            st.download_button(
+                                "📥 마크다운 (.md)",
+                                st.session_state['doctemplate_final_md'],
+                                f"{output_filename}.md",
+                                "text/markdown",
+                                use_container_width=True
+                            )
 
-            # 기본 출력 파일명: 3단계 업로드 파일명 사용 (없으면 양식 파일명)
-            content_files = st.session_state.get('uploaded_content_files', [])
-            if content_files:
-                default_filename = os.path.splitext(content_files[0])[0]
-            else:
-                default_filename = f"new_{uploaded_file.name.replace('.docx', '')}"
+                        with col2:
+                            try:
+                                docx_bytes = markdown_to_docx(
+                                    st.session_state['doctemplate_final_md'],
+                                    use_template=use_template
+                                )
+                                st.download_button(
+                                    "📥 Word (.docx)",
+                                    docx_bytes,
+                                    f"{output_filename}.docx",
+                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    type="primary"
+                                )
+                            except Exception as e:
+                                st.error(f"Word 변환 오류: {e}")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                output_filename = st.text_input(
-                    "출력 파일명",
-                    value=default_filename,
-                    key="doctemplate_output_filename"
-                )
-            with col2:
-                template_exists = os.path.exists(TEMPLATE_PATH)
-                use_template = st.checkbox(
-                    "기본 템플릿 스타일 적용",
-                    value=template_exists,
-                    disabled=not template_exists,
-                    key="doctemplate_use_template"
-                )
-
-            if st.button("🚀 문서 생성", type="primary", use_container_width=True, key="btn_generate_doc"):
-                with st.spinner("문서 생성 중..."):
-                    try:
-                        final_structure = st.session_state.get('doc_structure', [])
-                        final_inputs = st.session_state.get('doc_inputs', {})
-
-                        docx_bytes = generate_document_from_structure(
-                            final_structure,
-                            final_inputs,
-                            use_template=use_template
-                        )
-
-                        st.session_state['doctemplate_result'] = docx_bytes
-                        st.session_state['doctemplate_filename'] = output_filename
-                        st.success("✅ 문서 생성 완료!")
-                    except Exception as e:
-                        st.error(f"문서 생성 중 오류: {e}")
-
-            # 다운로드 버튼
-            if st.session_state.get('doctemplate_result'):
-                filename = st.session_state.get('doctemplate_filename', 'output')
-                st.download_button(
-                    "📥 문서 다운로드",
-                    st.session_state['doctemplate_result'],
-                    f"{filename}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    type="primary",
-                    key="btn_download_doctemplate"
-                )
-
-        except Exception as e:
-            st.error(f"파일 처리 중 오류: {e}")
     else:
-        st.info("양식 문서(.docx)를 업로드하면 구조가 추출됩니다.")
-
-        # 예시 설명
-        with st.expander("💡 양식 문서 작성 팁"):
-            st.markdown("""
-            **플레이스홀더 작성 방법:**
-            ```
-            보고서 제목: {{제목}}
-            작성자: {{작성자}}
-            작성일: {{날짜}}
-
-            1. 개요
-            {{개요_내용}}
-
-            2. 본문
-            {{본문_내용}}
-            ```
-
-            **지원되는 요소:**
-            - 제목 스타일 (Heading 1~6)
-            - 본문 텍스트
-            - 굵은 텍스트
-            - 테이블
-            """)
+        st.info("양식 문서를 업로드하면 AI가 형식을 분석합니다.")
