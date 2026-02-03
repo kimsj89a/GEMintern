@@ -17,6 +17,29 @@ def get_template_path():
     return None
 
 
+def has_style(doc, style_name: str) -> bool:
+    """문서에 특정 스타일이 존재하는지 확인"""
+    try:
+        _ = doc.styles[style_name]
+        return True
+    except KeyError:
+        return False
+
+
+def add_list_paragraph(doc, text: str, style_name: str, indent_level: int = 0):
+    """리스트 스타일 단락 추가 (스타일 없으면 수동 처리)"""
+    if has_style(doc, style_name):
+        p = doc.add_paragraph(style=style_name)
+        p.paragraph_format.left_indent = Inches(0.25 * (indent_level // 2 + 1))
+        return p
+    else:
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Inches(0.25 * (indent_level // 2 + 1))
+        if style_name == 'List Bullet':
+            run = p.add_run("• ")
+        return p
+
+
 def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
     """마크다운 텍스트를 Word 문서로 변환"""
     # 템플릿 사용 여부에 따라 Document 생성
@@ -91,25 +114,57 @@ def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
             run.bold = True
             run.font.size = Pt(13)
         elif line.startswith('###'):
-            p = doc.add_paragraph(line[3:].strip(), style='Heading 3')
+            text = line[3:].strip()
+            if has_style(doc, 'Heading 3'):
+                p = doc.add_paragraph(text, style='Heading 3')
+            else:
+                p = doc.add_paragraph(text)
+                if p.runs:
+                    p.runs[0].bold = True
         elif line.startswith('##'):
-            p = doc.add_paragraph(line[2:].strip(), style='Heading 2')
+            text = line[2:].strip()
+            if has_style(doc, 'Heading 2'):
+                p = doc.add_paragraph(text, style='Heading 2')
+            else:
+                p = doc.add_paragraph(text)
+                if p.runs:
+                    p.runs[0].bold = True
+                    p.runs[0].font.size = Pt(14)
         elif line.startswith('#'):
-            p = doc.add_paragraph(line[1:].strip(), style='Heading 1')
+            text = line[1:].strip()
+            if has_style(doc, 'Heading 1'):
+                p = doc.add_paragraph(text, style='Heading 1')
+            else:
+                p = doc.add_paragraph(text)
+                if p.runs:
+                    p.runs[0].bold = True
+                    p.runs[0].font.size = Pt(16)
 
         # 리스트 처리
         elif line.strip().startswith('- ') or line.strip().startswith('* '):
             indent_level = len(line) - len(line.lstrip())
             text = line.strip()[2:]
-            p = doc.add_paragraph(style='List Bullet')
-            add_formatted_text(p, text)
+            if has_style(doc, 'List Bullet'):
+                p = doc.add_paragraph(style='List Bullet')
+                add_formatted_text(p, text)
+            else:
+                p = doc.add_paragraph()
+                p.add_run("• ")
+                add_formatted_text(p, text)
             p.paragraph_format.left_indent = Inches(0.25 * (indent_level // 2 + 1))
 
         elif re.match(r'^\s*\d+\.\s', line):
             indent_level = len(line) - len(line.lstrip())
+            num_match = re.match(r'^\s*(\d+)\.\s', line)
+            num = num_match.group(1) if num_match else "1"
             text = re.sub(r'^\s*\d+\.\s', '', line)
-            p = doc.add_paragraph(style='List Number')
-            add_formatted_text(p, text)
+            if has_style(doc, 'List Number'):
+                p = doc.add_paragraph(style='List Number')
+                add_formatted_text(p, text)
+            else:
+                p = doc.add_paragraph()
+                p.add_run(f"{num}. ")
+                add_formatted_text(p, text)
             p.paragraph_format.left_indent = Inches(0.25 * (indent_level // 2 + 1))
 
         # 수평선

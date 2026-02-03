@@ -173,6 +173,29 @@ def generate_final_document(format_md: str, content_md: str, api_key: str, model
         return f"[문서 생성 오류: {str(e)}]"
 
 
+def has_style(doc, style_name: str) -> bool:
+    """문서에 특정 스타일이 존재하는지 확인"""
+    try:
+        _ = doc.styles[style_name]
+        return True
+    except KeyError:
+        return False
+
+
+def add_paragraph_safe(doc, text: str, style_name: str = None):
+    """스타일이 없으면 기본 스타일로 단락 추가"""
+    if style_name and has_style(doc, style_name):
+        return doc.add_paragraph(text, style=style_name)
+    else:
+        p = doc.add_paragraph(text)
+        # 리스트 스타일이 없으면 수동으로 불릿/번호 추가
+        if style_name == 'List Bullet':
+            p.text = f"• {text}"
+        elif style_name == 'List Number':
+            p.text = text  # 번호는 이미 텍스트에 포함됨
+        return p
+
+
 def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
     """마크다운을 Word 문서로 변환"""
     import re
@@ -192,6 +215,7 @@ def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
     i = 0
     in_code_block = False
     code_content = []
+    list_number = 0  # 번호 리스트 카운터
 
     while i < len(lines):
         line = lines[i]
@@ -218,27 +242,38 @@ def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
 
         # 빈 줄
         if not line.strip():
+            list_number = 0  # 리스트 번호 리셋
             i += 1
             continue
 
         # 헤더
         if line.startswith('### '):
-            doc.add_paragraph(line[4:].strip(), style='Heading 3')
+            add_paragraph_safe(doc, line[4:].strip(), 'Heading 3')
+            list_number = 0
         elif line.startswith('## '):
-            doc.add_paragraph(line[3:].strip(), style='Heading 2')
+            add_paragraph_safe(doc, line[3:].strip(), 'Heading 2')
+            list_number = 0
         elif line.startswith('# '):
-            doc.add_paragraph(line[2:].strip(), style='Heading 1')
-        # 리스트
+            add_paragraph_safe(doc, line[2:].strip(), 'Heading 1')
+            list_number = 0
+        # 불릿 리스트
         elif line.strip().startswith('- ') or line.strip().startswith('* '):
             text = line.strip()[2:]
-            doc.add_paragraph(text, style='List Bullet')
+            add_paragraph_safe(doc, text, 'List Bullet')
+            list_number = 0
+        # 번호 리스트
         elif re.match(r'^\s*\d+\.\s', line):
             text = re.sub(r'^\s*\d+\.\s', '', line)
-            doc.add_paragraph(text, style='List Number')
+            list_number += 1
+            if has_style(doc, 'List Number'):
+                doc.add_paragraph(text, style='List Number')
+            else:
+                doc.add_paragraph(f"{list_number}. {text}")
         # 수평선
         elif line.strip() in ['---', '***', '___']:
             p = doc.add_paragraph('_' * 50)
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            list_number = 0
         # 일반 텍스트
         else:
             # 마크다운 포맷 제거
@@ -246,6 +281,7 @@ def markdown_to_docx(markdown_text: str, use_template: bool = True) -> bytes:
             clean_text = re.sub(r'\*(.+?)\*', r'\1', clean_text)
             clean_text = re.sub(r'`(.+?)`', r'\1', clean_text)
             doc.add_paragraph(clean_text)
+            list_number = 0
 
         i += 1
 
