@@ -39,10 +39,11 @@ def main():
     settings = ui_input.render_settings()
 
     # 탭 기반 UI - 프로세스 3탭 + 도구 5탭
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    tab1, tab2, tab3, tab_ppt, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📋 초기검토",
         "📊 예비실사",
         "🔍 정밀실사",
+        "🖥️ PPT 생성",
         "🎤 오디오 전사",
         "🌐 웹 크롤러",
         "👁️ 문서 OCR",
@@ -60,7 +61,7 @@ def main():
 
     with tab2:
         st.markdown("### 📊 예비실사 (Preliminary DD)")
-        st.caption("투자심사보고서, IM, 발표자료, 사후관리보고서 등을 작성합니다.")
+        st.caption("투자심사보고서, IM, 사후관리보고서 등을 작성합니다.")
         st.markdown("---")
         inputs = ui_input.render_preliminary_dd_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -73,6 +74,14 @@ def main():
         inputs = ui_input.render_detailed_dd_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
         ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="dd")
+
+    with tab_ppt:
+        st.markdown("### 🖥️ PPT 생성 (Paper2Slides)")
+        st.caption("문서나 논문을 업로드하여 구조화된 발표자료(PPT)로 변환합니다.")
+        st.markdown("---")
+        inputs = ui_input.render_ppt_panel(st.container(), settings)
+        st.markdown("<br>", unsafe_allow_html=True)
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="ppt")
 
     with tab4:
         ui_audio.render_audio_transcription_panel(settings)

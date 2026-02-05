@@ -461,9 +461,8 @@ def render_preliminary_dd_panel(container, settings):
             'investment': '1. 투자심사보고서 (표준)',
             'im': '2. IM (투자제안서)',
             'management': '3. 사후관리보고서',
-            'presentation': '4. 투자심의 발표자료 (PPT)',
-            'free_summary': '5. 자유 구조화 (요약)',
-            'custom': '6. 자유 구조화 (요약보고서)'
+            'free_summary': '4. 자유 구조화 (요약)',
+            'custom': '5. 자유 구조화 (요약보고서)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",
@@ -540,15 +539,13 @@ def render_preliminary_dd_panel(container, settings):
             "selected_saved_files": selected_saved_files
         }
 
-def render_im_ppt_panel(container, settings):
-    """IM/PPT 생성 입력 패널"""
+def render_im_panel(container, settings):
+    """IM (투자제안서) 생성 입력 패널"""
     with container:
         # 1. 템플릿 선택
         template_options = {
             'im': '1. IM (투자제안서)',
-            'presentation': '2. 투자심의 발표자료 (PPT)',
-            'paper_review': '3. 논문/문서 발표자료 (Paper2Slides)',
-            'free_summary': '4. 자유 구조화 (요약)'
+            'free_summary': '2. 자유 구조화 (요약)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",
@@ -600,6 +597,63 @@ def render_im_ppt_panel(container, settings):
 
         st.markdown("---")
         generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="im_generate")
+
+        return {
+            "template_option": template_option,
+            "structure_text": structure_text,
+            "uploaded_files": uploaded_files,
+            "rfi_file_list_input": "",
+            "context_text": context_text,
+            "rfi_existing": "",
+            "generate_btn": generate_btn,
+            "generation_mode": "single",
+            "selected_saved_files": selected_saved_files
+        }
+
+def render_ppt_panel(container, settings):
+    """PPT 생성 전용 패널 (Paper2Slides)"""
+    with container:
+        # 1. 템플릿 선택
+        template_options = {
+            'presentation': '1. 투자심의 발표자료 (Investment Deck)',
+            'paper_review': '2. 논문/문서 발표자료 (Paper2Slides)',
+        }
+        template_option = st.selectbox(
+            "1. 발표자료 유형 선택",
+            list(template_options.keys()),
+            format_func=lambda x: template_options[x],
+            key="ppt_template",
+            on_change=_on_template_change,
+            args=("ppt_template", "ppt_struct_text", "ppt_structure_input")
+        )
+
+        # 2. 구조 편집
+        default_structure = core_logic.get_default_structure(template_option)
+        if 'ppt_structure_input' in st.session_state:
+            default_structure = st.session_state['ppt_structure_input']
+
+        structure_text = st.text_area("슬라이드 구조 (편집 가능)", value=default_structure, height=200, key="ppt_struct_text")
+
+        # 3. 데이터 입력
+        st.markdown("##### 2. 분석할 데이터 (PDF, Word 등)")
+        uploaded_files = st.file_uploader("발표자료로 변환할 문서 업로드", accept_multiple_files=True, label_visibility="collapsed", key="ppt_files")
+
+        # Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", saved_docs,
+                    key="ppt_saved_files", placeholder="저장된 문서 선택..."
+                )
+
+        # 4. 컨텍스트
+        st.markdown("##### 3. 발표 맥락 및 강조사항")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 투자 하이라이트 위주로 구성, 10분 발표 분량...", key="ppt_context")
+
+        st.markdown("---")
+        generate_btn = st.button("🚀 PPT 생성 시작", use_container_width=True, type="primary", key="ppt_generate")
 
         return {
             "template_option": template_option,
