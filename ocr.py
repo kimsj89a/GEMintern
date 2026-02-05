@@ -39,7 +39,7 @@ def _process_single_page_ocr(client, page_num, img_bytes, original_text):
         """
         
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-3-pro-preview",
             contents=[
                 types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
                 prompt
