@@ -14,7 +14,9 @@
       "Bash(xcopy:*)",
       "Bash(c:UserskimsjGEMinternGEMintern.venvScriptspip install google-generativeai)",
       "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/pip.exe\" install google-generativeai)",
-      "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/python.exe\" -c \"import google.generativeai; print\\(''OK''\\)\")"
+      "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/python.exe\" -c \"import google.generativeai; print\\(''OK''\\)\")",
+      "Bash(dir:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }
