@@ -232,19 +232,25 @@ def _on_template_change(template_key, struct_key, custom_input_key=None):
     st.session_state[struct_key] = new_text
 
 def render_initial_review_panel(container, settings):
-    """초기검토 (Quick Memo) - simple_review 전용 간소화 패널"""
+    """초기검토 (Quick Memo) - 2단 분할 레이아웃 적용"""
     with container:
+        # 좌우 2단 분할 (비율 1:1)
+        left_col, right_col = st.columns([1, 1], gap="medium")
+        
         template_option = 'simple_review'
 
-        # 1. 데이터 입력 (Top Line)
-        st.markdown("##### 1. 분석할 데이터 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
+        # === [좌측] 입력 및 설정 ===
+        with left_col:
+            st.markdown("#### 1. 데이터 및 설정 (Input)")
+            
+            # 1. 파일 업로드
+            st.caption("분석할 문서 (Data)")
             uploaded_files = st.file_uploader(
-                "📄 분석할 문서 업로드", accept_multiple_files=True,
+                "파일 업로드", accept_multiple_files=True,
                 label_visibility="collapsed", key="common_file_uploader"
             )
-        with d2:
+            
+            # 2. 저장된 문서 선택
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
@@ -256,34 +262,43 @@ def render_initial_review_panel(container, settings):
             else:
                 st.info("저장된 문서 없음")
 
-        # 2. 맥락 / 생성방식 / 결과 (Context / Gen Mode / Result)
-        st.markdown("##### 2. 맥락 및 생성 설정")
-        c1, c2 = st.columns([2, 1])
-        with c1:
+            st.markdown("---")
+
+            # 3. 맥락 입력
+            st.caption("맥락 및 요청사항 (Context)")
             context_text = st.text_area(
                 "Context Input", height=100, label_visibility="collapsed",
                 placeholder="예: 기업명, 투자 배경, 투자 구조, 규모 등...", key="common_context_input"
             )
-        with c2:
+
+            # 4. 생성 방식 설정
+            st.caption("생성 옵션")
             generation_mode = st.radio(
                 "생성 방식", ["chained", "single"],
-                format_func=lambda x: "📊 3단계" if x == "chained" else "🚀 한 번에",
-                index=0, horizontal=False, label_visibility="collapsed",
+                format_func=lambda x: "📊 단계별 생성 (정확도↑)" if x == "chained" else "🚀 한 번에 생성 (속도↑)",
+                index=0, horizontal=True, label_visibility="collapsed",
                 key="init_gen_mode"
             )
-        
+            
+            st.write("") # 여백
+            
+            # 5. 실행 버튼
         generate_btn = st.button(
             "🚀 Quick Memo 생성 시작", use_container_width=True,
             type="primary", key="init_generate"
         )
 
-        # 3. 결과물 / 추가요청 (Output Structure)
-        st.markdown("---")
-        with st.expander("📋 결과물 구조 미리보기 (Output Structure)", expanded=False):
+        # === [우측] 구조 미리보기 ===
+        with right_col:
+            st.markdown("#### 📝 결과물 구조 (Structure)")
+            
+            # 기본 구조 로드
             default_structure = core_logic.get_default_structure(template_option)
+            
+            # 텍스트 에디터 (높이를 높게 설정하여 우측 영역 채움)
             structure_text = st.text_area(
-                "문서 구조 (편집 가능)", value=default_structure, height=200,
-                key="init_struct_text"
+                "문서 구조 (편집 가능)", value=default_structure, height=600,
+                key="init_struct_text", label_visibility="collapsed"
             )
 
         return {
@@ -299,86 +314,105 @@ def render_initial_review_panel(container, settings):
         }
 
 def render_investment_report_panel(container, settings):
-    """투자분석 보고서 입력 패널 (약식, 투자심사, 직접입력)"""
+    """투자분석 보고서 - 2단 분할 레이아웃 적용"""
     with container:
-        # 1. 템플릿 선택
-        template_options = {
-            'simple_review': '1. 약식 투자검토 (요약)',
-            'investment': '2. 투자심사보고서 (표준)',
-            'custom': '3. 자유 구조화 (요약보고서)'
-        }
-        template_option = st.selectbox(
-            "1. 문서 구조 / 템플릿 선택",
-            list(template_options.keys()),
-            format_func=lambda x: template_options[x],
-            key="report_template",
-            on_change=_on_template_change,
-            args=("report_template", "report_struct_text", "report_structure_input")
-        )
+        # 좌우 2단 분할 (비율 1:1.1 - 우측 에디터 영역을 조금 더 넓게)
+        left_col, right_col = st.columns([1, 1.1], gap="medium")
 
-        # 2. 데이터 입력 (Top Line)
-        st.markdown("##### 2. 분석할 데이터 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
-            uploaded_files = st.file_uploader("📄 분석할 문서 업로드", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
-        with d2:
+        # === [좌측] 설정 및 데이터 입력 ===
+        with left_col:
+            st.markdown("#### 📥 데이터 입력 (Data Input)")
+            
+            # 1. 템플릿 선택
+            template_options = {
+                'simple_review': '1. 약식 투자검토 (요약)',
+                'investment': '2. 투자심사보고서 (표준)',
+                'custom': '3. 자유 구조화 (요약보고서)'
+            }
+            st.caption("문서 구조 / 템플릿 선택")
+            template_option = st.selectbox(
+                "Template Select",
+                list(template_options.keys()),
+                format_func=lambda x: template_options[x],
+                key="report_template",
+                label_visibility="collapsed",
+                on_change=_on_template_change,
+                args=("report_template", "report_struct_text", "report_structure_input")
+            )
+
+            # 2. 서식 파일 업로드 (구조 추출용)
+            upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
+            uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'], key="report_structure")
+            
+            if uploaded_structure_file:
+                btn_label = "구조/양식 추출 실행" if template_option == 'custom' else "구조 추출 실행"
+                if st.button(btn_label, key="report_extract", use_container_width=True):
+                    if not settings["api_key"]:
+                        st.error("API Key 필요")
+                    else:
+                        with st.spinner("서식 분석 중..."):
+                            ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                            if ext:
+                                st.session_state['report_structure_input'] = ext
+                                st.rerun()
+            
+            st.markdown("---")
+
+            # 3. 분석할 데이터 (내용)
+            st.caption("2. 분석할 데이터 (내용 채우기용)")
+            uploaded_files = st.file_uploader(
+                "분석할 문서 업로드", accept_multiple_files=True, 
+                label_visibility="collapsed", key="common_file_uploader"
+            )
+            
+            # 저장된 문서
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
                 selected_saved_files = st.multiselect(
-                    "📚 저장된 문서 (Local)", 
-                    saved_docs,
-                    key="common_saved_docs",
-                    placeholder="저장된 문서 선택...",
+                    "Local Library", saved_docs,
+                    key="common_saved_docs", placeholder="📚 저장된 문서 선택...",
                     label_visibility="collapsed"
                 )
-            else:
-                st.info("저장된 문서 없음")
 
-        # 3. 맥락 / 생성방식 / 결과 (Context / Gen Mode / Result)
-        st.markdown("##### 3. 맥락 및 생성 설정")
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
-        with c2:
+            st.write("") # 간격
+
+            # 4. 맥락 입력
+            st.caption("3. 대상 기업 및 맥락 (Context)")
+            context_text = st.text_area(
+                "Context", height=120, label_visibility="collapsed", 
+                placeholder="예: 기업명, 투자 배경, 주요 포인트 등...", key="common_context_input"
+            )
+
+            # 5. 생성 모드 및 버튼
             generation_mode = "single"
             if template_option in ['investment', 'simple_review']:
                 part_count = 5 if template_option == 'investment' else 3
                 generation_mode = st.radio(
                     "생성 방식",
                     ["chained", "single"],
-                    format_func=lambda x: f"📊 {part_count}단계" if x == "chained" else "🚀 한 번에",
-                    index=0,
-                    horizontal=False,
-                    label_visibility="collapsed",
+                    format_func=lambda x: f"📊 단계별 ({part_count}파트)" if x == "chained" else "🚀 한 번에 생성",
+                    index=0, horizontal=True, label_visibility="visible",
                     key="report_gen_mode"
                 )
 
-        generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="report_generate")
+            st.write("")
+            generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="report_generate")
 
-        # 4. 결과물 / 추가요청 (Output Structure)
-        st.markdown("---")
-        with st.expander("📝 결과물 구조 및 양식 설정 (Output Structure)", expanded=False):
-            # 구조 추출 및 편집
-            upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
-            uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'], key="report_structure")
-
-            btn_label = "구조/양식 추출 실행" if template_option == 'custom' else "구조 추출 실행"
-            if uploaded_structure_file and st.button(btn_label, key="report_extract"):
-                if not settings["api_key"]:
-                    st.error("API Key 필요")
-                else:
-                    with st.spinner("서식 분석 중..."):
-                        ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
-                        if ext:
-                            st.session_state['report_structure_input'] = ext
-                            st.rerun()
-
+        # === [우측] 문서 구조 에디터 ===
+        with right_col:
+            st.markdown("#### 📝 문서 구조 (편집 가능)")
+            
+            # 구조 텍스트 결정
             default_structure = core_logic.get_default_structure(template_option)
             if 'report_structure_input' in st.session_state and template_option == 'custom':
                 default_structure = st.session_state['report_structure_input']
 
-            structure_text = st.text_area("문서 구조 (편집 가능)", value=default_structure, height=200, key="report_struct_text")
+            # 텍스트 에디터 (화면 높이를 꽉 채우도록 설정)
+            structure_text = st.text_area(
+                "Structure Editor", value=default_structure, height=750, 
+                key="report_struct_text", label_visibility="collapsed"
+            )
 
         return {
             "template_option": template_option,
@@ -393,37 +427,46 @@ def render_investment_report_panel(container, settings):
         }
 
 def render_rfi_panel(container, settings):
-    """RFI 작성 입력 패널"""
+    """RFI 작성 입력 패널 - 2단 분할"""
     with container:
+        left_col, right_col = st.columns([1, 1.1], gap="medium")
         template_option = 'rfi'
 
-        # 1. 데이터 입력 (Top Line)
-        st.markdown("##### 1. 데이터 입력 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
-            uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 (Basis)", type=['xlsx', 'xls', 'csv'], key="rfi_basis")
+        with left_col:
+            st.markdown("#### 📥 데이터 입력 (Data Input)")
+            
+            # 1. RFI Basis
+            st.caption("1. RFI 엑셀 파일 (Basis)")
+            uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일", type=['xlsx', 'xls', 'csv'], key="rfi_basis", label_visibility="collapsed")
             rfi_existing = ""
             if uploaded_rfi_file:
                 with st.spinner("RFI 파싱..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success(f"✅ RFI 로드")
-        with d2:
-            uploaded_files = st.file_uploader("📄 분석할 문서 (내용)", accept_multiple_files=True, key="common_file_uploader")
+
+            # 2. Content Files
+            st.caption("2. 분석할 문서 (내용)")
+            uploaded_files = st.file_uploader("분석할 문서", accept_multiple_files=True, key="common_file_uploader", label_visibility="collapsed")
+            
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
                 selected_saved_files = st.multiselect("📚 저장된 문서", saved_docs, key="common_saved_docs", label_visibility="collapsed")
 
-        # 2. 수령 자료 폴더 스캔 (Scanner)
-        st.markdown("##### 2. 수령 자료 폴더 스캔")
-        components.html(HTML_SCANNER, height=280)
-        rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...", key="rfi_filelist")
+            st.markdown("---")
+            
+            # 3. Context
+            st.caption("3. 추가 질문 및 확인 사항")
+            context_text = st.text_area("Context Input", height=150, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
 
-        # 3. 맥락 / 결과 (Context / Result)
-        st.markdown("##### 3. 추가 질문 및 확인 사항")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
+            st.write("")
+            generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="rfi_generate")
 
-        generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="rfi_generate")
+        with right_col:
+            st.markdown("#### 📂 수령 자료 스캔 (Folder Scan)")
+            components.html(HTML_SCANNER, height=280)
+            st.caption("⬇️ 파일 목록 붙여넣기 (Ctrl+V)")
+            rfi_file_list_input = st.text_area("File List", height=300, placeholder="- 폴더명/파일명.pdf...", key="rfi_filelist", label_visibility="collapsed")
 
         return {
             "template_option": template_option,
@@ -438,80 +481,88 @@ def render_rfi_panel(container, settings):
         }
 
 def render_preliminary_dd_panel(container, settings):
-    """예비실사 패널 - investment, im, management, presentation, free_summary, custom 통합"""
+    """예비실사 패널 - 2단 분할 레이아웃"""
     with container:
-        # 1. 템플릿 선택
-        template_options = {
-            'investment': '1. 투자심사보고서 (표준)',
-            'im': '2. IM (투자제안서)',
-            'management': '3. 사후관리보고서',
-            'free_summary': '4. 자유 구조화 (요약)',
-            'custom': '5. 자유 구조화 (요약보고서)'
-        }
-        template_option = st.selectbox(
-            "1. 문서 구조 / 템플릿 선택",
-            list(template_options.keys()),
-            format_func=lambda x: template_options[x],
-            key="prelim_template",
-            on_change=_on_template_change,
-            args=("prelim_template", "prelim_struct_text", "prelim_structure_input")
-        )
+        left_col, right_col = st.columns([1, 1.1], gap="medium")
 
-        # 2. 데이터 입력 (Top Line)
-        st.markdown("##### 2. 분석할 데이터 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
-            uploaded_files = st.file_uploader("📄 분석할 문서 업로드", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
-        with d2:
+        with left_col:
+            st.markdown("#### 📥 데이터 입력 (Data Input)")
+            
+            # 1. 템플릿 선택
+            template_options = {
+                'investment': '1. 투자심사보고서 (표준)',
+                'im': '2. IM (투자제안서)',
+                'management': '3. 사후관리보고서',
+                'free_summary': '4. 자유 구조화 (요약)',
+                'custom': '5. 자유 구조화 (요약보고서)'
+            }
+            st.caption("문서 구조 / 템플릿 선택")
+            template_option = st.selectbox(
+                "Template Select",
+                list(template_options.keys()),
+                format_func=lambda x: template_options[x],
+                key="prelim_template",
+                label_visibility="collapsed",
+                on_change=_on_template_change,
+                args=("prelim_template", "prelim_struct_text", "prelim_structure_input")
+            )
+
+            # 2. 서식 파일 업로드
+            upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
+            uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'], key="prelim_structure")
+            
+            if uploaded_structure_file:
+                btn_label = "구조/양식 추출 실행" if template_option == 'custom' else "구조 추출 실행"
+                if st.button(btn_label, key="prelim_extract", use_container_width=True):
+                    if not settings["api_key"]: st.error("API Key 필요")
+                    else:
+                        with st.spinner("서식 분석 중..."):
+                            ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                            if ext:
+                                st.session_state['prelim_structure_input'] = ext
+                                st.rerun()
+
+            st.markdown("---")
+
+            # 3. 데이터 입력
+            st.caption("2. 분석할 문서 (내용)")
+            uploaded_files = st.file_uploader("분석할 문서", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
+            
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
                 selected_saved_files = st.multiselect(
-                    "📚 저장된 문서 (Local)", saved_docs,
-                    key="common_saved_docs", placeholder="저장된 문서 선택...",
+                    "Local Library", saved_docs,
+                    key="common_saved_docs", placeholder="📚 저장된 문서 선택...",
                     label_visibility="collapsed"
                 )
-            else:
-                st.info("저장된 문서 없음")
 
-        # 3. 맥락 / 생성방식 / 결과
-        st.markdown("##### 3. 맥락 및 생성 설정")
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
-        with c2:
+            st.write("")
+            
+            # 4. Context
+            st.caption("3. 대상 기업 및 맥락")
+            context_text = st.text_area("Context", height=120, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
+
+            # 5. Gen Mode
             generation_mode = "single"
             if template_option == 'investment':
                 generation_mode = st.radio(
                     "생성 방식", ["chained", "single"],
-                    format_func=lambda x: "📊 5단계" if x == "chained" else "🚀 한 번에",
-                    index=0, horizontal=False, label_visibility="collapsed",
+                    format_func=lambda x: "📊 단계별 (5파트)" if x == "chained" else "🚀 한 번에 생성",
+                    index=0, horizontal=True, label_visibility="visible",
                     key="prelim_gen_mode"
                 )
 
-        generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="prelim_generate")
+            st.write("")
+            generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="prelim_generate")
 
-        # 4. 결과물 / 추가요청 (Output Structure)
-        st.markdown("---")
-        with st.expander("📝 결과물 구조 및 양식 설정 (Output Structure)", expanded=False):
-            upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
-            uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'], key="prelim_structure")
-
-            btn_label = "구조/양식 추출 실행" if template_option == 'custom' else "구조 추출 실행"
-            if uploaded_structure_file and st.button(btn_label, key="prelim_extract"):
-                if not settings["api_key"]: st.error("API Key 필요")
-                else:
-                    with st.spinner("서식 분석 중..."):
-                        ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
-                        if ext:
-                            st.session_state['prelim_structure_input'] = ext
-                            st.rerun()
-
+        with right_col:
+            st.markdown("#### 📝 문서 구조 (편집 가능)")
             default_structure = core_logic.get_default_structure(template_option)
             if 'prelim_structure_input' in st.session_state and template_option == 'custom':
                 default_structure = st.session_state['prelim_structure_input']
 
-            structure_text = st.text_area("문서 구조 (편집 가능)", value=default_structure, height=200, key="prelim_struct_text")
+            structure_text = st.text_area("Structure Editor", value=default_structure, height=750, key="prelim_struct_text", label_visibility="collapsed")
 
         return {
             "template_option": template_option,
@@ -526,62 +577,69 @@ def render_preliminary_dd_panel(container, settings):
         }
 
 def render_im_panel(container, settings):
-    """IM (투자제안서) 생성 입력 패널"""
+    """IM (투자제안서) 생성 입력 패널 - 2단 분할"""
     with container:
-        # 1. 템플릿 선택
-        template_options = {
-            'im': '1. IM (투자제안서)',
-            'free_summary': '2. 자유 구조화 (요약)'
-        }
-        template_option = st.selectbox(
-            "1. 문서 구조 / 템플릿 선택",
-            list(template_options.keys()),
-            format_func=lambda x: template_options[x],
-            key="im_template",
-            on_change=_on_template_change,
-            args=("im_template", "im_struct_text", "im_structure_input")
-        )
+        left_col, right_col = st.columns([1, 1.1], gap="medium")
 
-        # 2. 데이터 입력 (Top Line)
-        st.markdown("##### 2. 분석할 데이터 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
-            uploaded_files = st.file_uploader("📄 분석할 문서 업로드", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
-        with d2:
+        with left_col:
+            st.markdown("#### 📥 데이터 입력 (Data Input)")
+            
+            # 1. 템플릿 선택
+            template_options = {
+                'im': '1. IM (투자제안서)',
+                'free_summary': '2. 자유 구조화 (요약)'
+            }
+            st.caption("문서 구조 / 템플릿 선택")
+            template_option = st.selectbox(
+                "Template Select",
+                list(template_options.keys()),
+                format_func=lambda x: template_options[x],
+                key="im_template",
+                label_visibility="collapsed",
+                on_change=_on_template_change,
+                args=("im_template", "im_struct_text", "im_structure_input")
+            )
+
+            # 2. 서식 파일
+            uploaded_structure_file = st.file_uploader("📂 서식 파일 업로드 (구조 추출용)", type=['pdf', 'docx', 'txt', 'md'], key="im_structure")
+            if uploaded_structure_file:
+                if st.button("구조 추출 실행", key="im_extract", use_container_width=True):
+                    if not settings["api_key"]: st.error("API Key 필요")
+                    else:
+                        with st.spinner("서식 분석 중..."):
+                            ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                            if ext:
+                                st.session_state['im_structure_input'] = ext
+                                st.rerun()
+            
+            st.markdown("---")
+
+            # 3. 데이터 입력
+            st.caption("2. 분석할 데이터 (내용)")
+            uploaded_files = st.file_uploader("분석할 문서", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
+            
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
                 selected_saved_files = st.multiselect(
-                    "📚 저장된 문서 (Local)", saved_docs,
-                    key="common_saved_docs", placeholder="저장된 문서 선택...",
+                    "Local Library", saved_docs,
+                    key="common_saved_docs", placeholder="📚 저장된 문서 선택...",
                     label_visibility="collapsed"
                 )
-            else:
-                st.info("저장된 문서 없음")
 
-        # 3. 맥락 / 결과
-        st.markdown("##### 3. 맥락 및 생성 설정")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
-        
-        generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="im_generate")
+            st.write("")
+            st.caption("3. 맥락 및 요청사항")
+            context_text = st.text_area("Context", height=120, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
+            
+            st.write("")
+            generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="im_generate")
 
-        # 4. 결과물 / 추가요청 (Output Structure)
-        st.markdown("---")
-        with st.expander("📝 결과물 구조 및 양식 설정 (Output Structure)", expanded=False):
-            uploaded_structure_file = st.file_uploader("📂 서식 파일 업로드 (구조 추출용)", type=['pdf', 'docx', 'txt', 'md'], key="im_structure")
-            if uploaded_structure_file and st.button("구조 추출 실행", key="im_extract"):
-                if not settings["api_key"]: st.error("API Key 필요")
-                else:
-                    with st.spinner("서식 분석 중..."):
-                        ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
-                        if ext:
-                            st.session_state['im_structure_input'] = ext
-                            st.rerun()
-
+        with right_col:
+            st.markdown("#### 📝 문서 구조 (편집 가능)")
             default_structure = core_logic.get_default_structure(template_option)
             if 'im_structure_input' in st.session_state:
                 default_structure = st.session_state['im_structure_input']
-            structure_text = st.text_area("문서 구조 (편집 가능)", value=default_structure, height=200, key="im_struct_text")
+            structure_text = st.text_area("Structure Editor", value=default_structure, height=750, key="im_struct_text", label_visibility="collapsed")
 
         return {
             "template_option": template_option,
@@ -596,48 +654,53 @@ def render_im_panel(container, settings):
         }
 
 def render_ppt_panel(container, settings):
-    """PPT 생성 전용 패널 (Paper2Slides)"""
+    """PPT 생성 전용 패널 - 2단 분할"""
     with container:
-        # 1. 템플릿 선택
-        template_options = {
-            'presentation': '1. 투자심의 발표자료 (Investment Deck)',
-            'paper_review': '2. 논문/문서 발표자료 (Paper2Slides)',
-        }
-        template_option = st.selectbox(
-            "1. 발표자료 유형 선택",
-            list(template_options.keys()),
-            format_func=lambda x: template_options[x],
-            key="ppt_template",
-            on_change=_on_template_change,
-            args=("ppt_template", "ppt_struct_text", "ppt_structure_input")
-        )
+        left_col, right_col = st.columns([1, 1.1], gap="medium")
 
-        # 2. 데이터 입력 (Top Line)
-        st.markdown("##### 2. 분석할 데이터 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
-            uploaded_files = st.file_uploader("📄 분석할 문서 업로드", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
-        with d2:
+        with left_col:
+            st.markdown("#### 📥 데이터 입력 (Data Input)")
+            
+            # 1. 템플릿 선택
+            template_options = {
+                'presentation': '1. 투자심의 발표자료 (Investment Deck)',
+                'paper_review': '2. 논문/문서 발표자료 (Paper2Slides)',
+            }
+            st.caption("발표자료 유형 선택")
+            template_option = st.selectbox(
+                "Template Select",
+                list(template_options.keys()),
+                format_func=lambda x: template_options[x],
+                key="ppt_template",
+                label_visibility="collapsed",
+                on_change=_on_template_change,
+                args=("ppt_template", "ppt_struct_text", "ppt_structure_input")
+            )
+
+            st.markdown("---")
+
+            # 2. 데이터 입력
+            st.caption("2. 분석할 문서 (Data)")
+            uploaded_files = st.file_uploader("분석할 문서", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
+            
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
-                selected_saved_files = st.multiselect("📚 저장된 문서", saved_docs, key="common_saved_docs", placeholder="저장된 문서 선택...", label_visibility="collapsed")
-            else:
-                st.info("저장된 문서 없음")
+                selected_saved_files = st.multiselect("Local Library", saved_docs, key="common_saved_docs", placeholder="📚 저장된 문서 선택...", label_visibility="collapsed")
 
-        # 3. 맥락 / 결과
-        st.markdown("##### 3. 발표 맥락 및 강조사항")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 투자 하이라이트 위주로 구성, 10분 발표 분량...", key="common_context_input")
-        
-        generate_btn = st.button("🚀 PPT 생성 시작", use_container_width=True, type="primary", key="ppt_generate")
+            st.write("")
+            st.caption("3. 발표 맥락 및 강조사항")
+            context_text = st.text_area("Context", height=120, label_visibility="collapsed", placeholder="예: 투자 하이라이트 위주로 구성, 10분 발표 분량...", key="common_context_input")
+            
+            st.write("")
+            generate_btn = st.button("🚀 PPT 생성 시작", use_container_width=True, type="primary", key="ppt_generate")
 
-        # 4. 결과물 / 추가요청 (Output Structure)
-        st.markdown("---")
-        with st.expander("📝 슬라이드 구조 설정 (Output Structure)", expanded=False):
+        with right_col:
+            st.markdown("#### 📝 슬라이드 구조 (편집 가능)")
             default_structure = core_logic.get_default_structure(template_option)
             if 'ppt_structure_input' in st.session_state:
                 default_structure = st.session_state['ppt_structure_input']
-            structure_text = st.text_area("슬라이드 구조 (편집 가능)", value=default_structure, height=200, key="ppt_struct_text")
+            structure_text = st.text_area("Structure Editor", value=default_structure, height=750, key="ppt_struct_text", label_visibility="collapsed")
 
         return {
             "template_option": template_option,
@@ -652,58 +715,67 @@ def render_ppt_panel(container, settings):
         }
 
 def render_detailed_dd_panel(container, settings):
-    """정밀실사 패널 - RFI with FDD/LDD 유형 선택"""
+    """정밀실사 패널 - 2단 분할"""
     with container:
+        left_col, right_col = st.columns([1, 1.1], gap="medium")
         template_option = 'rfi'
 
-        # DD 유형 선택
-        st.markdown("##### 실사 유형 선택")
-        dd_type = st.radio(
-            "실사 유형",
-            ["general", "fdd", "ldd"],
-            format_func=lambda x: {
-                "general": "📋 일반 RFI (종합)",
-                "fdd": "📊 FDD (재무실사)",
-                "ldd": "⚖️ LDD (법률실사)"
-            }[x],
-            horizontal=True, key="dd_type", label_visibility="collapsed"
-        )
+        with left_col:
+            st.markdown("#### 📥 데이터 입력 (Data Input)")
+            
+            # DD 유형 선택
+            st.caption("실사 유형 선택")
+            dd_type = st.radio(
+                "실사 유형",
+                ["general", "fdd", "ldd"],
+                format_func=lambda x: {
+                    "general": "📋 일반 RFI (종합)",
+                    "fdd": "📊 FDD (재무실사)",
+                    "ldd": "⚖️ LDD (법률실사)"
+                }[x],
+                horizontal=True, key="dd_type", label_visibility="visible"
+            )
 
-        # 1. 데이터 입력 (Top Line)
-        st.markdown("##### 1. 데이터 입력 (Data Input)")
-        d1, d2 = st.columns(2)
-        with d1:
-            uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 (Basis)", type=['xlsx', 'xls', 'csv'], key="dd_basis")
+            # 1. RFI Basis
+            st.caption("1. RFI 엑셀 파일 (Basis)")
+            uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일", type=['xlsx', 'xls', 'csv'], key="dd_basis", label_visibility="collapsed")
             rfi_existing = ""
             if uploaded_rfi_file:
                 with st.spinner("RFI 파싱..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success(f"✅ RFI 로드")
-        with d2:
-            uploaded_files = st.file_uploader("📄 분석할 문서 (내용)", accept_multiple_files=True, key="common_file_uploader")
+
+            # 2. Content Files
+            st.caption("2. 분석할 문서 (내용)")
+            uploaded_files = st.file_uploader("분석할 문서", accept_multiple_files=True, key="common_file_uploader", label_visibility="collapsed")
+            
             saved_docs = utils.list_saved_docs()
             selected_saved_files = []
             if saved_docs:
                 selected_saved_files = st.multiselect("📚 저장된 문서", saved_docs, key="common_saved_docs", label_visibility="collapsed")
 
-        # 2. 수령 자료 폴더 스캔 (Scanner)
-        st.markdown("##### 2. 수령 자료 폴더 스캔")
-        components.html(HTML_SCANNER, height=280)
-        rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...", key="dd_filelist")
+            st.markdown("---")
+            
+            # 3. Context
+            st.caption("3. 추가 질문 및 확인 사항")
+            context_text = st.text_area("Context", height=150, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
 
-        # 3. 맥락 / 결과
-        st.markdown("##### 3. 추가 질문 및 확인 사항")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
+            # DD 유형별 지시문 주입
+            dd_context_prefix = {
+                "general": "",
+                "fdd": "[실사 유형: FDD (Financial Due Diligence)]\n재무실사 관점에서 재무제표, 세무, 운전자본, 순차입금, 정상화 EBITDA, 내부거래, 우발부채 등에 중점을 두어 자료를 요청하십시오.\n\n",
+                "ldd": "[실사 유형: LDD (Legal Due Diligence)]\n법률실사 관점에서 계약서, 소송/분쟁, 지적재산권, 인허가, 규제 준수, 지배구조, 주주간계약 등에 중점을 두어 자료를 요청하십시오.\n\n"
+            }
+            final_context = dd_context_prefix.get(dd_type, "") + context_text
 
-        # DD 유형별 지시문 주입
-        dd_context_prefix = {
-            "general": "",
-            "fdd": "[실사 유형: FDD (Financial Due Diligence)]\n재무실사 관점에서 재무제표, 세무, 운전자본, 순차입금, 정상화 EBITDA, 내부거래, 우발부채 등에 중점을 두어 자료를 요청하십시오.\n\n",
-            "ldd": "[실사 유형: LDD (Legal Due Diligence)]\n법률실사 관점에서 계약서, 소송/분쟁, 지적재산권, 인허가, 규제 준수, 지배구조, 주주간계약 등에 중점을 두어 자료를 요청하십시오.\n\n"
-        }
-        final_context = dd_context_prefix.get(dd_type, "") + context_text
+            st.write("")
+            generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="dd_generate")
 
-        generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="dd_generate")
+        with right_col:
+            st.markdown("#### 📂 수령 자료 스캔 (Folder Scan)")
+            components.html(HTML_SCANNER, height=280)
+            st.caption("⬇️ 파일 목록 붙여넣기 (Ctrl+V)")
+            rfi_file_list_input = st.text_area("File List", height=300, placeholder="- 폴더명/파일명.pdf...", key="dd_filelist", label_visibility="collapsed")
 
         return {
             "template_option": template_option,
