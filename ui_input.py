@@ -280,13 +280,11 @@ def render_initial_review_panel(container, settings):
                 key="init_gen_mode"
             )
             
-            st.write("") # 여백
-            
             # 5. 실행 버튼
-        generate_btn = st.button(
-            "🚀 Quick Memo 생성 시작", use_container_width=True,
-            type="primary", key="init_generate"
-        )
+            generate_btn = st.button(
+                "🚀 Quick Memo 생성 시작", use_container_width=True,
+                type="primary", key="init_generate"
+            )
 
         # === [우측] 구조 미리보기 ===
         with right_col:
@@ -375,8 +373,6 @@ def render_investment_report_panel(container, settings):
                     label_visibility="collapsed"
                 )
 
-            st.write("") # 간격
-
             # 4. 맥락 입력
             st.caption("3. 대상 기업 및 맥락 (Context)")
             context_text = st.text_area(
@@ -396,7 +392,6 @@ def render_investment_report_panel(container, settings):
                     key="report_gen_mode"
                 )
 
-            st.write("")
             generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="report_generate")
 
         # === [우측] 문서 구조 에디터 ===
@@ -459,7 +454,6 @@ def render_rfi_panel(container, settings):
             st.caption("3. 추가 질문 및 확인 사항")
             context_text = st.text_area("Context Input", height=150, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
 
-            st.write("")
             generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="rfi_generate")
 
         with right_col:
@@ -537,8 +531,6 @@ def render_preliminary_dd_panel(container, settings):
                     label_visibility="collapsed"
                 )
 
-            st.write("")
-            
             # 4. Context
             st.caption("3. 대상 기업 및 맥락")
             context_text = st.text_area("Context", height=120, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
@@ -553,7 +545,6 @@ def render_preliminary_dd_panel(container, settings):
                     key="prelim_gen_mode"
                 )
 
-            st.write("")
             generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="prelim_generate")
 
         with right_col:
@@ -627,11 +618,9 @@ def render_im_panel(container, settings):
                     label_visibility="collapsed"
                 )
 
-            st.write("")
             st.caption("3. 맥락 및 요청사항")
             context_text = st.text_area("Context", height=120, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
             
-            st.write("")
             generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="im_generate")
 
         with right_col:
@@ -688,11 +677,9 @@ def render_ppt_panel(container, settings):
             if saved_docs:
                 selected_saved_files = st.multiselect("Local Library", saved_docs, key="common_saved_docs", placeholder="📚 저장된 문서 선택...", label_visibility="collapsed")
 
-            st.write("")
             st.caption("3. 발표 맥락 및 강조사항")
             context_text = st.text_area("Context", height=120, label_visibility="collapsed", placeholder="예: 투자 하이라이트 위주로 구성, 10분 발표 분량...", key="common_context_input")
             
-            st.write("")
             generate_btn = st.button("🚀 PPT 생성 시작", use_container_width=True, type="primary", key="ppt_generate")
 
         with right_col:
@@ -768,7 +755,6 @@ def render_detailed_dd_panel(container, settings):
             }
             final_context = dd_context_prefix.get(dd_type, "") + context_text
 
-            st.write("")
             generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="dd_generate")
 
         with right_col:
