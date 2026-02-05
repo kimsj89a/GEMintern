@@ -133,6 +133,7 @@ def render_settings():
         c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         with c1:
             api_key = st.text_input("Google API Key", value=cached_key, type="password", placeholder="Enter Key...")
+            st.markdown("<p style='font-size:0.8rem; color:gray; margin-top:-10px;'><a href='https://aistudio.google.com/app/api-keys' target='_blank'>API 키 발급받기</a></p>", unsafe_allow_html=True)
             save_to_url = st.checkbox("🔐 브라우저(URL)에 키 저장", value=bool(cached_key))
             if save_to_url and api_key: st.query_params["api_key"] = api_key
             elif not save_to_url and "api_key" in st.query_params: del st.query_params["api_key"]
