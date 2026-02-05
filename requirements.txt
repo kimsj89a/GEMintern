@@ -1,5 +1,7 @@
 streamlit
 google-genai
+google-cloud-documentai
+markitdown
 python-docx
 python-pptx
 pandas
@@ -7,6 +9,7 @@ openpyxl
 pypdf
 PyMuPDF
 XlsxWriter
+python-dotenv
 pymupdf
 python-calamine
 tabulate

@@ -2,9 +2,13 @@ import streamlit as st
 import ui_input
 import ui_output
 import ui_audio
+import ui_crawler
+import ui_ocr
+import ui_markdown
+import ui_doctemplate
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v5.12", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v6.0", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -25,7 +29,7 @@ def main():
     st.markdown("""
         <div class="title-container">
             <h1>💎 GEM Intern</h1>
-            <span class="badge">v5.12</span>
+            <span class="badge">v6.0</span>
             <span class="badge badge-blue">Cloud-Safe Indexer</span>
         </div>
         <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
@@ -34,37 +38,56 @@ def main():
     # 공통 설정 (탭 위에 고정)
     settings = ui_input.render_settings()
 
-    # 탭 기반 UI - 4개 탭으로 분리
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 투자분석 보고서",
-        "📋 RFI 작성",
-        "📈 IM/PPT 생성",
-        "🎤 오디오 전사"
+    # 탭 기반 UI - 프로세스 3탭 + 도구 5탭
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        "📋 초기검토",
+        "📊 예비실사",
+        "🔍 정밀실사",
+        "🎤 오디오 전사",
+        "🌐 웹 크롤러",
+        "👁️ 문서 OCR",
+        "📝 MD to Word",
+        "📋 문서양식"
     ])
 
     with tab1:
-        st.markdown("### 📄 투자분석 보고서 작성")
+        st.markdown("### 📋 초기검토 (Quick Memo)")
+        st.caption("약식 투자검토보고서를 빠르게 작성합니다.")
         st.markdown("---")
-        inputs = ui_input.render_investment_report_panel(st.container(), settings)
+        inputs = ui_input.render_initial_review_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="report")
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="init")
 
     with tab2:
-        st.markdown("### 📋 RFI (실사 자료 요청) 작성")
+        st.markdown("### 📊 예비실사 (Preliminary DD)")
+        st.caption("투자심사보고서, IM, 발표자료, 사후관리보고서 등을 작성합니다.")
         st.markdown("---")
-        inputs = ui_input.render_rfi_panel(st.container(), settings)
+        inputs = ui_input.render_preliminary_dd_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="rfi")
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="prelim")
 
     with tab3:
-        st.markdown("### 📊 IM/PPT 생성")
+        st.markdown("### 🔍 정밀실사 (Detailed DD)")
+        st.caption("RFI (자료요청목록) 작성 - FDD/LDD 유형별 지원")
         st.markdown("---")
-        inputs = ui_input.render_im_ppt_panel(st.container(), settings)
+        inputs = ui_input.render_detailed_dd_panel(st.container(), settings)
         st.markdown("<br>", unsafe_allow_html=True)
-        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
+        ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="dd")
 
     with tab4:
-        ui_audio.render_audio_transcription_panel()
+        ui_audio.render_audio_transcription_panel(settings)
+
+    with tab5:
+        ui_crawler.render_crawler_panel(settings)
+
+    with tab6:
+        ui_ocr.render_ocr_panel(settings)
+
+    with tab7:
+        ui_markdown.render_markdown_converter_panel(settings)
+
+    with tab8:
+        ui_doctemplate.render_doctemplate_panel(settings)
 
 if __name__ == "__main__":
     main()

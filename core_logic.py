@@ -1,7 +1,8 @@
-from google import genai
+﻿from google import genai
 from google.genai import types
 import utils
 import core_rfi
+import core_chained
 import prompts
 
 def get_client(api_key):
@@ -17,19 +18,43 @@ def extract_structure(api_key, structure_file):
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files, read_content=True, api_key=None):
-    """파일 목록 파싱 (OCR 지원)"""
+def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key=None, docai_config=None, template_option=None):
+    """파일 목록 파싱 및 로컬 저장/로드 (RAG 지원)
+
+    Args:
+        uploaded_files: 업로드된 파일 목록
+        saved_files: 로컬에 저장된 파일명 목록 (선택됨)
+        read_content: 파일 내용 읽기 여부
+        api_key: Google API 키 (Gemini OCR용)
+        docai_config: Document AI 설정 (선택사항)
+    """
     all_text = ""
     file_list_str = ""
+    
+    # 1. 새로 업로드된 파일 처리 (파싱 -> 저장 -> 텍스트 추가)
     if uploaded_files:
         for file in uploaded_files:
-            file_list_str += f"- {file.name}\n"
+            file_list_str += f"- [New] {file.name}\n"
             if read_content:
-                parsed = utils.parse_uploaded_file(file, api_key=api_key)
+                parsed = utils.parse_uploaded_file(
+                    file,
+                    api_key=api_key,
+                    docai_config=docai_config,
+                    template_option=template_option,
+                )
+                # 로컬 스토리지에 저장 (RAG)
+                utils.save_to_local_storage(file.name, parsed)
                 all_text += parsed
 
+    # 2. 저장된 파일 불러오기 (로드 -> 텍스트 추가)
+    if saved_files and read_content:
+        for fname in saved_files:
+            file_list_str += f"- [Saved] {fname}\n"
+            content = utils.load_saved_doc(fname)
+            all_text += f"\n\n{content}\n"
+
     if not read_content:
-        all_text = "(RFI 모드: 내용을 읽지 않음)"
+        all_text = "(RFI 모드: 내용은 읽지 않음)"
 
     return all_text, file_list_str
 
@@ -44,20 +69,21 @@ def _get_system_prompt(template_opt):
         'im': 'im_system',
         'management': 'management_system',
         'presentation': 'ppt_system',
+        'free_summary': 'free_summary_system',
         'custom': 'custom_system'
     }
     prompt_key = prompt_map.get(template_opt, 'custom_system')
     return prompts.LOGIC_PROMPTS.get(prompt_key, prompts.LOGIC_PROMPTS['custom_system'])
 
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
-    """단일 생성 모드 - 모든 템플릿 지원"""
+    """Single-pass generation mode for all templates."""
     client = get_client(api_key)
     template_opt = inputs['template_option']
     structure_text = inputs['structure_text']
 
     # [RFI Mode] - 별도 처리
     if template_opt == 'rfi':
-        stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level)
+        stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level, file_context)
         for chunk in stream:
             yield chunk
         return
@@ -69,18 +95,19 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     if inputs.get('use_diagram'):
         system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
 
-    # 프롬프트 구성
+    # Main prompt composition
+    thinking_label = thinking_level.upper() if isinstance(thinking_level, str) else "HIGH"
     main_prompt = f"""
-[System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
+[System: Thinking Level {thinking_label}]
 [Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
 
-[문서 구조]
+[Document Structure]
 {structure_text}
 
-[맥락]
+[User Context]
 {inputs['context_text']}
 
-[분석 데이터]
+[Source Data]
 {file_context[:50000]}
 """
 
@@ -88,7 +115,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     if template_opt == 'presentation':
         temperature = 0.7
     elif template_opt == 'custom':
-        temperature = 0.5
+        temperature = 0.7  # 자유 구조화 모드 - 창의적 구조화를 위해 높은 temperature
     else:
         temperature = 0.3
 
@@ -109,94 +136,29 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
         yield chunk
 
 def generate_report_stream_chained(api_key, model_name, inputs, thinking_level, file_context):
-    """5단계 Chained Prompting - 투자심사보고서 전용 (품질 우선)"""
-    client = get_client(api_key)
+    """Chained prompting via core_chained."""
+    template_option = inputs.get('template_option', 'investment')
 
-    # 투자심사보고서 전용 시스템 프롬프트
-    system_instruction = prompts.LOGIC_PROMPTS['investment_system']
-    if inputs.get('use_diagram'):
-        system_instruction += "\n**도식화**: 필요시 {{DIAGRAM: 설명}} 태그 삽입."
-
-    # 투자심사보고서 5개 파트 정의
-    parts = [
-        ('investment_part1', 'Part 1/5: 투자내용', 32768),
-        ('investment_part2', 'Part 2/5: 회사현황', 32768),
-        ('investment_part3', 'Part 3/5: 시장분석', 32768),
-        ('investment_part4', 'Part 4/5: 사업분석', 32768),
-        ('investment_part5', 'Part 5/5: Valuation, Risk & 종합의견', 65536)
-    ]
-
-    accumulated_result = ""
-
-    for part_key, part_title, max_tokens in parts:
-        # 진행 상황 알림
-        status_text = f"\n\n---\n\n📝 **[{part_title}] 생성 중...**\n\n"
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=status_text)])
-            )]
-        )
-
-        # 이전 파트 결과를 컨텍스트로 포함
-        prev_context = ""
-        if accumulated_result:
-            prev_context = f"""
-[이전 작성 내용 - 참고용, 중복 작성 금지]
-{accumulated_result[-20000:]}
-"""
-
-        # 파트별 프롬프트 가져오기
-        part_prompt = prompts.LOGIC_PROMPTS.get(part_key, "")
-
-        main_prompt = f"""
-[System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]
-[Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
-
-{prev_context}
-
-{part_prompt}
-
-[맥락]
-{inputs['context_text']}
-
-[분석 데이터]
-{file_context[:45000]}
-"""
-
-        tools = []
-        # Part 3 (시장분석)에서 웹 검색 활성화
-        if part_key == 'investment_part3':
-            tools = [types.Tool(google_search=types.GoogleSearch())]
-
-        config = types.GenerateContentConfig(
-            tools=tools,
-            max_output_tokens=max_tokens,
-            temperature=0.3,
-            system_instruction=system_instruction
-        )
-
-        part_result = ""
-        response_stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=main_prompt,
-            config=config
-        )
-
-        for chunk in response_stream:
-            if chunk.text:
-                part_result += chunk.text
-            yield chunk
-
-        accumulated_result += part_result
+    # core_chained 모듈의 일반화된 함수 사용
+    for chunk in core_chained.generate_chained_stream(
+        api_key=api_key,
+        model_name=model_name,
+        inputs=inputs,
+        thinking_level=thinking_level,
+        file_context=file_context,
+        template_option=template_option
+    ):
+        yield chunk
 
 
 def refine_report(api_key, model_name, current_text, refine_query):
     client = get_client(api_key)
-    refine_prompt = f"""
-    당신은 문서 수정 전문가입니다.
-    사용자 요청: "{refine_query}"
-    기존 내용을 바탕으로 **"## 🔄 추가 요청 반영"** 하위에 내용을 작성하세요.
-    [기존 내용] {current_text[:20000]}...
-    """
+    refine_prompt = (
+        f"You are a document refinement assistant.\n"
+        f"Apply the user's request to the existing document without losing structure.\n"
+        f"User request: \"{refine_query}\"\n"
+        f"Write the updates under the heading: ## Additional Request Applied\n"
+        f"Existing document (truncated): {current_text[:20000]}...\n"
+    )
     resp = client.models.generate_content(model=model_name, contents=refine_prompt)
     return resp.text

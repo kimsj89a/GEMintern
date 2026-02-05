@@ -1,8 +1,13 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import os
+from dotenv import load_dotenv
 import utils
 import core_logic
 import core_rfi
+
+# .env 파일 로드
+load_dotenv()
 
 # 템플릿 상수 정의
 TEMPLATES = {
@@ -12,7 +17,7 @@ TEMPLATES = {
     'im': '4. IM (투자제안서)',
     'management': '5. 사후관리보고서',
     'presentation': '6. 투자심의 발표자료 (PPT)',
-    'custom': '7. 직접 입력 (서식 복제 가능)'
+    'custom': '7. 자유 구조화 (요약보고서)'
 }
 
 # [HTML/JS] 브라우저 기반 폴더 스캐너 (서버 업로드 X)
@@ -118,17 +123,19 @@ HTML_SCANNER = """
 def render_settings():
     """상단 설정 영역"""
     query_params = st.query_params
-    cached_key = query_params.get("api_key", "")
+    # .env 또는 URL 파라미터에서 API 키 로드
+    env_key = os.getenv("GOOGLE_API_KEY", "")
+    cached_key = query_params.get("api_key", "") or env_key
     if isinstance(cached_key, list): cached_key = cached_key[0]
 
     with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
         c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         with c1:
             api_key = st.text_input("Google API Key", value=cached_key, type="password", placeholder="Enter Key...")
-            save_to_url = st.checkbox("�� 브라우저(URL)에 키 저장", value=bool(cached_key))
+            save_to_url = st.checkbox("🔐 브라우저(URL)에 키 저장", value=bool(cached_key))
             if save_to_url and api_key: st.query_params["api_key"] = api_key
             elif not save_to_url and "api_key" in st.query_params: del st.query_params["api_key"]
-            
+
         with c2:
             model_name = st.selectbox("사용할 모델", ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.0-flash-exp", "gemini-1.5-pro"])
         with c3:
@@ -144,7 +151,72 @@ def render_settings():
         else:
             st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
 
-    return {"api_key": api_key, "model_name": model_name, "thinking_level": "High" if "High" in thinking_level else "Low", "use_diagram": use_diagram}
+        # Document AI 설정 (고급)
+        st.markdown("---")
+
+        # .env에서 Document AI 기본값 로드
+        env_docai_project = os.getenv("GCP_PROJECT_ID", "")
+        env_docai_location = os.getenv("DOCAI_LOCATION", "us")
+        env_docai_processor = os.getenv("DOCAI_PROCESSOR_ID", "")
+        env_docai_creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+        # .env 설정이 있으면 기본 활성화
+        has_env_docai = bool(env_docai_project and env_docai_processor and env_docai_creds_path)
+        use_docai = st.checkbox("🔬 Document AI OCR 사용 (고품질 PDF/이미지 OCR)", value=has_env_docai)
+
+        docai_config = None
+        if use_docai:
+            # .env에서 credentials JSON 자동 로드
+            env_creds_json = None
+            if env_docai_creds_path:
+                creds_full_path = env_docai_creds_path
+                if not os.path.isabs(creds_full_path):
+                    creds_full_path = os.path.join(os.path.dirname(__file__), creds_full_path)
+                if os.path.exists(creds_full_path):
+                    with open(creds_full_path, 'r') as f:
+                        env_creds_json = f.read()
+
+            if has_env_docai and env_creds_json:
+                st.success(f"✅ .env에서 Document AI 설정 로드됨 (프로젝트: {env_docai_project})")
+                docai_config = {
+                    'project_id': env_docai_project,
+                    'location': env_docai_location,
+                    'processor_id': env_docai_processor,
+                    'credentials_json': env_creds_json
+                }
+            else:
+                dc1, dc2 = st.columns(2)
+                with dc1:
+                    docai_project_id = st.text_input("GCP 프로젝트 ID", value=env_docai_project, key="docai_project")
+                    loc_idx = 0 if env_docai_location == "us" else 1
+                    docai_location = st.selectbox("위치", ["us", "eu"], index=loc_idx, key="docai_location")
+                with dc2:
+                    docai_processor_id = st.text_input("프로세서 ID", value=env_docai_processor, key="docai_processor")
+                    docai_creds_file = st.file_uploader("서비스 계정 JSON", type=['json'], key="docai_creds")
+
+                docai_creds_json = env_creds_json
+                if docai_creds_file:
+                    docai_creds_json = docai_creds_file.read().decode('utf-8')
+                    docai_creds_file.seek(0)
+
+                if docai_project_id and docai_processor_id and docai_creds_json:
+                    docai_config = {
+                        'project_id': docai_project_id,
+                        'location': docai_location,
+                        'processor_id': docai_processor_id,
+                        'credentials_json': docai_creds_json
+                    }
+                    st.success("✅ Document AI 설정 완료")
+                else:
+                    st.warning("⚠️ Document AI 사용을 위해 모든 필드를 입력해주세요")
+
+    return {
+        "api_key": api_key,
+        "model_name": model_name,
+        "thinking_level": "High" if "High" in thinking_level else "Low",
+        "use_diagram": use_diagram,
+        "docai_config": docai_config
+    }
 
 def _on_template_change(template_key, struct_key, custom_input_key=None):
     """템플릿 변경 시 구조 텍스트 강제 업데이트 콜백"""
@@ -158,6 +230,70 @@ def _on_template_change(template_key, struct_key, custom_input_key=None):
         
     st.session_state[struct_key] = new_text
 
+def render_initial_review_panel(container, settings):
+    """초기검토 (Quick Memo) - simple_review 전용 간소화 패널"""
+    with container:
+        template_option = 'simple_review'
+
+        # 구조 미리보기 (접힌 상태, 편집 가능)
+        default_structure = core_logic.get_default_structure(template_option)
+        with st.expander("📋 문서 구조 미리보기", expanded=False):
+            structure_text = st.text_area(
+                "문서 구조 (편집 가능)", value=default_structure, height=200,
+                key="init_struct_text"
+            )
+
+        # 1. 데이터 입력
+        st.markdown("##### 1. 분석할 데이터")
+        uploaded_files = st.file_uploader(
+            "IR 자료, 재무제표 등", accept_multiple_files=True,
+            label_visibility="collapsed", key="init_files"
+        )
+
+        # Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", saved_docs,
+                    key="init_saved_files", placeholder="저장된 문서 선택..."
+                )
+
+        # 2. 컨텍스트
+        st.markdown("##### 2. 대상 기업 및 맥락")
+        context_text = st.text_area(
+            "Context Input", height=100, label_visibility="collapsed",
+            placeholder="예: 기업명, 투자 배경, 투자 구조, 규모 등...", key="init_context"
+        )
+
+        # 3. 생성 방식
+        st.markdown("##### 3. 생성 방식")
+        generation_mode = st.radio(
+            "생성 방식 선택", ["chained", "single"],
+            format_func=lambda x: "📊 3단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
+            index=0, horizontal=True, label_visibility="collapsed",
+            key="init_gen_mode"
+        )
+
+        st.markdown("---")
+        generate_btn = st.button(
+            "🚀 Quick Memo 생성 시작", use_container_width=True,
+            type="primary", key="init_generate"
+        )
+
+        return {
+            "template_option": template_option,
+            "structure_text": structure_text,
+            "uploaded_files": uploaded_files,
+            "rfi_file_list_input": "",
+            "context_text": context_text,
+            "rfi_existing": "",
+            "generate_btn": generate_btn,
+            "generation_mode": generation_mode,
+            "selected_saved_files": selected_saved_files
+        }
+
 def render_investment_report_panel(container, settings):
     """투자분석 보고서 입력 패널 (약식, 투자심사, 직접입력)"""
     with container:
@@ -165,7 +301,7 @@ def render_investment_report_panel(container, settings):
         template_options = {
             'simple_review': '1. 약식 투자검토 (요약)',
             'investment': '2. 투자심사보고서 (표준)',
-            'custom': '3. 직접 입력 (서식 복제 가능)'
+            'custom': '3. 자유 구조화 (요약보고서)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",
@@ -201,21 +337,34 @@ def render_investment_report_panel(container, settings):
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
         uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="report_files")
 
+        # [NEW] Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", 
+                    saved_docs,
+                    key="report_saved_files",
+                    placeholder="저장된 문서 선택..."
+                )
+
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="report_context")
 
-        # 5. 생성 모드 선택 (투자심사보고서만 해당)
+        # 5. 생성 모드 선택 (chained 지원 템플릿)
         generation_mode = "single"
-        if template_option == 'investment':
+        if template_option in ['investment', 'simple_review']:
+            part_count = 5 if template_option == 'investment' else 3
             st.markdown("##### 4. 생성 방식")
             generation_mode = st.radio(
                 "생성 방식 선택",
                 ["chained", "single"],
-                format_func=lambda x: "📊 3단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
+                format_func=lambda x: f"📊 {part_count}단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
                 index=0,
                 horizontal=True,
-                help="분할 생성 시 Valuation, Risk 섹션이 더 상세하게 작성됩니다.",
+                help="분할 생성 시 각 섹션이 더 상세하게 작성됩니다.",
                 label_visibility="collapsed",
                 key="report_gen_mode"
             )
@@ -231,7 +380,8 @@ def render_investment_report_panel(container, settings):
             "context_text": context_text,
             "rfi_existing": "",
             "generate_btn": generate_btn,
-            "generation_mode": generation_mode
+            "generation_mode": generation_mode,
+            "selected_saved_files": selected_saved_files
         }
 
 def render_rfi_panel(container, settings):
@@ -267,8 +417,24 @@ def render_rfi_panel(container, settings):
         # 결과 입력창
         rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...", key="rfi_filelist")
 
-        # 3. 추가 질문 및 확인 사항
-        st.markdown("##### 3. 추가 질문 및 확인 사항")
+        # 3. 자료 내용 분석 (선택사항)
+        st.markdown("##### 3. 자료 내용 분석 (선택사항)")
+        uploaded_files = st.file_uploader("내용을 분석할 파일 업로드 (PDF, Word 등)", accept_multiple_files=True, key="rfi_content_files")
+
+        # [NEW] Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", 
+                    saved_docs,
+                    key="rfi_saved_files",
+                    placeholder="저장된 문서 선택..."
+                )
+
+        # 4. 추가 질문 및 확인 사항
+        st.markdown("##### 4. 추가 질문 및 확인 사항")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="rfi_context")
 
         st.markdown("---")
@@ -277,12 +443,100 @@ def render_rfi_panel(container, settings):
         return {
             "template_option": template_option,
             "structure_text": "",
-            "uploaded_files": [],
+            "uploaded_files": uploaded_files,
             "rfi_file_list_input": rfi_file_list_input,
             "context_text": context_text,
             "rfi_existing": rfi_existing,
             "generate_btn": generate_btn,
-            "generation_mode": "single"
+            "generation_mode": "single",
+            "selected_saved_files": selected_saved_files
+        }
+
+def render_preliminary_dd_panel(container, settings):
+    """예비실사 패널 - investment, im, management, presentation, free_summary, custom 통합"""
+    with container:
+        # 1. 템플릿 선택
+        template_options = {
+            'investment': '1. 투자심사보고서 (표준)',
+            'im': '2. IM (투자제안서)',
+            'management': '3. 사후관리보고서',
+            'presentation': '4. 투자심의 발표자료 (PPT)',
+            'free_summary': '5. 자유 구조화 (요약)',
+            'custom': '6. 자유 구조화 (요약보고서)'
+        }
+        template_option = st.selectbox(
+            "1. 문서 구조 / 템플릿 선택",
+            list(template_options.keys()),
+            format_func=lambda x: template_options[x],
+            key="prelim_template",
+            on_change=_on_template_change,
+            args=("prelim_template", "prelim_struct_text", "prelim_structure_input")
+        )
+
+        # 2. 구조 추출 및 편집
+        upload_label = "📂 서식 파일 (양식 복제용)" if template_option == 'custom' else "📂 서식 파일 업로드 (구조 추출용)"
+        uploaded_structure_file = st.file_uploader(upload_label, type=['pdf', 'docx', 'txt', 'md'], key="prelim_structure")
+
+        btn_label = "구조/양식 추출 실행" if template_option == 'custom' else "구조 추출 실행"
+        if uploaded_structure_file and st.button(btn_label, key="prelim_extract"):
+            if not settings["api_key"]:
+                st.error("API Key 필요")
+            else:
+                with st.spinner("서식 분석 중..."):
+                    ext = core_logic.extract_structure(settings["api_key"], uploaded_structure_file)
+                    if ext:
+                        st.session_state['prelim_structure_input'] = ext
+                        st.rerun()
+
+        default_structure = core_logic.get_default_structure(template_option)
+        if 'prelim_structure_input' in st.session_state and template_option == 'custom':
+            default_structure = st.session_state['prelim_structure_input']
+
+        structure_text = st.text_area("문서 구조 (편집 가능)", value=default_structure, height=200, key="prelim_struct_text")
+
+        # 3. 데이터 입력
+        st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
+        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="prelim_files")
+
+        # Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", saved_docs,
+                    key="prelim_saved_files", placeholder="저장된 문서 선택..."
+                )
+
+        # 4. 컨텍스트
+        st.markdown("##### 3. 대상 기업 및 맥락")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="prelim_context")
+
+        # 5. 생성 모드 (investment만 chained 지원)
+        generation_mode = "single"
+        if template_option == 'investment':
+            st.markdown("##### 4. 생성 방식")
+            generation_mode = st.radio(
+                "생성 방식 선택",
+                ["chained", "single"],
+                format_func=lambda x: "📊 5단계 분할 생성 (품질 우선)" if x == "chained" else "🚀 한 번에 생성 (빠름)",
+                index=0, horizontal=True, label_visibility="collapsed",
+                key="prelim_gen_mode"
+            )
+
+        st.markdown("---")
+        generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="prelim_generate")
+
+        return {
+            "template_option": template_option,
+            "structure_text": structure_text,
+            "uploaded_files": uploaded_files,
+            "rfi_file_list_input": "",
+            "context_text": context_text,
+            "rfi_existing": "",
+            "generate_btn": generate_btn,
+            "generation_mode": generation_mode,
+            "selected_saved_files": selected_saved_files
         }
 
 def render_im_ppt_panel(container, settings):
@@ -292,7 +546,7 @@ def render_im_ppt_panel(container, settings):
         template_options = {
             'im': '1. IM (투자제안서)',
             'presentation': '2. 투자심의 발표자료 (PPT)',
-            'management': '3. 사후관리보고서'
+            'free_summary': '3. 자유 구조화 (요약)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",
@@ -326,6 +580,18 @@ def render_im_ppt_panel(container, settings):
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
         uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="im_files")
 
+        # [NEW] Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", 
+                    saved_docs,
+                    key="im_saved_files",
+                    placeholder="저장된 문서 선택..."
+                )
+
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
         context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="im_context")
@@ -341,7 +607,95 @@ def render_im_ppt_panel(container, settings):
             "context_text": context_text,
             "rfi_existing": "",
             "generate_btn": generate_btn,
-            "generation_mode": "single"
+            "generation_mode": "single",
+            "selected_saved_files": selected_saved_files
+        }
+
+def render_detailed_dd_panel(container, settings):
+    """정밀실사 패널 - RFI with FDD/LDD 유형 선택"""
+    with container:
+        template_option = 'rfi'
+
+        # DD 유형 선택
+        st.markdown("##### 실사 유형 선택")
+        dd_type = st.radio(
+            "실사 유형",
+            ["general", "fdd", "ldd"],
+            format_func=lambda x: {
+                "general": "📋 일반 RFI (종합)",
+                "fdd": "📊 FDD (재무실사)",
+                "ldd": "⚖️ LDD (법률실사)"
+            }[x],
+            horizontal=True, key="dd_type", label_visibility="collapsed"
+        )
+
+        # 1. 최근 RFI 목록 (Basis)
+        st.markdown("##### 1. 기존 RFI 목록 (Basis)")
+        uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 드래그 & 드롭", type=['xlsx', 'xls', 'csv'], key="dd_basis")
+
+        rfi_existing = ""
+        if uploaded_rfi_file:
+            with st.spinner("RFI 파일 파싱 중..."):
+                rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
+            st.success(f"✅ RFI 로드 완료! ({uploaded_rfi_file.name})")
+        else:
+            st.info("파일이 없으면 빈 목록에서 시작합니다.")
+
+        # 2. 수령 자료 폴더 스캔
+        st.markdown("##### 2. 수령 자료 폴더 스캔")
+        st.markdown("""
+        <div class="info-box">
+        <b>☁️ 클라우드/웹 환경 안내</b><br/>
+        웹 서버는 사용자의 PC(C:드라이브)를 직접 볼 수 없습니다. <br/>
+        아래 <b>드롭존에 폴더를 드래그</b>하면 브라우저가 파일명을 스캔해줍니다. <b>[복사]</b> 후 아래 칸에 <b>[붙여넣기]</b> 해주세요.
+        </div>
+        """, unsafe_allow_html=True)
+
+        # HTML 스캐너
+        components.html(HTML_SCANNER, height=280)
+
+        # 결과 입력창
+        rfi_file_list_input = st.text_area("⬇️ 파일 목록 붙여넣기 (Ctrl+V)", height=150, placeholder="- 폴더명/파일명.pdf...", key="dd_filelist")
+
+        # 3. 자료 내용 분석 (선택사항)
+        st.markdown("##### 3. 자료 내용 분석 (선택사항)")
+        uploaded_files = st.file_uploader("내용을 분석할 파일 업로드 (PDF, Word 등)", accept_multiple_files=True, key="dd_content_files")
+
+        # Saved Documents (RAG)
+        saved_docs = utils.list_saved_docs()
+        selected_saved_files = []
+        if saved_docs:
+            with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
+                selected_saved_files = st.multiselect(
+                    "이전에 변환된 문서 선택", saved_docs,
+                    key="dd_saved_files", placeholder="저장된 문서 선택..."
+                )
+
+        # 4. 추가 질문 및 확인 사항
+        st.markdown("##### 4. 추가 질문 및 확인 사항")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="dd_context")
+
+        # DD 유형별 지시문 주입
+        dd_context_prefix = {
+            "general": "",
+            "fdd": "[실사 유형: FDD (Financial Due Diligence)]\n재무실사 관점에서 재무제표, 세무, 운전자본, 순차입금, 정상화 EBITDA, 내부거래, 우발부채 등에 중점을 두어 자료를 요청하십시오.\n\n",
+            "ldd": "[실사 유형: LDD (Legal Due Diligence)]\n법률실사 관점에서 계약서, 소송/분쟁, 지적재산권, 인허가, 규제 준수, 지배구조, 주주간계약 등에 중점을 두어 자료를 요청하십시오.\n\n"
+        }
+        final_context = dd_context_prefix.get(dd_type, "") + context_text
+
+        st.markdown("---")
+        generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="dd_generate")
+
+        return {
+            "template_option": template_option,
+            "structure_text": "",
+            "uploaded_files": uploaded_files,
+            "rfi_file_list_input": rfi_file_list_input,
+            "context_text": final_context,
+            "rfi_existing": rfi_existing,
+            "generate_btn": generate_btn,
+            "generation_mode": "single",
+            "selected_saved_files": selected_saved_files
         }
 
 def render_input_panel(container, settings):

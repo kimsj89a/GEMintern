@@ -6,7 +6,17 @@
       "Bash(git push:*)",
       "Bash(python -m py_compile:*)",
       "Bash(python:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(copy:*)",
+      "Bash(dir /b \"c:\\\\Users\\\\kimsj\\\\GEMintern\\\\GEMintern\\\\*.py\")",
+      "Bash(ls:*)",
+      "Bash(pip install:*)",
+      "Bash(xcopy:*)",
+      "Bash(c:UserskimsjGEMinternGEMintern.venvScriptspip install google-generativeai)",
+      "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/pip.exe\" install google-generativeai)",
+      "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/python.exe\" -c \"import google.generativeai; print\\(''OK''\\)\")",
+      "Bash(dir:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

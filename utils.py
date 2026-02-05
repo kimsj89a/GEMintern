@@ -1,27 +1,149 @@
 import io
 import re
 import os
+import tempfile
 import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
+from docx.shared import Inches
 from pptx import Presentation
 from openai import OpenAI
 import ocr
 
+# MarkItDown 지원 확인
+MARKITDOWN_AVAILABLE = False
+try:
+    from markitdown import MarkItDown
+    MARKITDOWN_AVAILABLE = True
+except ImportError:
+    pass
+
+# Document AI OCR 지원 확인
+DOCAI_AVAILABLE = False
+try:
+    import utils_docai
+    DOCAI_AVAILABLE = True
+except ImportError:
+    pass
 
 def get_ocr_status():
     """OCR 상태 확인 (UI에서 사용)"""
     return ocr.get_ocr_status()
 
-def parse_uploaded_file(uploaded_file, api_key=None):
-    """파일 타입별 텍스트 추출 (전체 시트 지원 + OCR 지원)
+def _docx_to_ppt_markdown(doc: Document, filename: str) -> str:
+    """
+    Convert a Word document into PPT-friendly Markdown.
+
+    Mapping:
+    - Heading 1 -> section cover (#)
+    - Heading 2 -> slide title (##)
+    - Heading 3+ -> emphasized line inside a slide (###)
+    - Normal paragraphs -> bullets (-)
+    """
+    title = os.path.splitext(filename)[0]
+    lines = [f"# {title}"]
+
+    def has_slide_title() -> bool:
+        return any(line.startswith("## ") for line in lines)
+
+    for para in doc.paragraphs:
+        text = (para.text or "").strip()
+        if not text:
+            continue
+
+        style_name = ""
+        try:
+            style_name = (para.style.name or "").lower()
+        except Exception:
+            style_name = ""
+
+        if style_name.startswith("heading"):
+            level = 2
+            match = re.search(r"heading\s*(\d+)", style_name)
+            if match:
+                try:
+                    level = int(match.group(1))
+                except Exception:
+                    level = 2
+
+            if level <= 1:
+                lines.append(f"# {text}")
+            elif level == 2:
+                lines.append(f"## {text}")
+            else:
+                lines.append(f"### {text}")
+            continue
+
+        if not has_slide_title():
+            lines.append("## Overview")
+
+        lines.append(f"- {text}")
+
+    return "\n".join(lines).strip() + "\n\n"
+
+
+def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template_option=None):
+    """파일 형태별 텍스트 추출 (전체 시트 지원 + OCR 지원)
 
     Args:
         uploaded_file: Streamlit 업로드 파일 객체
         api_key: Google API 키 (PDF OCR용, 선택사항)
+        docai_config: Document AI 설정 dict (선택사항)
+            - project_id: GCP 프로젝트 ID
+            - location: 위치 (us/eu)
+            - processor_id: 프로세서 ID
+            - credentials_json: 서비스 계정 JSON 문자열
     """
     if uploaded_file is None:
         return ""
+
+    file_type = uploaded_file.name.split('.')[-1].lower()
+
+    # [Document AI OCR] PDF/이미지 우선 처리
+    if DOCAI_AVAILABLE and docai_config and file_type in utils_docai.get_supported_extensions():
+        try:
+            uploaded_file.seek(0)
+            file_bytes = uploaded_file.read()
+            mime_type = utils_docai.get_mime_type(uploaded_file.name)
+
+            ocr_result = utils_docai.process_document(
+                file_bytes=file_bytes,
+                mime_type=mime_type,
+                project_id=docai_config['project_id'],
+                location=docai_config.get('location', 'us'),
+                processor_id=docai_config['processor_id'],
+                credentials_json=docai_config.get('credentials_json')
+            )
+
+            uploaded_file.seek(0)
+            if ocr_result and ocr_result.get('text'):
+                return f"### [파일명: {uploaded_file.name} (Document AI OCR)]\n{ocr_result['text']}\n\n"
+        except Exception as e:
+            uploaded_file.seek(0)
+            # Document AI 실패 시 다음 방법으로 진행
+
+    # [MarkItDown] 우선 시도
+    # PPT 모드에서 Word는 별도 변환 로직을 사용한다.
+    if MARKITDOWN_AVAILABLE and not (template_option == "presentation" and file_type in ["docx", "doc"]):
+        try:
+            suffix = os.path.splitext(uploaded_file.name)[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                uploaded_file.seek(0)
+                tmp.write(uploaded_file.read())
+                tmp_path = tmp.name
+            uploaded_file.seek(0)
+
+            try:
+                md = MarkItDown()
+                result = md.convert(tmp_path)
+                if result and result.text_content:
+                    return f"### [파일명: {uploaded_file.name} (MarkItDown)]\n{result.text_content}\n\n"
+            finally:
+                if os.path.exists(tmp_path):
+                    try: os.unlink(tmp_path)
+                    except: pass
+        except Exception:
+            uploaded_file.seek(0)
 
     file_type = uploaded_file.name.split('.')[-1].lower()
     text_content = ""
@@ -38,9 +160,12 @@ def parse_uploaded_file(uploaded_file, api_key=None):
         # [Word] python-docx
         elif file_type in ['docx', 'doc']:
             doc = Document(uploaded_file)
-            for para in doc.paragraphs:
-                text_content += para.text + "\n"
-        
+            if template_option == "presentation":
+                text_content = _docx_to_ppt_markdown(doc, uploaded_file.name)
+            else:
+                for para in doc.paragraphs:
+                    text_content += para.text + "\n"
+
         # [PPT] python-pptx
         elif file_type in ['pptx', 'ppt']:
             prs = Presentation(uploaded_file)
@@ -48,12 +173,12 @@ def parse_uploaded_file(uploaded_file, api_key=None):
                 for shape in slide.shapes:
                     if hasattr(shape, "text"):
                         text_content += shape.text + "\n"
-        
+
         # [Excel] pandas (전체 시트 파싱 적용)
         elif file_type in ['xlsx', 'xls', 'csv']:
             try:
                 text_content = f"### [파일명: {uploaded_file.name}]\n"
-                
+
                 # 1. 파일 읽기 (CSV vs Excel)
                 if file_type == 'csv':
                     df = pd.read_csv(uploaded_file)
@@ -64,38 +189,38 @@ def parse_uploaded_file(uploaded_file, api_key=None):
                         table_text = df.to_string(index=False)
                     text_content += f"\n{table_text}\n"
                 else:
-                    # [핵심 변경] sheet_name=None으로 설정하여 모든 시트를 OrderedDict로 읽어옴
-                    # 엔진은 openpyxl을 명시적으로 사용 (안정성)
+                    # [특별 변경] sheet_name=None으로 설정하여 모든 시트를 OrderedDict로 읽어옴
+                    # 명시적 openpyxl 명시적으로 사용 (안정성)
                     xls_dict = pd.read_excel(uploaded_file, sheet_name=None, engine='openpyxl')
-                    
-                    # 모든 시트 순회
+
+                    # 모든 시트 조회
                     for sheet_name, df in xls_dict.items():
                         df = df.fillna("") # 빈값 처리
-                        
+
                         # 시트별 헤더 추가
                         text_content += f"\n#### [Sheet: {sheet_name}]\n"
-                        
+
                         # 변환 (tabulate가 없으면 to_string으로 대체)
                         try:
                             table_text = df.to_markdown(index=False)
                         except ImportError:
                             table_text = df.to_string(index=False)
-                        
+
                         text_content += f"{table_text}\n"
 
             except Exception as e:
-                text_content = f"[엑셀 파싱 오류: {str(e)}]\n(Tip: 암호 걸린 파일은 아닌지, 포맷이 맞는지 확인해주세요)"
-        
+                text_content = f"[엑셀 파싱 오류: {str(e)}]\n(Tip: 암호 걸린 파일인 아닌지, 형식에 맞는지 확인해주세요)"
+
         # [Text]
         elif file_type in ['txt', 'md']:
             stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
             text_content = stringio.read()
-            
+
         else:
             text_content = f"[지원하지 않는 파일 형식입니다: {uploaded_file.name}]"
 
     except Exception as e:
-        return f"[파일 읽기 치명적 오류: {uploaded_file.name} - {str(e)}]"
+        return f"[파일 읽기 시도 중 오류: {uploaded_file.name} - {str(e)}]"
 
     # 파일 포인터 초기화
     if hasattr(uploaded_file, 'seek'):
@@ -105,10 +230,15 @@ def parse_uploaded_file(uploaded_file, api_key=None):
 
 def generate_filename(uploaded_files, template_option):
     template_map = {
-        'simple_review': '약식투자검토', 'rfi': 'RFI', 'investment': '투자심사보고서',
-        'im': 'IM', 'management': '사후관리보고서', 'presentation': '발표자료', 'custom': '보고서'
+        "simple_review": "simple_review",
+        "rfi": "RFI",
+        "investment": "investment_report",
+        "im": "IM",
+        "management": "management_report",
+        "presentation": "presentation",
+        "custom": "report",
     }
-    suffix = template_map.get(template_option, '보고서')
+    suffix = template_map.get(template_option, "report")
     project_name = "Investment_Report"
     if uploaded_files:
         first_file = uploaded_files[0].name
@@ -116,14 +246,43 @@ def generate_filename(uploaded_files, template_option):
         project_name = re.sub(r'[\\/*?:"<>|]', "", base_name).strip()
     return f"{project_name}_{suffix}.docx"
 
-def set_list_level(paragraph, level):
-    pPr = paragraph._p.get_or_add_pPr()
-    numPr = pPr.get_or_add_numPr()
-    ilvl = numPr.get_or_add_ilvl()
-    ilvl.val = level
-    if numPr.numId is None:
-        numId = numPr.get_or_add_numId()
-        numId.val = 1 
+def add_list_paragraph(doc, content, level, is_bullet=True):
+    """들여쓰기가 적용된 리스트 아이템 추가
+
+    Args:
+        doc: Document 객체
+        content: 텍스트 내용
+        level: 들여쓰기 레벨 (0부터 시작)
+        is_bullet: True면 불릿, False면 번호
+    """
+
+    # Bullet characters by level (fallback to simple ASCII bullets)
+    bullet_chars = ["-", "*", "+"]
+    bullet_char = bullet_chars[level % len(bullet_chars)]
+
+    p = doc.add_paragraph()
+
+    # 들여쓰기 설정 (레벨당 0.1인치)
+    indent = Inches(0.1 * (level + 1))
+    p.paragraph_format.left_indent = indent
+    p.paragraph_format.first_line_indent = Inches(-0.15)  # 불릿/번호 hanging indent
+
+    # 불릿 문자 추가
+    if is_bullet:
+        p.add_run(f"{bullet_char} ")
+    else:
+        p.add_run(f"• ")  # 번호 리스트도 일단 불릿으로
+
+    # 내용 추가 (볼드 처리 포함)
+    parts = re.split(r'(\*\*.*?\*\*)', content)
+    for part in parts:
+        if part.startswith('**') and part.endswith('**'):
+            run = p.add_run(part[2:-2])
+            run.bold = True
+        else:
+            p.add_run(part)
+
+    return p
 
 def create_docx(markdown_text):
     doc = Document()
@@ -133,6 +292,9 @@ def create_docx(markdown_text):
     # 로마 숫자 헤더 패턴 (I., II., III., IV., V., VI., VII., VIII.)
     roman_header_pattern = re.compile(r'^(I{1,3}|IV|VI{0,3}|V|IX|X)\.\s+(.+)$')
 
+    # 리스트 level 추적 (들여쓰기 상속)
+    indent_stack = [0]  # 각 level의 들여쓰기 칸 수
+
     while i < len(lines):
         raw_line = lines[i]
         line = raw_line.strip()
@@ -140,23 +302,28 @@ def create_docx(markdown_text):
         # Markdown 헤더 처리 (#### 추가)
         if line.startswith('##### '):
             doc.add_heading(line.replace('##### ', ''), level=5)
+            indent_stack = [0]  # 리스트 상속 리셋
             i += 1
         elif line.startswith('#### '):
             doc.add_heading(line.replace('#### ', ''), level=4)
+            indent_stack = [0]
             i += 1
         elif line.startswith('### '):
             doc.add_heading(line.replace('### ', ''), level=3)
+            indent_stack = [0]
             i += 1
         elif line.startswith('## '):
             doc.add_heading(line.replace('## ', ''), level=2)
+            indent_stack = [0]
             i += 1
         elif line.startswith('# '):
             doc.add_heading(line.replace('# ', ''), level=1)
+            indent_stack = [0]
             i += 1
         # 로마 숫자 헤더 처리 (I. Executive Summary 등)
         elif roman_header_pattern.match(line):
-            match = roman_header_pattern.match(line)
             doc.add_heading(line, level=1)
+            indent_stack = [0]
             i += 1
         elif line.startswith('|'):
             table_lines = []
@@ -182,24 +349,31 @@ def create_docx(markdown_text):
                         row_cells = table.add_row().cells
                         for idx, text in enumerate(row_data):
                             if idx < len(row_cells): row_cells[idx].text = text.replace('**', '')
+            indent_stack = [0]
         elif re.match(r'^\s*([-*]|\d+\.)\s', raw_line):
             match = re.match(r'^(\s*)([-*]|\d+\.)\s+(.*)', raw_line)
             if match:
                 indent_str, marker, content = match.groups()
-                spaces = indent_str.replace('\t', '  ')
-                level = len(spaces) // 2
+                spaces = indent_str.replace('\t', '    ')  # 탭을 4칸으로
+                indent_len = len(spaces)
+
+                # 들여쓰기 기반 level 계산 (시작점으로 1, 2, 3...)
+                if indent_len == 0:
+                    level = 0
+                    indent_stack = [0]
+                elif indent_len > indent_stack[-1]:
+                    # 들여쓰기 증가 시 level 증가
+                    level = len(indent_stack)
+                    indent_stack.append(indent_len)
+                else:
+                    # 들여쓰기 감소 또는 유지 시 해당 level 찾기
+                    while len(indent_stack) > 1 and indent_stack[-1] > indent_len:
+                        indent_stack.pop()
+                    level = len(indent_stack) - 1
+
                 if level > 8: level = 8
                 is_bullet = marker in ['-', '*']
-                style_name = 'List Bullet' if is_bullet else 'List Number'
-                try: p = doc.add_paragraph(style=style_name)
-                except: p = doc.add_paragraph()
-                set_list_level(p, level)
-                parts = re.split(r'(\*\*.*?\*\*)', content)
-                for part in parts:
-                    if part.startswith('**') and part.endswith('**'):
-                        run = p.add_run(part[2:-2])
-                        run.bold = True
-                    else: p.add_run(part)
+                add_list_paragraph(doc, content, level, is_bullet)
             i += 1
         else:
             if line:
@@ -229,3 +403,36 @@ def create_excel(markdown_text):
         with pd.ExcelWriter(bio, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='RFI_List')
     return bio.getvalue()
+
+# ========================================
+# Local Storage Management (RAG)
+# ========================================
+SAVED_DOCS_DIR = "saved_documents"
+
+def ensure_saved_docs_dir():
+    if not os.path.exists(SAVED_DOCS_DIR):
+        os.makedirs(SAVED_DOCS_DIR)
+
+def save_to_local_storage(filename, content):
+    """파싱된 텍스트를 로컬 MD 파일로 저장"""
+    ensure_saved_docs_dir()
+    safe_name = os.path.basename(filename)
+    base, _ = os.path.splitext(safe_name)
+    save_path = os.path.join(SAVED_DOCS_DIR, f"{base}.md")
+    
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return save_path
+
+def list_saved_docs():
+    ensure_saved_docs_dir()
+    files = [f for f in os.listdir(SAVED_DOCS_DIR) if f.endswith(".md")]
+    return sorted(files)
+
+def load_saved_doc(filename):
+    ensure_saved_docs_dir()
+    path = os.path.join(SAVED_DOCS_DIR, filename)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
