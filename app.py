@@ -14,7 +14,7 @@ st.set_page_config(layout="wide", page_title="GEM Intern v6.0", page_icon="💎"
 st.markdown("""
 <style>
     .reportview-container .main .block-container { padding-top: 1rem; padding-bottom: 5rem; }
-    .title-container { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .title-container { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
     .badge { background-color: #f0f2f6; color: #31333F; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 500; border: 1px solid #d6d6d8; }
     .badge-blue { background-color: #e6f0ff; color: #0068c9; border: 1px solid #b3d1ff; }
     .info-box { background-color: #fff8c5; padding: 10px; border-radius: 5px; border: 1px solid #e3d5a5; font-size: 0.85rem; color: #5c4b12; margin-bottom: 15px; }
@@ -27,6 +27,7 @@ st.markdown("""
         border: none;
         background-color: transparent;
         font-size: 1.05rem;
+        justify-content: flex-start;
     }
     section[data-testid="stSidebar"] .stButton button:hover {
         background-color: #f0f2f6;
@@ -53,16 +54,16 @@ if "selected_page" not in st.session_state:
     st.session_state.selected_page = "📋 초기검토"
 
 def main():
-    st.markdown("""
-        <div class="title-container">
-            <h1>💎 GEM Intern</h1>
-            <span class="badge">v6.0</span>
-            <span class="badge badge-blue">Cloud-Safe Indexer</span>
-        </div>
-        <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
-    """, unsafe_allow_html=True)
-
     if not st.session_state.app_started:
+        st.markdown("""
+            <div class="title-container">
+                <h1>💎 GEM Intern</h1>
+                <span class="badge">v6.0</span>
+                <span class="badge badge-blue">Cloud-Safe Indexer</span>
+            </div>
+            <p style='color: gray; margin-top: -10px; margin-bottom: 10px;'>AI-Powered Investment Analysis Assistant</p>
+        """, unsafe_allow_html=True)
+
         # [화면 1] 설정 페이지 (메인)
         st.markdown("### ⚙️ 환경 설정 (Settings)")
         st.info("업무를 시작하기 전에 필요한 설정을 완료해주세요.")
