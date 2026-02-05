@@ -17,7 +17,8 @@ TEMPLATES = {
     'im': '4. IM (투자제안서)',
     'management': '5. 사후관리보고서',
     'presentation': '6. 투자심의 발표자료 (PPT)',
-    'custom': '7. 자유 구조화 (요약보고서)'
+    'paper_review': '7. 논문/문서 발표자료 (Paper2Slides)',
+    'custom': '8. 자유 구조화 (요약보고서)'
 }
 
 # [HTML/JS] 브라우저 기반 폴더 스캐너 (서버 업로드 X)
@@ -546,7 +547,8 @@ def render_im_ppt_panel(container, settings):
         template_options = {
             'im': '1. IM (투자제안서)',
             'presentation': '2. 투자심의 발표자료 (PPT)',
-            'free_summary': '3. 자유 구조화 (요약)'
+            'paper_review': '3. 논문/문서 발표자료 (Paper2Slides)',
+            'free_summary': '4. 자유 구조화 (요약)'
         }
         template_option = st.selectbox(
             "1. 문서 구조 / 템플릿 선택",

@@ -1,4 +1,4 @@
-﻿from google import genai
+﻿﻿from google import genai
 from google.genai import types
 import utils
 import core_rfi
@@ -69,6 +69,7 @@ def _get_system_prompt(template_opt):
         'im': 'im_system',
         'management': 'management_system',
         'presentation': 'ppt_system',
+        'paper_review': 'paper_review_system',
         'free_summary': 'free_summary_system',
         'custom': 'custom_system'
     }
@@ -112,7 +113,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 """
 
     # 템플릿별 config 설정
-    if template_opt == 'presentation':
+    if template_opt == 'presentation' or template_opt == 'paper_review':
         temperature = 0.7
     elif template_opt == 'custom':
         temperature = 0.7  # 자유 구조화 모드 - 창의적 구조화를 위해 높은 temperature

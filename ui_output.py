@@ -160,7 +160,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
             st.markdown("---")
 
             # PPT 변환 버튼
-            if st.session_state[k_mode] != 'presentation' and st.session_state[k_mode] != 'rfi':
+            if st.session_state[k_mode] not in ['presentation', 'paper_review', 'rfi']:
                 if st.button("📊 이 내용으로 발표자료(PPT) 생성하기", use_container_width=True, key=f"{key_prefix}_btn_ppt_convert"):
                     if not settings['api_key']:
                         st.error("API Key 필요")
@@ -243,7 +243,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                     )
 
             with col_d2:
-                btn_type = "primary" if current_mode == 'presentation' else "secondary"
+                btn_type = "primary" if current_mode in ['presentation', 'paper_review'] else "secondary"
                 st.download_button(
                     "📊 PPT 다운로드",
                     utils_ppt.create_ppt(st.session_state[k_text]),
