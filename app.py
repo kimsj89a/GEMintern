@@ -131,12 +131,31 @@ def main():
         if selected_page in analysis_pages:
             with st.sidebar:
                 st.markdown("---")
-                st.markdown("### 📥 Data Input")
+        if selected_page == "SETTINGS":
+            st.markdown("### ⚙️ 환경 설정 (Settings)")
+            st.info("설정을 수정한 후 하단의 '적용' 버튼을 눌러주세요.")
+            updated_settings = ui_input.render_settings()
+            st.session_state['latest_settings'] = updated_settings
+            
+            st.markdown("---")
+            if st.button("✅ 설정 적용 및 업무 복귀", type="primary"):
+                st.session_state.selected_page = "� 초기검토"
+                st.rerun()
+
+        elif selected_page in analysis_pages:
+            # [레이아웃] 좌측: 메인 출력 (70%) / 우측: 데이터 입력 (30%)
+            col_main, col_right = st.columns([7, 3])
+            
+            # 1. 우측 패널 (Data Input) - 먼저 렌더링하여 inputs 변수 확보
+            with col_right:
+                st.markdown("### �📥 Data Input")
                 st.caption("공통 데이터 입력")
                 
                 # 사이드바 내 컨테이너에 입력 폼 렌더링
+                # 컨테이너로 감싸서 입력 폼 렌더링
                 input_container = st.container()
                 
+                inputs = {}
                 if selected_page == "📋 초기검토":
                     inputs = ui_input.render_initial_review_panel(input_container, settings)
                 elif selected_page == "📊 예비실사":
@@ -161,6 +180,37 @@ def main():
             if st.button("✅ 설정 적용 및 업무 복귀", type="primary"):
                 st.session_state.selected_page = "📋 초기검토"
                 st.rerun()
+            # 2. 좌측 메인 영역 (Output)
+            with col_main:
+                if selected_page == "📋 초기검토":
+                    st.markdown("### 📋 초기검토 (Quick Memo)")
+                    st.caption("약식 투자검토보고서를 빠르게 작성합니다.")
+                    st.markdown("---")
+                    ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="init")
+                    
+                elif selected_page == "📊 예비실사":
+                    st.markdown("### 📊 예비실사 (Preliminary DD)")
+                    st.caption("투자심사보고서, 사후관리보고서 등을 작성합니다.")
+                    st.markdown("---")
+                    ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="prelim")
+                    
+                elif selected_page == "📑 IM 작성":
+                    st.markdown("### 📑 IM 작성 (Information Memorandum)")
+                    st.caption("잠재 투자자를 위한 투자제안서(IM)를 작성합니다.")
+                    st.markdown("---")
+                    ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
+                    
+                elif selected_page == "🔍 정밀실사":
+                    st.markdown("### 🔍 정밀실사 (Detailed DD)")
+                    st.caption("RFI (자료요청목록) 작성 - FDD/LDD 유형별 지원")
+                    st.markdown("---")
+                    ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="dd")
+                    
+                elif selected_page == "🖥️ PPT 생성":
+                    st.markdown("### 🖥️ PPT 생성 (Paper2Slides)")
+                    st.caption("문서나 논문을 업로드하여 구조화된 발표자료(PPT)로 변환합니다.")
+                    st.markdown("---")
+                    ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="ppt")
 
         elif selected_page in analysis_pages:
             # [레이아웃] 메인 영역 (Output Only) - 입력은 사이드바에서 처리됨
