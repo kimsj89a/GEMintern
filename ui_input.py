@@ -121,6 +121,16 @@ HTML_SCANNER = """
 </html>
 """
 
+def _decode_text_with_fallback(raw_bytes):
+    """Decode bytes safely across common Windows/Korean encodings."""
+    for enc in ("utf-8-sig", "utf-8", "cp949", "euc-kr"):
+        try:
+            return raw_bytes.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    # Keep app running even with unknown byte sequences.
+    return raw_bytes.decode("utf-8", errors="replace")
+
 def render_settings():
     """상단 설정 영역"""
     query_params = st.query_params
@@ -174,8 +184,8 @@ def render_settings():
                 if not os.path.isabs(creds_full_path):
                     creds_full_path = os.path.join(os.path.dirname(__file__), creds_full_path)
                 if os.path.exists(creds_full_path):
-                    with open(creds_full_path, 'r') as f:
-                        env_creds_json = f.read()
+                    with open(creds_full_path, "rb") as f:
+                        env_creds_json = _decode_text_with_fallback(f.read())
 
             if has_env_docai and env_creds_json:
                 st.success(f"✅ .env에서 Document AI 설정 로드됨 (프로젝트: {env_docai_project})")
@@ -197,7 +207,7 @@ def render_settings():
 
                 docai_creds_json = env_creds_json
                 if docai_creds_file:
-                    docai_creds_json = docai_creds_file.read().decode('utf-8')
+                    docai_creds_json = _decode_text_with_fallback(docai_creds_file.read())
                     docai_creds_file.seek(0)
 
                 if docai_project_id and docai_processor_id and docai_creds_json:
