@@ -7,10 +7,10 @@ import ui_ocr
 import ui_markdown
 import ui_doctemplate
 
-# --- ?�이지 ?�정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v6.0", page_icon="?��")
+# --- 페이지 설정 ---
+st.set_page_config(layout="wide", page_title="GEM Intern v6.0", page_icon="💎")
 
-# --- CSS ?��????�용 ---
+# --- CSS 스타일 적용 ---
 st.markdown("""
 <style>
     .reportview-container .main .block-container { padding-top: 1rem; padding-bottom: 5rem; }
@@ -20,7 +20,7 @@ st.markdown("""
     .info-box { background-color: #fff8c5; padding: 10px; border-radius: 5px; border: 1px solid #e3d5a5; font-size: 0.85rem; color: #5c4b12; margin-bottom: 15px; }
     p, li, div { word-break: keep-all; overflow-wrap: break-word; }
     
-    /* ?�이?�바 ?�비게이??버튼 ?��???(Gemini-like) */
+    /* 사이드바 네비게이션 버튼 스타일 (Gemini-like) */
     section[data-testid="stSidebar"] .stButton button {
         text-align: left;
         padding-left: 20px;
@@ -33,7 +33,7 @@ st.markdown("""
         background-color: #f0f2f6;
         color: #0068c9;
     }
-    /* ?�성?�된 버튼 ?��???*/
+    /* 활성화된 버튼 스타일 */
     section[data-testid="stSidebar"] .stButton button[kind="primary"] {
         background-color: #e6f0ff;
         color: #0068c9;
@@ -44,42 +44,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- ?�태 초기??---
+# --- 상태 초기화 ---
 # if "generated_text" not in st.session_state: st.session_state.generated_text = "" # Removed global init
 
 if "app_started" not in st.session_state:
     st.session_state.app_started = False
 
 if "selected_page" not in st.session_state:
-    st.session_state.selected_page = "?�� 초기검??
+    st.session_state.selected_page = "📋 초기검토"
 
 def main():
     if not st.session_state.app_started:
         st.markdown("""
             <div class="title-container">
-                <h1>?�� GEM Intern</h1>
+                <h1>💎 GEM Intern</h1>
                 <span class="badge">v6.0</span>
                 <span class="badge badge-blue">Cloud-Safe Indexer</span>
             </div>
             <p style='color: gray; margin-top: -10px; margin-bottom: 10px;'>AI-Powered Investment Analysis Assistant</p>
         """, unsafe_allow_html=True)
 
-        # [?�면 1] ?�정 ?�이지 (메인)
-        st.markdown("### ?�️ ?�경 ?�정 (Settings)")
-        st.info("?�무�??�작?�기 ?�에 ?�요???�정???�료?�주?�요.")
+        # [화면 1] 설정 페이지 (메인)
+        st.markdown("### ⚙️ 환경 설정 (Settings)")
+        st.info("업무를 시작하기 전에 필요한 설정을 완료해주세요.")
         
-        # ?�정 ?�널 ?�더�?(메인 ?�역)
+        # 설정 패널 렌더링 (메인 영역)
         settings = ui_input.render_settings()
-        st.session_state['latest_settings'] = settings  # ?�정�??�??
+        st.session_state['latest_settings'] = settings  # 설정값 저장
         
         st.markdown("---")
-        if st.button("???�정 ?�용 �??�무 ?�작", type="primary", use_container_width=True):
-            st.session_state.app_started = True
-            st.session_state.selected_page = "?�� 초기검??
-            st.rerun()
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("✅ 설정 적용 및 업무 시작", type="primary", use_container_width=True):
+                st.session_state.app_started = True
+                st.session_state.selected_page = "📋 초기검토"
+                st.rerun()
                 
     else:
-        # ?�정�?불러?�기 (?�으�?기본�?복구)
+        # 설정값 불러오기 (없으면 기본값 복구)
         settings = st.session_state.get('latest_settings', {
             "api_key": st.session_state.get("api_key", ""),
             "model_name": st.session_state.get("model_name", "gemini-2.0-flash-thinking-exp-1219"),
@@ -88,19 +90,19 @@ def main():
             "docai_config": st.session_state.get("docai_config", {})
         })
 
-        # [?�면 2] ?�무 ?�로?�스 (?�이?�바 ?�이?�웃)
+        # [화면 2] 업무 프로세스 (사이드바 레이아웃)
         with st.sidebar:
-            st.markdown("### ?�� ?�무 ?�로?�스")
+            st.markdown("### 📂 업무 프로세스")
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # ?�비게이????�� ?�의
+            # 네비게이션 항목 정의
             nav_items = [
-                "?�� 초기검??, "?�� ?�비?�사", " IM ?�성", "?�� ?��??�사", 
-                "�?PPT ?�성", "?�� ?�디???�사", "?�� ???�롤??, 
-                "?���?문서 OCR", "?�� MD to Word", "?�� 문서?�식"
+                "📋 초기검토", "📊 예비실사", " IM 작성", "🔍 정밀실사", 
+                "️ PPT 생성", "🎤 오디오 전사", "🌐 웹 크롤러", 
+                "👁️ 문서 OCR", "📝 MD to Word", "📋 문서양식"
             ]
             
-            # 버튼 기반 ?�비게이???�더�?
+            # 버튼 기반 네비게이션 렌더링
             for item in nav_items:
                 is_active = (st.session_state.selected_page == item)
                 if st.button(item, key=f"nav_{item}", use_container_width=True, type="primary" if is_active else "secondary"):
@@ -109,152 +111,152 @@ def main():
 
             st.markdown("---")
             
-            # ?�정 ?�정 버튼
-            if st.button("?�️ ?�정 ?�정", key="nav_settings", use_container_width=True, type="primary" if st.session_state.selected_page == "SETTINGS" else "secondary"):
+            # 설정 수정 버튼
+            if st.button("⚙️ 설정 수정", key="nav_settings", use_container_width=True, type="primary" if st.session_state.selected_page == "SETTINGS" else "secondary"):
                 st.session_state.selected_page = "SETTINGS"
                 st.rerun()
                 
-            if st.button("?�� 처음?�로", key="nav_home", use_container_width=True):
+            if st.button("🏠 처음으로", key="nav_home", use_container_width=True):
                 st.session_state.app_started = False
                 st.rerun()
 
-        # 메인 콘텐�??�역
+        # 메인 콘텐츠 영역
         selected_page = st.session_state.selected_page
 
-        # 분석/?�성 ?�이지 그룹 (?�측 ?�이?�바 ?�이?�웃 ?�용)
-        analysis_pages = ["?�� 초기검??, "?�� ?�비?�사", "?�� IM ?�성", "?�� ?��??�사", "?���?PPT ?�성"]
+        # 분석/생성 페이지 그룹 (우측 사이드바 레이아웃 적용)
+        analysis_pages = ["📋 초기검토", "📊 예비실사", "📑 IM 작성", "🔍 정밀실사", "🖥️ PPT 생성"]
 
-        # [?�이?�웃 변�? ?�이???�력 ?�널???�이?�바 ?�단??배치
+        # [레이아웃 변경] 데이터 입력 패널을 사이드바 하단에 배치
         inputs = {}
         if selected_page in analysis_pages:
             with st.sidebar:
                 st.markdown("---")
         if selected_page == "SETTINGS":
-            st.markdown("### ?�️ ?�경 ?�정 (Settings)")
-            st.info("?�정???�정?????�단??'?�용' 버튼???�러주세??")
+            st.markdown("### ⚙️ 환경 설정 (Settings)")
+            st.info("설정을 수정한 후 하단의 '적용' 버튼을 눌러주세요.")
             updated_settings = ui_input.render_settings()
             st.session_state['latest_settings'] = updated_settings
             
             st.markdown("---")
-            if st.button("???�정 ?�용 �??�무 복�?", type="primary"):
-                st.session_state.selected_page = "�?초기검??
+            if st.button("✅ 설정 적용 및 업무 복귀", type="primary"):
+                st.session_state.selected_page = "� 초기검토"
                 st.rerun()
 
         elif selected_page in analysis_pages:
-            # [?�이?�웃] 좌측: 메인 출력 (70%) / ?�측: ?�이???�력 (30%)
+            # [레이아웃] 좌측: 메인 출력 (70%) / 우측: 데이터 입력 (30%)
             col_main, col_right = st.columns([7, 3])
             
-            # 1. ?�측 ?�널 (Data Input) - 먼�? ?�더링하??inputs 변???�보
+            # 1. 우측 패널 (Data Input) - 먼저 렌더링하여 inputs 변수 확보
             with col_right:
-                st.markdown("### ��?Data Input")
-                st.caption("공통 ?�이???�력")
+                st.markdown("### �📥 Data Input")
+                st.caption("공통 데이터 입력")
                 
-                # ?�이?�바 ??컨테?�너???�력 ???�더�?
-                # 컨테?�너�?감싸???�력 ???�더�?
+                # 사이드바 내 컨테이너에 입력 폼 렌더링
+                # 컨테이너로 감싸서 입력 폼 렌더링
                 input_container = st.container()
                 
                 inputs = {}
-                if selected_page == "?�� 초기검??:
+                if selected_page == "📋 초기검토":
                     inputs = ui_input.render_initial_review_panel(input_container, settings)
-                elif selected_page == "?�� ?�비?�사":
+                elif selected_page == "📊 예비실사":
                     inputs = ui_input.render_preliminary_dd_panel(input_container, settings)
-                elif selected_page == "?�� IM ?�성":
+                elif selected_page == "📑 IM 작성":
                     if hasattr(ui_input, 'render_im_panel'):
                         inputs = ui_input.render_im_panel(input_container, settings)
                     else:
                         inputs = ui_input.render_preliminary_dd_panel(input_container, settings)
-                elif selected_page == "?�� ?��??�사":
+                elif selected_page == "🔍 정밀실사":
                     inputs = ui_input.render_detailed_dd_panel(input_container, settings)
-                elif selected_page == "?���?PPT ?�성":
+                elif selected_page == "🖥️ PPT 생성":
                     inputs = ui_input.render_ppt_panel(input_container, settings)
 
         if selected_page == "SETTINGS":
-            st.markdown("### ?�️ ?�경 ?�정 (Settings)")
-            st.info("?�정???�정?????�단??'?�용' 버튼???�러주세??")
+            st.markdown("### ⚙️ 환경 설정 (Settings)")
+            st.info("설정을 수정한 후 하단의 '적용' 버튼을 눌러주세요.")
             updated_settings = ui_input.render_settings()
             st.session_state['latest_settings'] = updated_settings
             
             st.markdown("---")
-            if st.button("???�정 ?�용 �??�무 복�?", type="primary"):
-                st.session_state.selected_page = "?�� 초기검??
+            if st.button("✅ 설정 적용 및 업무 복귀", type="primary"):
+                st.session_state.selected_page = "📋 초기검토"
                 st.rerun()
-            # 2. 좌측 메인 ?�역 (Output)
+            # 2. 좌측 메인 영역 (Output)
             with col_main:
-                if selected_page == "?�� 초기검??:
-                    st.markdown("### ?�� 초기검??(Quick Memo)")
-                    st.caption("?�식 ?�자검?�보고서�?빠르�??�성?�니??")
+                if selected_page == "📋 초기검토":
+                    st.markdown("### 📋 초기검토 (Quick Memo)")
+                    st.caption("약식 투자검토보고서를 빠르게 작성합니다.")
                     st.markdown("---")
                     ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="init")
                     
-                elif selected_page == "?�� ?�비?�사":
-                    st.markdown("### ?�� ?�비?�사 (Preliminary DD)")
-                    st.caption("?�자?�사보고?? ?�후관리보고서 ?�을 ?�성?�니??")
+                elif selected_page == "📊 예비실사":
+                    st.markdown("### 📊 예비실사 (Preliminary DD)")
+                    st.caption("투자심사보고서, 사후관리보고서 등을 작성합니다.")
                     st.markdown("---")
                     ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="prelim")
                     
-                elif selected_page == "?�� IM ?�성":
-                    st.markdown("### ?�� IM ?�성 (Information Memorandum)")
-                    st.caption("?�재 ?�자?��? ?�한 ?�자?�안??IM)�??�성?�니??")
+                elif selected_page == "📑 IM 작성":
+                    st.markdown("### 📑 IM 작성 (Information Memorandum)")
+                    st.caption("잠재 투자자를 위한 투자제안서(IM)를 작성합니다.")
                     st.markdown("---")
                     ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
                     
-                elif selected_page == "?�� ?��??�사":
-                    st.markdown("### ?�� ?��??�사 (Detailed DD)")
-                    st.caption("RFI (?�료?�청목록) ?�성 - FDD/LDD ?�형�?지??)
+                elif selected_page == "🔍 정밀실사":
+                    st.markdown("### 🔍 정밀실사 (Detailed DD)")
+                    st.caption("RFI (자료요청목록) 작성 - FDD/LDD 유형별 지원")
                     st.markdown("---")
                     ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="dd")
                     
-                elif selected_page == "?���?PPT ?�성":
-                    st.markdown("### ?���?PPT ?�성 (Paper2Slides)")
-                    st.caption("문서???�문???�로?�하??구조?�된 발표?�료(PPT)�?변?�합?�다.")
+                elif selected_page == "🖥️ PPT 생성":
+                    st.markdown("### 🖥️ PPT 생성 (Paper2Slides)")
+                    st.caption("문서나 논문을 업로드하여 구조화된 발표자료(PPT)로 변환합니다.")
                     st.markdown("---")
                     ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="ppt")
 
         elif selected_page in analysis_pages:
-            # [?�이?�웃] 메인 ?�역 (Output Only) - ?�력?� ?�이?�바?�서 처리??
-            if selected_page == " 초기검??:
-                st.markdown("### ?�� 초기검??(Quick Memo)")
-                st.caption("?�식 ?�자검?�보고서�?빠르�??�성?�니??")
+            # [레이아웃] 메인 영역 (Output Only) - 입력은 사이드바에서 처리됨
+            if selected_page == " 초기검토":
+                st.markdown("### 📋 초기검토 (Quick Memo)")
+                st.caption("약식 투자검토보고서를 빠르게 작성합니다.")
                 st.markdown("---")
                 ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="init")
                 
-            elif selected_page == "?�� ?�비?�사":
-                st.markdown("### ?�� ?�비?�사 (Preliminary DD)")
-                st.caption("?�자?�사보고?? ?�후관리보고서 ?�을 ?�성?�니??")
+            elif selected_page == "📊 예비실사":
+                st.markdown("### 📊 예비실사 (Preliminary DD)")
+                st.caption("투자심사보고서, 사후관리보고서 등을 작성합니다.")
                 st.markdown("---")
                 ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="prelim")
                 
-            elif selected_page == "?�� IM ?�성":
-                st.markdown("### ?�� IM ?�성 (Information Memorandum)")
-                st.caption("?�재 ?�자?��? ?�한 ?�자?�안??IM)�??�성?�니??")
+            elif selected_page == "📑 IM 작성":
+                st.markdown("### 📑 IM 작성 (Information Memorandum)")
+                st.caption("잠재 투자자를 위한 투자제안서(IM)를 작성합니다.")
                 st.markdown("---")
                 ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="im")
                 
-            elif selected_page == "?�� ?��??�사":
-                st.markdown("### ?�� ?��??�사 (Detailed DD)")
-                st.caption("RFI (?�료?�청목록) ?�성 - FDD/LDD ?�형�?지??)
+            elif selected_page == "🔍 정밀실사":
+                st.markdown("### 🔍 정밀실사 (Detailed DD)")
+                st.caption("RFI (자료요청목록) 작성 - FDD/LDD 유형별 지원")
                 st.markdown("---")
                 ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="dd")
                 
-            elif selected_page == "?���?PPT ?�성":
-                st.markdown("### ?���?PPT ?�성 (Paper2Slides)")
-                st.caption("문서???�문???�로?�하??구조?�된 발표?�료(PPT)�?변?�합?�다.")
+            elif selected_page == "🖥️ PPT 생성":
+                st.markdown("### 🖥️ PPT 생성 (Paper2Slides)")
+                st.caption("문서나 논문을 업로드하여 구조화된 발표자료(PPT)로 변환합니다.")
                 st.markdown("---")
                 ui_output.render_output_panel(st.container(), settings, inputs, key_prefix="ppt")
 
-        elif selected_page == "?�� ?�디???�사":
+        elif selected_page == "🎤 오디오 전사":
             ui_audio.render_audio_transcription_panel(settings)
 
-        elif selected_page == "?�� ???�롤??:
+        elif selected_page == "🌐 웹 크롤러":
             ui_crawler.render_crawler_panel(settings)
 
-        elif selected_page == "?���?문서 OCR":
+        elif selected_page == "👁️ 문서 OCR":
             ui_ocr.render_ocr_panel(settings)
 
-        elif selected_page == "?�� MD to Word":
+        elif selected_page == "📝 MD to Word":
             ui_markdown.render_markdown_converter_panel(settings)
 
-        elif selected_page == "?�� 문서?�식":
+        elif selected_page == "📋 문서양식":
             ui_doctemplate.render_doctemplate_panel(settings)
 
 if __name__ == "__main__":
