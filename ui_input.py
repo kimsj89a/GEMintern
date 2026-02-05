@@ -247,8 +247,8 @@ def render_initial_review_panel(container, settings):
         # 1. 데이터 입력
         st.markdown("##### 1. 분석할 데이터")
         uploaded_files = st.file_uploader(
-            "IR 자료, 재무제표 등", accept_multiple_files=True,
-            label_visibility="collapsed", key="init_files"
+            "📄 분석할 문서 업로드 (공통)", accept_multiple_files=True,
+            label_visibility="collapsed", key="common_file_uploader"
         )
 
         # Saved Documents (RAG)
@@ -257,15 +257,15 @@ def render_initial_review_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", saved_docs,
-                    key="init_saved_files", placeholder="저장된 문서 선택..."
+                    "이전에 변환된 문서 선택 (공통)", saved_docs,
+                    key="common_saved_docs", placeholder="저장된 문서 선택..."
                 )
 
         # 2. 컨텍스트
         st.markdown("##### 2. 대상 기업 및 맥락")
         context_text = st.text_area(
             "Context Input", height=100, label_visibility="collapsed",
-            placeholder="예: 기업명, 투자 배경, 투자 구조, 규모 등...", key="init_context"
+            placeholder="예: 기업명, 투자 배경, 투자 구조, 규모 등...", key="common_context_input"
         )
 
         # 3. 생성 방식
@@ -336,7 +336,7 @@ def render_investment_report_panel(container, settings):
 
         # 3. 데이터 입력
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
-        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="report_files")
+        uploaded_files = st.file_uploader("📄 분석할 문서 업로드 (공통)", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
 
         # [NEW] Saved Documents (RAG)
         saved_docs = utils.list_saved_docs()
@@ -344,15 +344,15 @@ def render_investment_report_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", 
+                    "이전에 변환된 문서 선택 (공통)", 
                     saved_docs,
-                    key="report_saved_files",
+                    key="common_saved_docs",
                     placeholder="저장된 문서 선택..."
                 )
 
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="report_context")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
 
         # 5. 생성 모드 선택 (chained 지원 템플릿)
         generation_mode = "single"
@@ -420,7 +420,7 @@ def render_rfi_panel(container, settings):
 
         # 3. 자료 내용 분석 (선택사항)
         st.markdown("##### 3. 자료 내용 분석 (선택사항)")
-        uploaded_files = st.file_uploader("내용을 분석할 파일 업로드 (PDF, Word 등)", accept_multiple_files=True, key="rfi_content_files")
+        uploaded_files = st.file_uploader("📄 분석할 문서 업로드 (공통)", accept_multiple_files=True, key="common_file_uploader")
 
         # [NEW] Saved Documents (RAG)
         saved_docs = utils.list_saved_docs()
@@ -428,15 +428,15 @@ def render_rfi_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", 
+                    "이전에 변환된 문서 선택 (공통)", 
                     saved_docs,
-                    key="rfi_saved_files",
+                    key="common_saved_docs",
                     placeholder="저장된 문서 선택..."
                 )
 
         # 4. 추가 질문 및 확인 사항
         st.markdown("##### 4. 추가 질문 및 확인 사항")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="rfi_context")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
 
         st.markdown("---")
         generate_btn = st.button("🚀 RFI 생성 시작", use_container_width=True, type="primary", key="rfi_generate")
@@ -496,7 +496,7 @@ def render_preliminary_dd_panel(container, settings):
 
         # 3. 데이터 입력
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
-        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="prelim_files")
+        uploaded_files = st.file_uploader("📄 분석할 문서 업로드 (공통)", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
 
         # Saved Documents (RAG)
         saved_docs = utils.list_saved_docs()
@@ -504,13 +504,13 @@ def render_preliminary_dd_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", saved_docs,
-                    key="prelim_saved_files", placeholder="저장된 문서 선택..."
+                    "이전에 변환된 문서 선택 (공통)", saved_docs,
+                    key="common_saved_docs", placeholder="저장된 문서 선택..."
                 )
 
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="prelim_context")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
 
         # 5. 생성 모드 (investment만 chained 지원)
         generation_mode = "single"
@@ -577,7 +577,7 @@ def render_im_panel(container, settings):
 
         # 3. 데이터 입력
         st.markdown("##### 2. 분석할 데이터 (내용 채우기용)")
-        uploaded_files = st.file_uploader("IR 자료, 재무제표 등", accept_multiple_files=True, label_visibility="collapsed", key="im_files")
+        uploaded_files = st.file_uploader("📄 분석할 문서 업로드 (공통)", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
 
         # [NEW] Saved Documents (RAG)
         saved_docs = utils.list_saved_docs()
@@ -585,15 +585,15 @@ def render_im_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", 
+                    "이전에 변환된 문서 선택 (공통)", 
                     saved_docs,
-                    key="im_saved_files",
+                    key="common_saved_docs",
                     placeholder="저장된 문서 선택..."
                 )
 
         # 4. 컨텍스트
         st.markdown("##### 3. 대상 기업 및 맥락")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="im_context")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 기업명, 투자 배경 등...", key="common_context_input")
 
         st.markdown("---")
         generate_btn = st.button("🚀 문서 생성 시작", use_container_width=True, type="primary", key="im_generate")
@@ -636,7 +636,7 @@ def render_ppt_panel(container, settings):
 
         # 3. 데이터 입력
         st.markdown("##### 2. 분석할 데이터 (PDF, Word 등)")
-        uploaded_files = st.file_uploader("발표자료로 변환할 문서 업로드", accept_multiple_files=True, label_visibility="collapsed", key="ppt_files")
+        uploaded_files = st.file_uploader("📄 분석할 문서 업로드 (공통)", accept_multiple_files=True, label_visibility="collapsed", key="common_file_uploader")
 
         # Saved Documents (RAG)
         saved_docs = utils.list_saved_docs()
@@ -644,13 +644,13 @@ def render_ppt_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", saved_docs,
-                    key="ppt_saved_files", placeholder="저장된 문서 선택..."
+                    "이전에 변환된 문서 선택 (공통)", saved_docs,
+                    key="common_saved_docs", placeholder="저장된 문서 선택..."
                 )
 
         # 4. 컨텍스트
         st.markdown("##### 3. 발표 맥락 및 강조사항")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 투자 하이라이트 위주로 구성, 10분 발표 분량...", key="ppt_context")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 투자 하이라이트 위주로 구성, 10분 발표 분량...", key="common_context_input")
 
         st.markdown("---")
         generate_btn = st.button("🚀 PPT 생성 시작", use_container_width=True, type="primary", key="ppt_generate")
@@ -715,7 +715,7 @@ def render_detailed_dd_panel(container, settings):
 
         # 3. 자료 내용 분석 (선택사항)
         st.markdown("##### 3. 자료 내용 분석 (선택사항)")
-        uploaded_files = st.file_uploader("내용을 분석할 파일 업로드 (PDF, Word 등)", accept_multiple_files=True, key="dd_content_files")
+        uploaded_files = st.file_uploader("📄 분석할 문서 업로드 (공통)", accept_multiple_files=True, key="common_file_uploader")
 
         # Saved Documents (RAG)
         saved_docs = utils.list_saved_docs()
@@ -723,13 +723,13 @@ def render_detailed_dd_panel(container, settings):
         if saved_docs:
             with st.expander("📚 저장된 문서 불러오기 (Local Library)", expanded=False):
                 selected_saved_files = st.multiselect(
-                    "이전에 변환된 문서 선택", saved_docs,
-                    key="dd_saved_files", placeholder="저장된 문서 선택..."
+                    "이전에 변환된 문서 선택 (공통)", saved_docs,
+                    key="common_saved_docs", placeholder="저장된 문서 선택..."
                 )
 
         # 4. 추가 질문 및 확인 사항
         st.markdown("##### 4. 추가 질문 및 확인 사항")
-        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="dd_context")
+        context_text = st.text_area("Context Input", height=100, label_visibility="collapsed", placeholder="예: 재고 관련 이슈 확인 필요...", key="common_context_input")
 
         # DD 유형별 지시문 주입
         dd_context_prefix = {
