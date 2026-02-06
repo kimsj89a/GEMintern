@@ -6,6 +6,7 @@ import ui_crawler
 import ui_ocr
 import ui_markdown
 import ui_doctemplate
+import ui_text_organizer
 
 # --- 페이지 설정 ---
 st.set_page_config(layout="wide", page_title="GEM Intern v6.0", page_icon="💎")
@@ -99,7 +100,7 @@ def main():
             nav_items = [
                 "📋 초기검토", "📊 예비실사", "📑 IM 작성", "🔍 정밀실사",
                 "🖥️ PPT 생성", "🎤 오디오 전사", "🌐 웹 크롤러",
-                "👁️ 문서 OCR", "📝 MD to Word", "📋 문서양식"
+                "👁️ 문서 OCR", "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기"
             ]
             
             # 버튼 기반 네비게이션 렌더링
@@ -215,6 +216,9 @@ def main():
 
         elif selected_page == "📋 문서양식":
             ui_doctemplate.render_doctemplate_panel(settings)
+
+        elif selected_page == "✏️ 문장 정리기":
+            ui_text_organizer.render_text_organizer_panel(settings)
 
 if __name__ == "__main__":
     main()
