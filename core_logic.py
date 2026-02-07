@@ -188,3 +188,40 @@ def refine_report(api_key, model_name, current_text, refine_query):
     )
     resp = client.models.generate_content(model=model_name, contents=refine_prompt)
     return resp.text
+
+
+def refine_report_with_context(api_key, model_name, current_text, chat_history,
+                                refine_query, additional_file_context=""):
+    """Chat-based refinement with history and additional file context.
+    Returns the complete updated document (not just changes).
+    """
+    client = get_client(api_key)
+
+    # Build conversation context from recent messages
+    history_text = ""
+    for msg in chat_history[-5:]:
+        role = "사용자" if msg["role"] == "user" else "AI"
+        history_text += f"[{role}]: {msg['content']}\n"
+
+    additional_section = ""
+    if additional_file_context:
+        additional_section = f"\n[추가 제공된 자료]\n{additional_file_context[:10000]}\n"
+
+    refine_prompt = (
+        f"You are a document refinement assistant.\n"
+        f"Apply the user's latest request to the existing document.\n"
+        f"Return the COMPLETE updated document (전체 문서를 반환하세요).\n"
+        f"Do NOT return only the changed parts - return the full document with changes applied.\n"
+        f"Preserve the original structure and formatting.\n\n"
+        f"[이전 대화]\n{history_text}\n"
+        f"[최신 요청]: \"{refine_query}\"\n"
+        f"{additional_section}\n"
+        f"[현재 문서]\n{current_text[:30000]}\n"
+    )
+
+    config = types.GenerateContentConfig(
+        max_output_tokens=65536,
+        temperature=0.3,
+    )
+    resp = client.models.generate_content(model=model_name, contents=refine_prompt, config=config)
+    return resp.text
