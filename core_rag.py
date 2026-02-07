@@ -1,20 +1,21 @@
 """
 RAG integration module for GEM Intern.
-Bridges rag_toolkit (async, OpenAI-compatible) with the Streamlit app.
-Uses Gemini API via OpenAI-compatible endpoint for LLM and embeddings.
+Uses lightrag-hku directly with Gemini's OpenAI-compatible endpoint.
 """
 
 import asyncio
 import json
 import os
 import threading
-from typing import Optional, List, Dict, Any
+from functools import partial
+from typing import List, Dict, Any
 
 # --- RAG availability check ---
 RAG_AVAILABLE = False
 try:
-    from rag_toolkit import RAGClient, RAGConfig
-    from rag_toolkit.config import APIConfig, StorageConfig, ParserConfig
+    from lightrag import LightRAG, QueryParam
+    from lightrag.llm.openai import openai_complete_if_cache, openai_embed
+    from lightrag.utils import EmbeddingFunc
     RAG_AVAILABLE = True
 except ImportError:
     pass
@@ -26,7 +27,6 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
 DEFAULT_EMBEDDING_DIM = 768
 
 RAG_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage")
-RAG_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_output")
 INDEXED_DOCS_FILE = os.path.join(RAG_STORAGE_DIR, "_indexed_docs.json")
 
 
@@ -54,26 +54,30 @@ def _run_async(coro):
     return result[0]
 
 
-def _create_config(api_key: str) -> "RAGConfig":
-    """Create RAGConfig using Gemini's OpenAI-compatible API."""
-    return RAGConfig(
-        api=APIConfig(
-            llm_api_key=api_key,
-            llm_base_url=GEMINI_OPENAI_BASE_URL,
-            llm_model=DEFAULT_RAG_LLM_MODEL,
-            embedding_model=DEFAULT_EMBEDDING_MODEL,
-            embedding_dim=DEFAULT_EMBEDDING_DIM,
+def _create_lightrag(api_key: str) -> "LightRAG":
+    """Create a LightRAG instance using Gemini's OpenAI-compatible API."""
+    os.makedirs(RAG_STORAGE_DIR, exist_ok=True)
+
+    embedding_func = EmbeddingFunc(
+        embedding_dim=DEFAULT_EMBEDDING_DIM,
+        func=partial(
+            openai_embed,
+            model=DEFAULT_EMBEDDING_MODEL,
+            base_url=GEMINI_OPENAI_BASE_URL,
+            api_key=api_key,
         ),
-        storage=StorageConfig(
-            storage_dir=RAG_STORAGE_DIR,
-            output_dir=RAG_OUTPUT_DIR,
-        ),
-        parser=ParserConfig(
-            parser="mineru",
-            parse_method="txt",
-            display_content_stats=False,
-        ),
-        verbose=False,
+        max_token_size=8192,
+    )
+
+    return LightRAG(
+        working_dir=RAG_STORAGE_DIR,
+        llm_model_func=openai_complete_if_cache,
+        llm_model_name=DEFAULT_RAG_LLM_MODEL,
+        embedding_func=embedding_func,
+        llm_model_kwargs={
+            "base_url": GEMINI_OPENAI_BASE_URL,
+            "api_key": api_key,
+        },
     )
 
 
@@ -104,7 +108,7 @@ def _save_indexed_docs(docs: List[str]):
 # ========================================
 
 def is_rag_available() -> bool:
-    """Check if RAG toolkit is installed."""
+    """Check if lightrag-hku is installed."""
     return RAG_AVAILABLE
 
 
@@ -128,17 +132,9 @@ def get_indexed_doc_names() -> List[str]:
 # ========================================
 
 async def _index_texts_async(api_key: str, texts: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Index multiple text documents into RAG.
-
-    Args:
-        api_key: Google API key (used via Gemini OpenAI-compatible endpoint)
-        texts: {doc_name: text_content} mapping
-    """
-    config = _create_config(api_key)
+    """Index multiple text documents into RAG."""
     already_indexed = set(_get_indexed_docs())
 
-    # Filter out already-indexed docs
     new_texts = {k: v for k, v in texts.items() if k not in already_indexed}
     if not new_texts:
         return {
@@ -149,46 +145,61 @@ async def _index_texts_async(api_key: str, texts: Dict[str, str]) -> Dict[str, A
             "message": "All documents already indexed",
         }
 
-    async with RAGClient(config=config) as rag:
-        lightrag = rag._get_rag().lightrag
+    rag = _create_lightrag(api_key)
+    await rag.initialize_storages()
 
-        indexed = []
-        errors = []
+    indexed = []
+    errors = []
+    try:
         for name, text in new_texts.items():
             try:
                 if text and len(text.strip()) > 50:
-                    await lightrag.ainsert(text)
+                    await rag.ainsert(text)
                     indexed.append(name)
             except Exception as e:
                 errors.append({"name": name, "error": str(e)})
+    finally:
+        await rag.finalize_storages()
 
-        # Update indexed docs tracker
-        all_indexed = list(already_indexed | set(indexed))
-        _save_indexed_docs(all_indexed)
+    all_indexed = list(already_indexed | set(indexed))
+    _save_indexed_docs(all_indexed)
 
-        return {
-            "success": len(errors) == 0,
-            "indexed": indexed,
-            "skipped": list(already_indexed & set(texts.keys())),
-            "errors": errors,
-            "total": len(texts),
-        }
+    return {
+        "success": len(errors) == 0,
+        "indexed": indexed,
+        "skipped": list(already_indexed & set(texts.keys())),
+        "errors": errors,
+        "total": len(texts),
+    }
 
 
 async def _query_async(api_key: str, question: str, mode: str = "mix") -> str:
     """Query indexed documents."""
-    config = _create_config(api_key)
-    async with RAGClient(config=config) as rag:
-        return await rag.query(question, mode=mode)
+    rag = _create_lightrag(api_key)
+    await rag.initialize_storages()
+    try:
+        return await rag.aquery(question, param=QueryParam(mode=mode))
+    finally:
+        await rag.finalize_storages()
 
 
 async def _batch_query_async(
     api_key: str, questions: List[str], mode: str = "mix"
 ) -> List[Dict[str, Any]]:
     """Batch query indexed documents."""
-    config = _create_config(api_key)
-    async with RAGClient(config=config) as rag:
-        return await rag.batch_query(questions, mode=mode)
+    rag = _create_lightrag(api_key)
+    await rag.initialize_storages()
+    results = []
+    try:
+        for q in questions:
+            try:
+                answer = await rag.aquery(q, param=QueryParam(mode=mode))
+                results.append({"query": q, "answer": answer, "success": True})
+            except Exception as e:
+                results.append({"query": q, "answer": "", "success": False, "error": str(e)})
+    finally:
+        await rag.finalize_storages()
+    return results
 
 
 # ========================================
@@ -198,7 +209,7 @@ async def _batch_query_async(
 def index_texts(api_key: str, texts: Dict[str, str]) -> Dict[str, Any]:
     """Index text documents into RAG (sync wrapper)."""
     if not RAG_AVAILABLE:
-        return {"success": False, "error": "rag_toolkit not installed"}
+        return {"success": False, "error": "lightrag-hku not installed"}
     return _run_async(_index_texts_async(api_key, texts))
 
 
@@ -289,11 +300,9 @@ def _build_queries_from_structure(
     """Generate RAG queries based on report structure and context."""
     queries = []
 
-    # Context-based query
     if context_text.strip():
         queries.append(f"다음 맥락과 관련된 핵심 정보를 찾아주세요: {context_text[:300]}")
 
-    # Parse structure for key sections
     for line in structure_text.split("\n"):
         line = line.strip()
         if not line:
@@ -303,7 +312,6 @@ def _build_queries_from_structure(
             if section and len(section) > 3 and len(section) < 100:
                 queries.append(f"{section}에 대한 관련 정보와 데이터를 찾아주세요.")
 
-    # Template-specific queries
     template_queries = {
         "investment": [
             "회사의 주요 재무 지표와 실적 데이터를 요약해주세요.",
@@ -344,5 +352,3 @@ def clear_rag_index():
     import shutil
     if os.path.exists(RAG_STORAGE_DIR):
         shutil.rmtree(RAG_STORAGE_DIR, ignore_errors=True)
-    if os.path.exists(RAG_OUTPUT_DIR):
-        shutil.rmtree(RAG_OUTPUT_DIR, ignore_errors=True)

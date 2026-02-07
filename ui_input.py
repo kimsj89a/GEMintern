@@ -269,7 +269,7 @@ def render_settings():
                 else:
                     st.info("인덱싱된 문서가 없습니다. 문서를 업로드하면 자동으로 인덱싱됩니다.")
         else:
-            st.caption("🔍 RAG: 비활성화 (rag-toolkit 미설치)")
+            st.caption("🔍 RAG: 비활성화 (lightrag-hku 미설치)")
 
     return {
         "api_key": api_key,
