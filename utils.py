@@ -122,7 +122,7 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
             uploaded_file.seek(0)
             # Document AI 실패 시 다음 방법으로 진행
 
-    # [MarkItDown] 우선 시도
+    # [MarkItDown] 우선 시도 (타임아웃 60초)
     # PPT 모드에서 Word는 별도 변환 로직을 사용한다.
     if MARKITDOWN_AVAILABLE and not (template_option == "presentation" and file_type in ["docx", "doc"]):
         try:
@@ -134,8 +134,13 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
             uploaded_file.seek(0)
 
             try:
-                md = MarkItDown()
-                result = md.convert(tmp_path)
+                import concurrent.futures
+                def _convert_markitdown(path):
+                    md = MarkItDown()
+                    return md.convert(path)
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(_convert_markitdown, tmp_path)
+                    result = future.result(timeout=60)
                 if result and result.text_content:
                     return f"### [파일명: {uploaded_file.name} (MarkItDown)]\n{result.text_content}\n\n"
             finally:
