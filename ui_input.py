@@ -2,10 +2,15 @@ import streamlit as st
 import streamlit.components.v1 as components
 import os
 from dotenv import load_dotenv
+import keyring
 import utils
 import core_logic
 import core_rfi
 import core_rag
+
+# keyring 서비스명
+_KR_SERVICE = "GEMIntern"
+_KR_KEY_GOOGLE = "google_api_key"
 
 # .env 파일 로드
 load_dotenv()
@@ -134,19 +139,20 @@ def _decode_text_with_fallback(raw_bytes):
 
 def render_settings():
     """상단 설정 영역"""
-    query_params = st.query_params
-    # .env 또는 URL 파라미터에서 API 키 로드
+    # keyring → .env → URL 파라미터 순으로 API 키 로드
+    saved_key = keyring.get_password(_KR_SERVICE, _KR_KEY_GOOGLE) or ""
     env_key = os.getenv("GOOGLE_API_KEY", "")
-    cached_key = query_params.get("api_key", "") or env_key
-    if isinstance(cached_key, list): cached_key = cached_key[0]
+    cached_key = saved_key or env_key
 
     with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
         c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         with c1:
             api_key = st.text_input("Google API Key", value=cached_key, type="password", placeholder="Enter Key...")
-            save_to_url = st.checkbox("🔐 브라우저(URL)에 키 저장", value=bool(cached_key))
-            if save_to_url and api_key: st.query_params["api_key"] = api_key
-            elif not save_to_url and "api_key" in st.query_params: del st.query_params["api_key"]
+            save_key = st.checkbox("🔐 API Key 저장 (Windows 자격 증명)", value=bool(saved_key))
+            if save_key and api_key:
+                keyring.set_password(_KR_SERVICE, _KR_KEY_GOOGLE, api_key)
+            elif not save_key and saved_key:
+                keyring.delete_password(_KR_SERVICE, _KR_KEY_GOOGLE)
 
         with c2:
             model_name = st.selectbox("사용할 모델", ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.0-flash-exp", "gemini-1.5-pro"])
