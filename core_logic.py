@@ -19,8 +19,8 @@ def extract_structure(api_key, structure_file):
     except Exception as e:
         return f"구조 추출 오류: {str(e)}"
 
-def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key=None, docai_config=None, template_option=None, use_rag=False):
-    """파일 목록 파싱 및 로컬 저장/로드 (RAG 지원)
+def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key=None, docai_config=None, template_option=None):
+    """파일 목록 파싱 및 로컬 저장/로드
 
     Args:
         uploaded_files: 업로드된 파일 목록
@@ -28,11 +28,9 @@ def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key
         read_content: 파일 내용 읽기 여부
         api_key: Google API 키 (Gemini OCR용)
         docai_config: Document AI 설정 (선택사항)
-        use_rag: RAG 인덱싱 활성화 여부
     """
     all_text = ""
     file_list_str = ""
-    rag_texts = {}  # RAG 인덱싱용 텍스트 수집
 
     # 1. 새로 업로드된 파일 처리 (파싱 -> 저장 -> 텍스트 추가)
     if uploaded_files:
@@ -45,11 +43,8 @@ def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key
                     docai_config=docai_config,
                     template_option=template_option,
                 )
-                # 로컬 스토리지에 저장 (RAG)
                 utils.save_to_local_storage(file.name, parsed)
                 all_text += parsed
-                if use_rag:
-                    rag_texts[file.name] = parsed
 
     # 2. 저장된 파일 불러오기 (로드 -> 텍스트 추가)
     if saved_files and read_content:
@@ -57,29 +52,20 @@ def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key
             file_list_str += f"- [Saved] {fname}\n"
             content = utils.load_saved_doc(fname)
             all_text += f"\n\n{content}\n"
-            if use_rag:
-                rag_texts[fname] = content
 
     if not read_content:
         all_text = "(RFI 모드: 내용은 읽지 않음)"
 
-    # 3. RAG 인덱싱 (활성화된 경우)
-    rag_result = None
-    if use_rag and rag_texts and api_key:
-        try:
-            rag_result = core_rag.index_texts(api_key, rag_texts)
-        except Exception:
-            rag_result = {"success": False, "error": "RAG indexing failed"}
-
-    return all_text, file_list_str, rag_result
+    return all_text, file_list_str
 
 
-def get_rag_enriched_context(api_key, structure_text, context_text, template_option):
+def get_rag_enriched_context(api_key, structure_text, context_text, project_name, template_option):
     """RAG를 사용하여 보고서 생성에 필요한 추가 컨텍스트를 검색합니다."""
     return core_rag.enrich_context_with_rag(
         api_key=api_key,
         structure_text=structure_text,
         context_text=context_text,
+        project_name=project_name,
         template_option=template_option,
     )
 

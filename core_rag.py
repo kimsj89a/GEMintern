@@ -1,11 +1,15 @@
 """
 RAG integration module for GEM Intern.
+Project-based RAG: each project has its own isolated LightRAG index.
 Uses lightrag-hku directly with Gemini's OpenAI-compatible endpoint.
 """
 
 import asyncio
+import datetime
 import json
 import os
+import re
+import shutil
 import threading
 from functools import partial
 from typing import List, Dict, Any
@@ -27,7 +31,7 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
 DEFAULT_EMBEDDING_DIM = 768
 
 RAG_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage")
-INDEXED_DOCS_FILE = os.path.join(RAG_STORAGE_DIR, "_indexed_docs.json")
+PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
 
 
 # ========================================
@@ -54,9 +58,20 @@ def _run_async(coro):
     return result[0]
 
 
-def _create_lightrag(api_key: str) -> "LightRAG":
-    """Create a LightRAG instance using Gemini's OpenAI-compatible API."""
-    os.makedirs(RAG_STORAGE_DIR, exist_ok=True)
+def _get_project_dir(project_name: str) -> str:
+    """Return the storage directory for a specific project."""
+    return os.path.join(RAG_STORAGE_DIR, project_name)
+
+
+def _get_indexed_docs_file(project_name: str) -> str:
+    """Return the _indexed_docs.json path for a specific project."""
+    return os.path.join(_get_project_dir(project_name), "_indexed_docs.json")
+
+
+def _create_lightrag(api_key: str, project_name: str) -> "LightRAG":
+    """Create a LightRAG instance for a specific project."""
+    project_dir = _get_project_dir(project_name)
+    os.makedirs(project_dir, exist_ok=True)
 
     embedding_func = EmbeddingFunc(
         embedding_dim=DEFAULT_EMBEDDING_DIM,
@@ -70,7 +85,7 @@ def _create_lightrag(api_key: str) -> "LightRAG":
     )
 
     return LightRAG(
-        working_dir=RAG_STORAGE_DIR,
+        working_dir=project_dir,
         llm_model_func=openai_complete_if_cache,
         llm_model_name=DEFAULT_RAG_LLM_MODEL,
         embedding_func=embedding_func,
@@ -82,24 +97,110 @@ def _create_lightrag(api_key: str) -> "LightRAG":
 
 
 # ========================================
-# Index tracking (avoid duplicate indexing)
+# Project management
 # ========================================
 
-def _get_indexed_docs() -> List[str]:
-    """Get list of already-indexed document names."""
-    if os.path.exists(INDEXED_DOCS_FILE):
+def _load_projects() -> List[Dict[str, Any]]:
+    """Load project registry from _projects.json."""
+    if os.path.exists(PROJECTS_FILE):
         try:
-            with open(INDEXED_DOCS_FILE, "r", encoding="utf-8") as f:
+            with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("projects", [])
+        except (json.JSONDecodeError, IOError):
+            pass
+    return []
+
+
+def _save_projects(projects: List[Dict[str, Any]]):
+    """Save project registry."""
+    os.makedirs(RAG_STORAGE_DIR, exist_ok=True)
+    with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"projects": projects}, f, ensure_ascii=False, indent=2)
+
+
+def list_projects() -> List[Dict[str, Any]]:
+    """List all projects with metadata."""
+    projects = _load_projects()
+    for p in projects:
+        p["doc_count"] = len(_get_indexed_docs(p["name"]))
+    return projects
+
+
+def create_project(project_name: str) -> Dict[str, Any]:
+    """Create a new project."""
+    project_name = project_name.strip()
+    if not project_name:
+        return {"success": False, "error": "프로젝트명을 입력해주세요."}
+
+    safe_name = re.sub(r'[\\/*?:"<>|]', "", project_name).strip()
+    if not safe_name:
+        return {"success": False, "error": "유효하지 않은 프로젝트명입니다."}
+
+    projects = _load_projects()
+    if any(p["name"] == safe_name for p in projects):
+        return {"success": False, "error": f"'{safe_name}' 프로젝트가 이미 존재합니다."}
+
+    project_dir = _get_project_dir(safe_name)
+    os.makedirs(project_dir, exist_ok=True)
+
+    new_project = {
+        "name": safe_name,
+        "created": datetime.datetime.now().isoformat(),
+        "doc_count": 0,
+    }
+    projects.append(new_project)
+    _save_projects(projects)
+
+    return {"success": True, "project": new_project}
+
+
+def get_project_info(project_name: str) -> Dict[str, Any]:
+    """Get info for a specific project."""
+    projects = _load_projects()
+    for p in projects:
+        if p["name"] == project_name:
+            p["doc_count"] = len(_get_indexed_docs(project_name))
+            p["indexed_docs"] = _get_indexed_docs(project_name)
+            return p
+    return {}
+
+
+def delete_project(project_name: str) -> Dict[str, Any]:
+    """Delete a project and all its RAG data."""
+    projects = _load_projects()
+    projects = [p for p in projects if p["name"] != project_name]
+    _save_projects(projects)
+
+    project_dir = _get_project_dir(project_name)
+    if os.path.exists(project_dir):
+        shutil.rmtree(project_dir, ignore_errors=True)
+
+    return {"success": True}
+
+
+# ========================================
+# Index tracking (per-project)
+# ========================================
+
+def _get_indexed_docs(project_name: str) -> List[str]:
+    """Get list of already-indexed document names for a project."""
+    docs_file = _get_indexed_docs_file(project_name)
+    if os.path.exists(docs_file):
+        try:
+            with open(docs_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             pass
     return []
 
 
-def _save_indexed_docs(docs: List[str]):
-    """Save indexed document names."""
-    os.makedirs(RAG_STORAGE_DIR, exist_ok=True)
-    with open(INDEXED_DOCS_FILE, "w", encoding="utf-8") as f:
+def _save_indexed_docs(project_name: str, docs: List[str]):
+    """Save indexed document names for a project."""
+    project_dir = _get_project_dir(project_name)
+    os.makedirs(project_dir, exist_ok=True)
+    docs_file = _get_indexed_docs_file(project_name)
+    with open(docs_file, "w", encoding="utf-8") as f:
         json.dump(docs, f, ensure_ascii=False)
 
 
@@ -112,28 +213,28 @@ def is_rag_available() -> bool:
     return RAG_AVAILABLE
 
 
-def is_indexed() -> bool:
-    """Check if any documents have been indexed."""
-    return len(_get_indexed_docs()) > 0
+def is_indexed(project_name: str) -> bool:
+    """Check if a project has any indexed documents."""
+    return len(_get_indexed_docs(project_name)) > 0
 
 
-def get_indexed_count() -> int:
-    """Get number of indexed documents."""
-    return len(_get_indexed_docs())
+def get_indexed_count(project_name: str) -> int:
+    """Get number of indexed documents in a project."""
+    return len(_get_indexed_docs(project_name))
 
 
-def get_indexed_doc_names() -> List[str]:
-    """Get names of indexed documents."""
-    return _get_indexed_docs()
+def get_indexed_doc_names(project_name: str) -> List[str]:
+    """Get names of indexed documents in a project."""
+    return _get_indexed_docs(project_name)
 
 
 # ========================================
 # Core async functions
 # ========================================
 
-async def _index_texts_async(api_key: str, texts: Dict[str, str]) -> Dict[str, Any]:
-    """Index multiple text documents into RAG."""
-    already_indexed = set(_get_indexed_docs())
+async def _index_texts_async(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[str, Any]:
+    """Index multiple text documents into a project's RAG."""
+    already_indexed = set(_get_indexed_docs(project_name))
 
     new_texts = {k: v for k, v in texts.items() if k not in already_indexed}
     if not new_texts:
@@ -145,7 +246,7 @@ async def _index_texts_async(api_key: str, texts: Dict[str, str]) -> Dict[str, A
             "message": "All documents already indexed",
         }
 
-    rag = _create_lightrag(api_key)
+    rag = _create_lightrag(api_key, project_name)
     await rag.initialize_storages()
 
     indexed = []
@@ -162,7 +263,7 @@ async def _index_texts_async(api_key: str, texts: Dict[str, str]) -> Dict[str, A
         await rag.finalize_storages()
 
     all_indexed = list(already_indexed | set(indexed))
-    _save_indexed_docs(all_indexed)
+    _save_indexed_docs(project_name, all_indexed)
 
     return {
         "success": len(errors) == 0,
@@ -173,9 +274,9 @@ async def _index_texts_async(api_key: str, texts: Dict[str, str]) -> Dict[str, A
     }
 
 
-async def _query_async(api_key: str, question: str, mode: str = "mix") -> str:
-    """Query indexed documents."""
-    rag = _create_lightrag(api_key)
+async def _query_async(api_key: str, question: str, project_name: str, mode: str = "mix") -> str:
+    """Query a project's indexed documents."""
+    rag = _create_lightrag(api_key, project_name)
     await rag.initialize_storages()
     try:
         return await rag.aquery(question, param=QueryParam(mode=mode))
@@ -184,10 +285,10 @@ async def _query_async(api_key: str, question: str, mode: str = "mix") -> str:
 
 
 async def _batch_query_async(
-    api_key: str, questions: List[str], mode: str = "mix"
+    api_key: str, questions: List[str], project_name: str, mode: str = "mix"
 ) -> List[Dict[str, Any]]:
-    """Batch query indexed documents."""
-    rag = _create_lightrag(api_key)
+    """Batch query a project's indexed documents."""
+    rag = _create_lightrag(api_key, project_name)
     await rag.initialize_storages()
     results = []
     try:
@@ -206,31 +307,31 @@ async def _batch_query_async(
 # Public API - Sync wrappers
 # ========================================
 
-def index_texts(api_key: str, texts: Dict[str, str]) -> Dict[str, Any]:
-    """Index text documents into RAG (sync wrapper)."""
+def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[str, Any]:
+    """Index text documents into a project's RAG (sync wrapper)."""
     if not RAG_AVAILABLE:
         return {"success": False, "error": "lightrag-hku not installed"}
-    return _run_async(_index_texts_async(api_key, texts))
+    return _run_async(_index_texts_async(api_key, texts, project_name))
 
 
-def query_rag(api_key: str, question: str, mode: str = "mix") -> str:
-    """Query indexed documents (sync wrapper)."""
+def query_rag(api_key: str, question: str, project_name: str, mode: str = "mix") -> str:
+    """Query a project's indexed documents (sync wrapper)."""
     if not RAG_AVAILABLE:
         return ""
-    return _run_async(_query_async(api_key, question, mode))
+    return _run_async(_query_async(api_key, question, project_name, mode))
 
 
 def batch_query_rag(
-    api_key: str, questions: List[str], mode: str = "mix"
+    api_key: str, questions: List[str], project_name: str, mode: str = "mix"
 ) -> List[Dict[str, Any]]:
-    """Batch query indexed documents (sync wrapper)."""
+    """Batch query a project's indexed documents (sync wrapper)."""
     if not RAG_AVAILABLE:
         return []
-    return _run_async(_batch_query_async(api_key, questions, mode))
+    return _run_async(_batch_query_async(api_key, questions, project_name, mode))
 
 
-def index_saved_documents(api_key: str) -> Dict[str, Any]:
-    """Index all documents in saved_documents/ directory."""
+def index_saved_documents(api_key: str, project_name: str) -> Dict[str, Any]:
+    """Index all documents in saved_documents/ into a project."""
     import utils
 
     docs = {}
@@ -242,14 +343,14 @@ def index_saved_documents(api_key: str) -> Dict[str, Any]:
     if not docs:
         return {"success": False, "error": "No saved documents to index", "indexed": []}
 
-    return index_texts(api_key, docs)
+    return index_texts(api_key, docs, project_name)
 
 
-def index_single_document(api_key: str, filename: str, content: str) -> Dict[str, Any]:
-    """Index a single document by name and content."""
+def index_single_document(api_key: str, filename: str, content: str, project_name: str) -> Dict[str, Any]:
+    """Index a single document into a project."""
     if not content or len(content.strip()) < 50:
         return {"success": True, "indexed": [], "message": "Content too short to index"}
-    return index_texts(api_key, {filename: content})
+    return index_texts(api_key, {filename: content}, project_name)
 
 
 # ========================================
@@ -260,13 +361,14 @@ def enrich_context_with_rag(
     api_key: str,
     structure_text: str,
     context_text: str,
+    project_name: str,
     template_option: str = "",
 ) -> str:
     """
-    Query RAG to retrieve relevant context for report generation.
+    Query a project's RAG to retrieve relevant context for report generation.
     Returns enriched context string to append to file_context.
     """
-    if not RAG_AVAILABLE or not is_indexed():
+    if not RAG_AVAILABLE or not is_indexed(project_name):
         return ""
 
     queries = _build_queries_from_structure(structure_text, context_text, template_option)
@@ -274,7 +376,7 @@ def enrich_context_with_rag(
         return ""
 
     try:
-        results = batch_query_rag(api_key, queries[:6], mode="mix")
+        results = batch_query_rag(api_key, queries[:6], project_name, mode="mix")
     except Exception:
         return ""
 
@@ -344,11 +446,13 @@ def _build_queries_from_structure(
 
 
 # ========================================
-# Index management
+# Index management (per-project)
 # ========================================
 
-def clear_rag_index():
-    """Clear the entire RAG index and storage."""
-    import shutil
-    if os.path.exists(RAG_STORAGE_DIR):
-        shutil.rmtree(RAG_STORAGE_DIR, ignore_errors=True)
+def clear_rag_index(project_name: str):
+    """Clear a project's RAG index (keeps the project entry)."""
+    project_dir = _get_project_dir(project_name)
+    if os.path.exists(project_dir):
+        shutil.rmtree(project_dir, ignore_errors=True)
+        os.makedirs(project_dir, exist_ok=True)
+    _save_indexed_docs(project_name, [])

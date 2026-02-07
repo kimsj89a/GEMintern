@@ -138,7 +138,6 @@ def _init_workflow_state(prefix, config):
         f"{prefix}_chat_history": [],
         f"{prefix}_generation_complete": False,
         f"{prefix}_ocr_text": "",
-        f"{prefix}_rag_result": None,
         f"{prefix}_active_mode": config.get("default_template", ""),
     }
     for key, default in defaults.items():
@@ -415,22 +414,19 @@ def _render_step1_rfi(prefix, settings, config):
 
 def _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option):
     """Parse all files and cache the text in session state."""
-    use_rag = settings.get("use_rag", False) and core_rag.is_rag_available()
     docai_config = settings.get("docai_config")
 
-    file_context, _, rag_result = core_logic.parse_all_files(
+    file_context, _ = core_logic.parse_all_files(
         uploaded_files,
         saved_files=selected_saved,
         read_content=True,
         api_key=settings["api_key"],
         docai_config=docai_config,
         template_option=template_option,
-        use_rag=use_rag,
     )
 
     st.session_state[f"{prefix}_file_context"] = file_context
     st.session_state[f"{prefix}_ocr_text"] = file_context
-    st.session_state[f"{prefix}_rag_result"] = rag_result
 
 
 # ========================================
@@ -480,30 +476,19 @@ def _render_step2_generate(prefix, settings, config):
     try:
         inputs["use_diagram"] = settings.get("use_diagram", False)
         is_rfi_mode = template_opt == "rfi"
-        use_rag = settings.get("use_rag", False) and core_rag.is_rag_available()
+        current_project = st.session_state.get("current_project")
+        has_rag = current_project and core_rag.is_rag_available() and core_rag.is_indexed(current_project)
 
         with status_placeholder.status("🤖 분석 작업을 시작합니다...", expanded=True) as status:
-            # Show RAG indexing results
-            rag_result = st.session_state.get(f"{prefix}_rag_result")
-            if use_rag and rag_result:
-                if rag_result.get("success"):
-                    indexed = rag_result.get("indexed", [])
-                    skipped = rag_result.get("skipped", [])
-                    if indexed:
-                        st.write(f"🔍 RAG 인덱싱 완료: {len(indexed)}개 문서")
-                    if skipped:
-                        st.write(f"🔍 RAG 이미 인덱싱됨: {len(skipped)}개 문서 (스킵)")
-                else:
-                    st.write(f"⚠️ RAG 인덱싱 오류: {rag_result.get('error', 'unknown')}")
-
-            # RAG context enrichment
-            if use_rag and core_rag.is_indexed() and not is_rfi_mode:
-                st.write("🔍 RAG 검색으로 관련 정보를 보강 중...")
+            # RAG context enrichment (project-based)
+            if has_rag and not is_rfi_mode:
+                st.write(f"🔍 프로젝트 '{current_project}' RAG 검색으로 관련 정보를 보강 중...")
                 try:
                     rag_context = core_logic.get_rag_enriched_context(
                         settings["api_key"],
                         inputs.get("structure_text", ""),
                         inputs.get("context_text", ""),
+                        current_project,
                         template_opt,
                     )
                     if rag_context:

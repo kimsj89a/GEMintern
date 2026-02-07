@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 import utils
 import core_logic
 import core_rfi
-import core_rag
 from local_storage import local_storage_get, local_storage_set
 
 # keyring (선택적 - 로컬 환경에서만 사용)
@@ -266,47 +265,12 @@ def render_settings():
                 else:
                     st.warning("⚠️ Document AI 사용을 위해 모든 필드를 입력해주세요")
 
-        # RAG (Vector Search) 설정
-        st.markdown("---")
-        use_rag = False
-        if core_rag.is_rag_available():
-            use_rag = st.checkbox(
-                "🔍 RAG 사용 (Knowledge Graph + Vector Search)",
-                value=True,
-                help="업로드된 문서를 벡터 인덱싱하여 보고서 생성 시 관련 정보를 자동 검색합니다."
-            )
-            if use_rag:
-                indexed_count = core_rag.get_indexed_count()
-                if indexed_count > 0:
-                    st.success(f"✅ RAG 인덱스: {indexed_count}개 문서 인덱싱됨")
-                    rag_c1, rag_c2 = st.columns(2)
-                    with rag_c1:
-                        if st.button("🗑️ 인덱스 초기화", key="rag_clear", use_container_width=True):
-                            core_rag.clear_rag_index()
-                            st.rerun()
-                    with rag_c2:
-                        if st.button("📚 저장된 문서 전체 인덱싱", key="rag_index_all", use_container_width=True):
-                            if api_key:
-                                with st.spinner("RAG 인덱싱 중..."):
-                                    result = core_rag.index_saved_documents(api_key)
-                                    if result.get('success'):
-                                        st.success(f"✅ {len(result.get('indexed', []))}개 문서 인덱싱 완료")
-                                    else:
-                                        st.error(f"인덱싱 오류: {result.get('error', '')}")
-                            else:
-                                st.error("API Key를 먼저 입력해주세요.")
-                else:
-                    st.info("인덱싱된 문서가 없습니다. 문서를 업로드하면 자동으로 인덱싱됩니다.")
-        else:
-            st.caption("🔍 RAG: 비활성화 (lightrag-hku 미설치)")
-
     return {
         "api_key": api_key,
         "model_name": model_name,
         "thinking_level": "High" if "High" in thinking_level else "Low",
         "use_diagram": use_diagram,
         "docai_config": docai_config,
-        "use_rag": use_rag
     }
 
 def _on_template_change(template_key, struct_key, custom_input_key=None):

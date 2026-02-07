@@ -1,6 +1,7 @@
 import streamlit as st
 import ui_input
 import ui_workflow
+import ui_project
 import ui_audio
 import ui_crawler
 import ui_ocr
@@ -52,7 +53,10 @@ if "app_started" not in st.session_state:
     st.session_state.app_started = False
 
 if "selected_page" not in st.session_state:
-    st.session_state.selected_page = "📋 초기검토"
+    st.session_state.selected_page = "📂 프로젝트"
+
+if "current_project" not in st.session_state:
+    st.session_state.current_project = None
 
 def main():
     if not st.session_state.app_started:
@@ -78,7 +82,7 @@ def main():
         with col2:
             if st.button("✅ 설정 적용 및 업무 시작", type="primary", use_container_width=True):
                 st.session_state.app_started = True
-                st.session_state.selected_page = "📋 초기검토"
+                st.session_state.selected_page = "📂 프로젝트"
                 st.rerun()
                 
     else:
@@ -89,7 +93,6 @@ def main():
             "thinking_level": st.session_state.get("thinking_level", "MINIMAL"),
             "use_diagram": st.session_state.get("use_diagram", False),
             "docai_config": st.session_state.get("docai_config", {}),
-            "use_rag": st.session_state.get("use_rag", True)
         })
 
         # [화면 2] 업무 프로세스 (사이드바 레이아웃)
@@ -97,8 +100,20 @@ def main():
             st.markdown("### 📂 업무 프로세스")
             st.markdown("<br>", unsafe_allow_html=True)
             
+            # 현재 프로젝트 표시
+            current_proj = st.session_state.get("current_project")
+            if current_proj:
+                st.markdown(
+                    f"<div style='background:#e6f0ff;padding:8px 12px;border-radius:6px;"
+                    f"border:1px solid #b3d1ff;margin-bottom:10px;'>"
+                    f"<small style='color:#004085;'>현재 프로젝트</small><br>"
+                    f"<b style='color:#0068c9;'>{current_proj}</b></div>",
+                    unsafe_allow_html=True,
+                )
+
             # 네비게이션 항목 정의
             nav_items = [
+                "📂 프로젝트",
                 "📋 초기검토", "📊 예비실사", "📑 IM 작성", "🔍 정밀실사",
                 "🖥️ PPT 생성", "🎤 오디오 전사", "🌐 웹 크롤러",
                 "👁️ 문서 OCR", "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기"
@@ -128,7 +143,10 @@ def main():
         # 분석/생성 페이지 그룹 (우측 사이드바 레이아웃 적용)
         analysis_pages = ["📋 초기검토", "📊 예비실사", "📑 IM 작성", "🔍 정밀실사", "🖥️ PPT 생성"]
 
-        if selected_page == "SETTINGS":
+        if selected_page == "📂 프로젝트":
+            ui_project.render_project_hub(settings)
+
+        elif selected_page == "SETTINGS":
             st.markdown("### ⚙️ 환경 설정 (Settings)")
             st.info("설정을 수정한 후 하단의 '적용' 버튼을 눌러주세요.")
             updated_settings = ui_input.render_settings()
