@@ -15,6 +15,23 @@ import core_rag
 # Page configurations
 # ========================================
 
+def _strip_preamble(text):
+    """Remove AI preamble text before the first markdown heading.
+    AI sometimes outputs explanation like '~를 분석하여 보고서를 작성합니다' before the report.
+    This strips that and returns only the report body starting from the first # heading.
+    """
+    if not text:
+        return text
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('#') and len(stripped) > 1 and stripped[1:].lstrip().strip():
+            if i > 0:
+                return '\n'.join(lines[i:])
+            break
+    return text
+
+
 PAGE_CONFIGS = {
     "📋 초기검토": {
         "key_prefix": "init",
@@ -525,7 +542,7 @@ def _render_step2_generate(prefix, settings, config):
 
             status.update(label="✅ 작성 완료!", state="complete", expanded=False)
 
-        st.session_state[f"{prefix}_generated_text"] = full_response
+        st.session_state[f"{prefix}_generated_text"] = _strip_preamble(full_response)
         st.session_state[f"{prefix}_generation_complete"] = True
         st.rerun()
 
@@ -623,7 +640,7 @@ def _render_step3_refine(prefix, settings, config):
                             refine_query,
                             additional_context,
                         )
-                        st.session_state[f"{prefix}_generated_text"] = refined
+                        st.session_state[f"{prefix}_generated_text"] = _strip_preamble(refined)
                         st.session_state[f"{prefix}_chat_history"].append(
                             {"role": "assistant", "content": "수정 사항을 반영했습니다."}
                         )

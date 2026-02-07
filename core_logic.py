@@ -126,6 +126,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     main_prompt = f"""
 [System: Thinking Level {thinking_label}]
 [Critical Instruction] Analyze the provided data deeply and step-by-step. Prioritize accuracy and logical consistency.
+[Format Instruction] 서문, 인트로, 설명 문장 없이 바로 마크다운 본문(# 헤딩)으로 시작하세요. "~를 작성합니다", "~를 분석하여", "~를 검토합니다" 등의 도입부를 절대 쓰지 마세요. 첫 줄부터 # 제목으로 시작하세요.
 
 [Document Structure]
 {structure_text}
@@ -212,7 +213,8 @@ def refine_report_with_context(api_key, model_name, current_text, chat_history,
         f"Apply the user's latest request to the existing document.\n"
         f"Return the COMPLETE updated document (전체 문서를 반환하세요).\n"
         f"Do NOT return only the changed parts - return the full document with changes applied.\n"
-        f"Preserve the original structure and formatting.\n\n"
+        f"Preserve the original structure and formatting.\n"
+        f"IMPORTANT: 서문, 인트로, 설명 문장 없이 바로 마크다운 본문(# 헤딩)으로 시작하세요. 도입부를 쓰지 마세요.\n\n"
         f"[이전 대화]\n{history_text}\n"
         f"[최신 요청]: \"{refine_query}\"\n"
         f"{additional_section}\n"

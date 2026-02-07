@@ -6,6 +6,7 @@ import utils
 import core_logic
 import core_rfi
 import core_rag
+from local_storage import local_storage_get, local_storage_set
 
 # keyring (선택적 - 로컬 환경에서만 사용)
 _KEYRING_AVAILABLE = False
@@ -145,19 +146,47 @@ def _decode_text_with_fallback(raw_bytes):
 
 def render_settings():
     """상단 설정 영역"""
-    # keyring → .env 순으로 API 키 로드
+    # keyring → .env → localStorage 순으로 API 키 로드
     saved_key = ""
     if _KEYRING_AVAILABLE:
         saved_key = keyring.get_password(_KR_SERVICE, _KR_KEY_GOOGLE) or ""
     env_key = os.getenv("GOOGLE_API_KEY", "")
-    cached_key = saved_key or env_key
+
+    # 브라우저 localStorage에서 API 키 읽기
+    browser_key = local_storage_get("gem_api_key", default="", st_key="ls_api_read")
+
+    # localStorage 값이 도착하면 session_state에 반영 (최초 1회)
+    if browser_key and not st.session_state.get("_ls_api_applied"):
+        st.session_state["_ls_api_applied"] = True
+        if not saved_key and not env_key:
+            st.session_state["_settings_api_key"] = browser_key
+
+    # 초기값 결정 (keyring > env > localStorage)
+    if "_settings_api_key" not in st.session_state:
+        st.session_state["_settings_api_key"] = saved_key or env_key or browser_key or ""
 
     with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
         c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
         with c1:
-            api_key = st.text_input("Google API Key", value=cached_key, type="password", placeholder="Enter Key...")
+            api_key = st.text_input(
+                "Google API Key", type="password",
+                placeholder="Enter Key...", key="_settings_api_key",
+            )
+
+            # 브라우저 저장 옵션
+            save_browser = st.checkbox(
+                "🌐 API Key 브라우저에 저장",
+                value=bool(browser_key),
+                help="체크하면 이 브라우저에 API Key가 저장되어 다음 방문 시 자동 입력됩니다.",
+            )
+            if save_browser and api_key:
+                local_storage_set("gem_api_key", api_key, st_key="ls_api_write")
+            elif not save_browser and browser_key:
+                local_storage_set("gem_api_key", "", st_key="ls_api_clear")
+
+            # keyring (로컬 환경 전용)
             if _KEYRING_AVAILABLE:
-                save_key = st.checkbox("🔐 API Key 저장 (OS 자격 증명)", value=bool(saved_key))
+                save_key = st.checkbox("🔐 OS 자격 증명에도 저장", value=bool(saved_key))
                 if save_key and api_key:
                     keyring.set_password(_KR_SERVICE, _KR_KEY_GOOGLE, api_key)
                 elif not save_key and saved_key:
