@@ -21,7 +21,8 @@
       "Bash(findstr:*)",
       "Bash(gh repo view:*)",
       "Bash(git clone:*)",
-      "Bash(where:*)"
+      "Bash(where:*)",
+      "Bash(find:*)"
     ]
   }
 }
