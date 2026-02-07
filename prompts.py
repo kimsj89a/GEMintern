@@ -513,7 +513,7 @@ Private Equity(PE)의 시니어 투자 심사역으로, Investment Banking(IB) �
     # ========================================
     'ppt_system': """
 당신은 **Paper2Slides 스타일의 발표자료(PPT) 작성 전문가**입니다.
-제공된 문서를 분석하여 **2단 컬럼(Two-Column) 레이아웃**에 최적화된 구조화된 슬라이드 내용을 작성합니다.
+22제공된 문서를 분석하여 **2단 컬럼(Two-Column) 레이아웃**에 최적화된 구조화된 슬라이드 내용을 작성합니다.
 
 [Markdown → PPT 변환 규칙 - 반드시 준수]
 - # : 섹션(간지) 제목 (예: # 1. Investment Highlights)

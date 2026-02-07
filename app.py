@@ -88,7 +88,8 @@ def main():
             "model_name": st.session_state.get("model_name", "gemini-2.0-flash-thinking-exp-1219"),
             "thinking_level": st.session_state.get("thinking_level", "MINIMAL"),
             "use_diagram": st.session_state.get("use_diagram", False),
-            "docai_config": st.session_state.get("docai_config", {})
+            "docai_config": st.session_state.get("docai_config", {}),
+            "use_rag": st.session_state.get("use_rag", True)
         })
 
         # [화면 2] 업무 프로세스 (사이드바 레이아웃)

@@ -4,6 +4,7 @@ import utils
 import utils_ppt
 import core_logic
 import core_chained
+import core_rag
 
 def render_output_panel(container, settings, inputs, key_prefix="output"):
     # State keys with prefix to isolate tabs
@@ -74,20 +75,23 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                         # Document AI 설정 가져오기
                         docai_config = settings.get('docai_config')
 
+                        use_rag = settings.get('use_rag', False) and core_rag.is_rag_available()
+
                         if is_rfi_mode:
                             if inputs.get('uploaded_files'):
                                 st.write("📁 1. 업로드된 파일의 내용을 분석 중입니다 (OCR/Text)...")
-                                file_context, _ = core_logic.parse_all_files(
+                                file_context, _, rag_result = core_logic.parse_all_files(
                                     inputs['uploaded_files'],
                                     saved_files=inputs.get('selected_saved_files'),
                                     read_content=True,
                                     api_key=settings['api_key'],
                                     docai_config=docai_config,
                                     template_option=inputs['template_option'],
+                                    use_rag=use_rag,
                                 )
                             else:
                                 st.write("📁 1. (Fast Mode) 파일 내용은 건너뛰고 파일명만 추출합니다..")
-                                file_context, _ = core_logic.parse_all_files(
+                                file_context, _, rag_result = core_logic.parse_all_files(
                                     inputs['uploaded_files'],
                                     saved_files=inputs.get('selected_saved_files'),
                                     read_content=False,
@@ -101,16 +105,45 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 st.write("📁 1. MarkItDown으로 파일을 마크다운으로 변환 중입니다...")
                             else:
                                 st.write("📁 1. 파일을 분석 중입니다 (텍스트 추출 + OCR)...")
-                            file_context, _ = core_logic.parse_all_files(
+                            file_context, _, rag_result = core_logic.parse_all_files(
                                 inputs['uploaded_files'],
                                 saved_files=inputs.get('selected_saved_files'),
                                 read_content=True,
                                 api_key=settings['api_key'],
                                 docai_config=docai_config,
                                 template_option=inputs['template_option'],
+                                use_rag=use_rag,
                             )
                             # OCR 텍스트 저장 (다운로드용)
                             st.session_state[k_ocr] = file_context
+
+                        # RAG 인덱싱 결과 표시
+                        if use_rag and rag_result:
+                            if rag_result.get('success'):
+                                indexed = rag_result.get('indexed', [])
+                                skipped = rag_result.get('skipped', [])
+                                if indexed:
+                                    st.write(f"🔍 1-1. RAG 인덱싱 완료: {len(indexed)}개 문서")
+                                if skipped:
+                                    st.write(f"🔍 1-1. RAG 이미 인덱싱됨: {len(skipped)}개 문서 (스킵)")
+                            else:
+                                st.write(f"⚠️ RAG 인덱싱 오류: {rag_result.get('error', 'unknown')}")
+
+                        # RAG 컨텍스트 보강
+                        if use_rag and core_rag.is_indexed() and not is_rfi_mode:
+                            st.write("🔍 1-2. RAG 검색으로 관련 정보를 보강 중입니다...")
+                            try:
+                                rag_context = core_logic.get_rag_enriched_context(
+                                    settings['api_key'],
+                                    inputs.get('structure_text', ''),
+                                    inputs.get('context_text', ''),
+                                    inputs['template_option'],
+                                )
+                                if rag_context:
+                                    file_context += rag_context
+                                    st.write("✅ RAG 검색 결과가 컨텍스트에 추가되었습니다.")
+                            except Exception as e:
+                                st.write(f"⚠️ RAG 검색 오류 (생성은 계속됩니다): {e}")
 
                         st.write(f"🤖 2. AI가 [{st.session_state[k_mode]}] 템플릿으로 분석을 시작합니다..")
 
@@ -176,7 +209,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                 # PPT 변환 시에도 기존 데이터를 활용함 (파일 다시 읽을 필요 X)
                                 # 하지만 file_context가 필요하므로 다시 파싱 (이미 로컬 캐시되어 빠름)
                                 docai_config = settings.get('docai_config')
-                                file_context, _ = core_logic.parse_all_files(
+                                file_context, _, _ = core_logic.parse_all_files(
                                     inputs['uploaded_files'],
                                     saved_files=inputs.get('selected_saved_files'),
                                     read_content=True,
