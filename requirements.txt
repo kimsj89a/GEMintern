@@ -10,7 +10,6 @@ pypdf
 PyMuPDF
 XlsxWriter
 python-dotenv
-pymupdf
 python-calamine
 tabulate
 openai
