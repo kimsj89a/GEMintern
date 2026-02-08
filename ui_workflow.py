@@ -214,12 +214,23 @@ def _render_step1_upload(prefix, settings, config):
 
 def _render_step1_standard(prefix, settings, config):
     """Standard upload step (non-RFI pages)."""
+    # Check if a RAG project is active
+    current_project = st.session_state.get("current_project")
+    has_rag = current_project and core_rag.is_rag_available() and core_rag.is_indexed(current_project)
+
+    if has_rag:
+        rag_count = core_rag.get_indexed_count(current_project)
+        st.info(
+            f"프로젝트 **{current_project}** (RAG {rag_count}건) 기반으로 생성합니다. "
+            f"추가 파일 업로드는 선택사항입니다."
+        )
+
     col_left, col_right = st.columns([1, 1], gap="medium")
 
     with col_left:
-        st.markdown("#### 📁 파일 업로드")
+        st.markdown("#### 📁 파일 업로드" + (" (선택)" if has_rag else ""))
         uploaded_files = st.file_uploader(
-            "분석할 문서를 업로드하세요",
+            "분석할 문서를 업로드하세요" if not has_rag else "추가 문서 업로드 (선택사항)",
             accept_multiple_files=True,
             key=f"{prefix}_s1_files",
         )
@@ -285,8 +296,8 @@ def _render_step1_standard(prefix, settings, config):
             use_container_width=True,
             key=f"{prefix}_s1_next",
         ):
-            if not uploaded_files and not selected_saved:
-                st.error("파일을 업로드하거나 저장된 문서를 선택해주세요.")
+            if not uploaded_files and not selected_saved and not has_rag:
+                st.error("파일을 업로드하거나 저장된 문서를 선택해주세요. (또는 프로젝트 RAG를 먼저 빌드하세요)")
             elif not settings.get("api_key"):
                 st.error("설정에서 API Key를 먼저 입력해주세요.")
             else:
@@ -301,8 +312,13 @@ def _render_step1_standard(prefix, settings, config):
                     "generate_btn": True,
                 }
                 st.session_state[f"{prefix}_active_mode"] = template_option
-                # Parse files now (before file_uploader disappears)
-                _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option)
+                # Parse files if any (before file_uploader disappears)
+                if uploaded_files or selected_saved:
+                    _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option)
+                else:
+                    # RAG-only mode: no file context, RAG will provide everything
+                    st.session_state[f"{prefix}_file_context"] = ""
+                    st.session_state[f"{prefix}_ocr_text"] = ""
                 st.session_state[f"{prefix}_current_step"] = 2
                 st.session_state[f"{prefix}_generation_complete"] = False
                 st.rerun()
@@ -482,7 +498,11 @@ def _render_step2_generate(prefix, settings, config):
         with status_placeholder.status("🤖 분석 작업을 시작합니다...", expanded=True) as status:
             # RAG context enrichment (project-based)
             if has_rag and not is_rfi_mode:
-                st.write(f"🔍 프로젝트 '{current_project}' RAG 검색으로 관련 정보를 보강 중...")
+                rag_only = not file_context.strip()
+                if rag_only:
+                    st.write(f"📂 프로젝트 '{current_project}' RAG 데이터로 보고서를 생성합니다.")
+                else:
+                    st.write(f"🔍 프로젝트 '{current_project}' RAG 검색으로 관련 정보를 보강 중...")
                 try:
                     rag_context = core_logic.get_rag_enriched_context(
                         settings["api_key"],
@@ -493,7 +513,9 @@ def _render_step2_generate(prefix, settings, config):
                     )
                     if rag_context:
                         file_context += rag_context
-                        st.write("RAG 검색 결과가 컨텍스트에 추가되었습니다.")
+                        st.write(f"RAG 검색 결과가 컨텍스트에 추가되었습니다.")
+                    elif rag_only:
+                        st.write("⚠️ RAG 검색 결과가 비어있습니다. 컨텍스트 입력을 확인해주세요.")
                 except Exception as e:
                     st.write(f"⚠️ RAG 검색 오류 (생성은 계속됩니다): {e}")
 

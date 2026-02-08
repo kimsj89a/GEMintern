@@ -35,27 +35,43 @@ PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
 
 
 # ========================================
-# Utility functions
+# Persistent event loop (prevents "bound to a different event loop" errors)
 # ========================================
+# LightRAG creates asyncio.Lock objects that bind to the event loop they're
+# created on.  If we call asyncio.run() each time, a NEW loop is created and
+# cached locks from the previous loop become invalid.
+# Solution: keep ONE background loop alive for the entire process lifetime.
+
+_bg_loop: asyncio.AbstractEventLoop | None = None
+_bg_thread: threading.Thread | None = None
+_bg_lock = threading.Lock()
+
+
+def _get_or_create_loop() -> asyncio.AbstractEventLoop:
+    """Return the persistent background event loop, creating it if needed."""
+    global _bg_loop, _bg_thread
+    with _bg_lock:
+        if _bg_loop is not None and _bg_loop.is_running():
+            return _bg_loop
+
+        loop = asyncio.new_event_loop()
+
+        def _run_loop():
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        t = threading.Thread(target=_run_loop, daemon=True)
+        t.start()
+        _bg_loop = loop
+        _bg_thread = t
+        return _bg_loop
+
 
 def _run_async(coro):
-    """Run async coroutine from sync context (Streamlit-safe)."""
-    result = [None]
-    exception = [None]
-
-    def _target():
-        try:
-            result[0] = asyncio.run(coro)
-        except Exception as e:
-            exception[0] = e
-
-    t = threading.Thread(target=_target)
-    t.start()
-    t.join()
-
-    if exception[0]:
-        raise exception[0]
-    return result[0]
+    """Run async coroutine on the persistent background loop (Streamlit-safe)."""
+    loop = _get_or_create_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()  # blocks until done
 
 
 def _get_project_dir(project_name: str) -> str:
