@@ -35,16 +35,27 @@ PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
 
 
 # ========================================
-# Persistent event loop (prevents "bound to a different event loop" errors)
+# Persistent event loop + LightRAG instance cache
 # ========================================
-# LightRAG creates asyncio.Lock objects that bind to the event loop they're
-# created on.  If we call asyncio.run() each time, a NEW loop is created and
-# cached locks from the previous loop become invalid.
-# Solution: keep ONE background loop alive for the entire process lifetime.
+# Root cause of "bound to a different event loop":
+#   LightRAG creates asyncio.Lock objects internally. These locks bind to
+#   the event loop on which they are first awaited.  If we create a new
+#   LightRAG (and thus new locks) on a different loop, or re-create loops,
+#   locks from earlier become invalid.
+#
+# Solution:
+#   1. ONE persistent background event loop (never destroyed).
+#   2. ONE cached LightRAG instance per project, created AND initialized
+#      on that loop. Reused across calls so locks stay on the same loop.
+#   3. No finalize_storages() between calls — only on explicit cleanup.
 
 _bg_loop: asyncio.AbstractEventLoop | None = None
 _bg_thread: threading.Thread | None = None
 _bg_lock = threading.Lock()
+
+# Cache: project_name -> LightRAG (already initialized)
+_rag_instances: Dict[str, "LightRAG"] = {}
+_rag_instances_lock = threading.Lock()
 
 
 def _get_or_create_loop() -> asyncio.AbstractEventLoop:
@@ -71,7 +82,7 @@ def _run_async(coro):
     """Run async coroutine on the persistent background loop (Streamlit-safe)."""
     loop = _get_or_create_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result()  # blocks until done
+    return future.result(timeout=600)  # 10 min max
 
 
 def _get_project_dir(project_name: str) -> str:
@@ -84,8 +95,8 @@ def _get_indexed_docs_file(project_name: str) -> str:
     return os.path.join(_get_project_dir(project_name), "_indexed_docs.json")
 
 
-def _create_lightrag(api_key: str, project_name: str) -> "LightRAG":
-    """Create a LightRAG instance for a specific project."""
+def _create_lightrag_instance(api_key: str, project_name: str) -> "LightRAG":
+    """Create a raw LightRAG instance (not yet initialized)."""
     project_dir = _get_project_dir(project_name)
     os.makedirs(project_dir, exist_ok=True)
 
@@ -110,6 +121,43 @@ def _create_lightrag(api_key: str, project_name: str) -> "LightRAG":
             "api_key": api_key,
         },
     )
+
+
+async def _get_rag(api_key: str, project_name: str) -> "LightRAG":
+    """Get or create a cached, initialized LightRAG for a project.
+    MUST be called from the persistent background loop.
+    """
+    with _rag_instances_lock:
+        if project_name in _rag_instances:
+            return _rag_instances[project_name]
+
+    # Create and initialize outside the lock (may do I/O)
+    rag = _create_lightrag_instance(api_key, project_name)
+    await rag.initialize_storages()
+
+    with _rag_instances_lock:
+        # Double-check (another coroutine might have created it)
+        if project_name not in _rag_instances:
+            _rag_instances[project_name] = rag
+        else:
+            # Someone else got here first; finalize ours and use theirs
+            try:
+                await rag.finalize_storages()
+            except Exception:
+                pass
+            rag = _rag_instances[project_name]
+    return rag
+
+
+def _evict_rag_cache(project_name: str):
+    """Remove a project's cached LightRAG instance (e.g. on clear/delete)."""
+    with _rag_instances_lock:
+        rag = _rag_instances.pop(project_name, None)
+    if rag is not None:
+        try:
+            _run_async(rag.finalize_storages())
+        except Exception:
+            pass
 
 
 # ========================================
@@ -184,6 +232,8 @@ def get_project_info(project_name: str) -> Dict[str, Any]:
 
 def delete_project(project_name: str) -> Dict[str, Any]:
     """Delete a project and all its RAG data."""
+    _evict_rag_cache(project_name)
+
     projects = _load_projects()
     projects = [p for p in projects if p["name"] != project_name]
     _save_projects(projects)
@@ -245,7 +295,7 @@ def get_indexed_doc_names(project_name: str) -> List[str]:
 
 
 # ========================================
-# Core async functions
+# Core async functions (use cached instances)
 # ========================================
 
 async def _index_texts_async(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[str, Any]:
@@ -262,21 +312,17 @@ async def _index_texts_async(api_key: str, texts: Dict[str, str], project_name: 
             "message": "All documents already indexed",
         }
 
-    rag = _create_lightrag(api_key, project_name)
-    await rag.initialize_storages()
+    rag = await _get_rag(api_key, project_name)
 
     indexed = []
     errors = []
-    try:
-        for name, text in new_texts.items():
-            try:
-                if text and len(text.strip()) > 50:
-                    await rag.ainsert(text)
-                    indexed.append(name)
-            except Exception as e:
-                errors.append({"name": name, "error": str(e)})
-    finally:
-        await rag.finalize_storages()
+    for name, text in new_texts.items():
+        try:
+            if text and len(text.strip()) > 50:
+                await rag.ainsert(text)
+                indexed.append(name)
+        except Exception as e:
+            errors.append({"name": name, "error": str(e)})
 
     all_indexed = list(already_indexed | set(indexed))
     _save_indexed_docs(project_name, all_indexed)
@@ -292,30 +338,22 @@ async def _index_texts_async(api_key: str, texts: Dict[str, str], project_name: 
 
 async def _query_async(api_key: str, question: str, project_name: str, mode: str = "mix") -> str:
     """Query a project's indexed documents."""
-    rag = _create_lightrag(api_key, project_name)
-    await rag.initialize_storages()
-    try:
-        return await rag.aquery(question, param=QueryParam(mode=mode))
-    finally:
-        await rag.finalize_storages()
+    rag = await _get_rag(api_key, project_name)
+    return await rag.aquery(question, param=QueryParam(mode=mode))
 
 
 async def _batch_query_async(
     api_key: str, questions: List[str], project_name: str, mode: str = "mix"
 ) -> List[Dict[str, Any]]:
     """Batch query a project's indexed documents."""
-    rag = _create_lightrag(api_key, project_name)
-    await rag.initialize_storages()
+    rag = await _get_rag(api_key, project_name)
     results = []
-    try:
-        for q in questions:
-            try:
-                answer = await rag.aquery(q, param=QueryParam(mode=mode))
-                results.append({"query": q, "answer": answer, "success": True})
-            except Exception as e:
-                results.append({"query": q, "answer": "", "success": False, "error": str(e)})
-    finally:
-        await rag.finalize_storages()
+    for q in questions:
+        try:
+            answer = await rag.aquery(q, param=QueryParam(mode=mode))
+            results.append({"query": q, "answer": answer, "success": True})
+        except Exception as e:
+            results.append({"query": q, "answer": "", "success": False, "error": str(e)})
     return results
 
 
@@ -467,6 +505,7 @@ def _build_queries_from_structure(
 
 def clear_rag_index(project_name: str):
     """Clear a project's RAG index (keeps the project entry)."""
+    _evict_rag_cache(project_name)
     project_dir = _get_project_dir(project_name)
     if os.path.exists(project_dir):
         shutil.rmtree(project_dir, ignore_errors=True)
