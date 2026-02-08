@@ -27,8 +27,8 @@ except ImportError:
 # --- Constants ---
 GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_RAG_LLM_MODEL = "gemini-2.0-flash"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
-DEFAULT_EMBEDDING_DIM = 768
+DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
+DEFAULT_EMBEDDING_DIM = 3072
 
 RAG_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage")
 PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
