@@ -22,7 +22,8 @@
       "Bash(gh repo view:*)",
       "Bash(git clone:*)",
       "Bash(where:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

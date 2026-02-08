@@ -18,7 +18,7 @@ from typing import List, Dict, Any
 RAG_AVAILABLE = False
 try:
     from lightrag import LightRAG, QueryParam
-    from lightrag.llm.openai import openai_complete_if_cache, openai_embed
+    from lightrag.llm.openai import openai_complete_if_cache
     from lightrag.utils import EmbeddingFunc
     RAG_AVAILABLE = True
 except ImportError:
@@ -95,6 +95,27 @@ def _get_indexed_docs_file(project_name: str) -> str:
     return os.path.join(_get_project_dir(project_name), "_indexed_docs.json")
 
 
+async def _gemini_native_embed(texts, model="text-embedding-004", api_key=None, **kwargs):
+    """Embedding function using native Gemini API (bypasses OpenAI-compatible endpoint).
+
+    The OpenAI-compatible /embeddings endpoint doesn't support text-embedding-004,
+    so we call the native Gemini embedContent API via google-genai SDK instead.
+    """
+    from google import genai
+
+    def _sync_embed():
+        client = genai.Client(api_key=api_key)
+        contents = texts if isinstance(texts, list) else [texts]
+        result = client.models.embed_content(
+            model=model,
+            contents=contents,
+        )
+        return [list(e.values) for e in result.embeddings]
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _sync_embed)
+
+
 def _create_lightrag_instance(api_key: str, project_name: str) -> "LightRAG":
     """Create a raw LightRAG instance (not yet initialized)."""
     project_dir = _get_project_dir(project_name)
@@ -103,9 +124,8 @@ def _create_lightrag_instance(api_key: str, project_name: str) -> "LightRAG":
     embedding_func = EmbeddingFunc(
         embedding_dim=DEFAULT_EMBEDDING_DIM,
         func=partial(
-            openai_embed,
+            _gemini_native_embed,
             model=DEFAULT_EMBEDDING_MODEL,
-            base_url=GEMINI_OPENAI_BASE_URL,
             api_key=api_key,
         ),
         max_token_size=8192,
