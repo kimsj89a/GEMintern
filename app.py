@@ -8,6 +8,7 @@ import ui_crawler
 import ui_ocr
 import ui_markdown
 import ui_doctemplate
+import ui_text_organizer
 import utils
 import core_logic
 
@@ -167,40 +168,14 @@ def render_project_sidebar(settings):
     }
 
 
-def main():
-    st.markdown("""
-        <div class="title-container">
-            <h1>💎 GEM Intern</h1>
-            <span class="badge">v6.0</span>
-            <span class="badge badge-blue">Cloud-Safe Indexer</span>
-        </div>
-        <p style='color: gray; margin-top: -10px; margin-bottom: 20px;'>AI-Powered Investment Analysis Assistant</p>
-    """, unsafe_allow_html=True)
-
-if "current_project" not in st.session_state:
-    st.session_state.current_project = None
-
-    # 사이드바 프로젝트 관리
-    project_info = render_project_sidebar(settings)
-    settings["project_docs_text"] = project_info["project_docs_text"]
-    settings["project_doc_names"] = project_info["project_doc_names"]
-    settings["project_name"] = project_info["project_name"]
-
-    # 탭 기반 UI - 프로세스 3탭 + 도구 5탭
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-        "📋 초기검토",
-        "📊 예비실사",
-        "🔍 정밀실사",
-    ],
-    "독립 도구": [
-        "📑 IM 작성",
-        "🖥️ PPT 생성",
-    ],
-    "유틸리티": [
+NAV_SECTIONS = {
+    "Phase Workflow": ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"],
+    "Independent Tools": ["📑 IM 작성", "🖥️ PPT 생성"],
+    "Utilities": [
         "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
         "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기",
     ],
-)
+}
 
 PHASE_PAGES = ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"]
 UTILITY_ANALYSIS_PAGES = ["📑 IM 작성", "🖥️ PPT 생성"]
