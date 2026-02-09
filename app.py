@@ -1,3 +1,4 @@
+import traceback
 import streamlit as st
 import ui_input
 import ui_workflow
@@ -182,10 +183,18 @@ def main():
                 st.rerun()
 
         elif selected_page in PHASE_PAGES:
-            ui_workflow.render_phase_workflow(settings, selected_page)
+            try:
+                ui_workflow.render_phase_workflow(settings, selected_page)
+            except Exception as e:
+                st.error(f"워크플로우 오류: {type(e).__name__}: {e}")
+                st.code(traceback.format_exc())
 
         elif selected_page in UTILITY_ANALYSIS_PAGES:
-            ui_workflow.render_standard_workflow(settings, selected_page)
+            try:
+                ui_workflow.render_standard_workflow(settings, selected_page)
+            except Exception as e:
+                st.error(f"워크플로우 오류: {type(e).__name__}: {e}")
+                st.code(traceback.format_exc())
 
         elif selected_page == "🎤 오디오 전사":
             ui_audio.render_audio_transcription_panel(settings)
