@@ -271,6 +271,7 @@ def _init_phase_state(prefix, config):
     if page_type == "collection":
         defaults[f"{prefix}_collected_files_meta"] = []
         defaults[f"{prefix}_organized_summary"] = ""
+        defaults[f"{prefix}_followup_questions"] = ""
         defaults[f"{prefix}_file_categories"] = {}
     elif page_type == "analysis":
         defaults[f"{prefix}_checklist_data"] = {}
@@ -500,12 +501,18 @@ def _render_p1_step1_collect(prefix, settings, config):
 
 
 def _render_p1_step2_organize(prefix, settings, config):
-    """Phase 1 Step 2: 자료 정리 (AI 요약 + 핵심 발견사항)."""
+    """Phase 1 Step 2: 자료 정리 (AI 요약 + 핵심 발견사항 + 추가 질문 도출)."""
     st.markdown("#### 🏗️ 자료 정리 및 핵심 발견사항")
 
     file_context = st.session_state.get(f"{prefix}_file_context", "")
     meta = st.session_state.get(f"{prefix}_collected_files_meta", [])
     organized_summary = st.session_state.get(f"{prefix}_organized_summary", "")
+    followup_questions = st.session_state.get(f"{prefix}_followup_questions", "")
+
+    # RAG availability check
+    current_project = st.session_state.get("current_project")
+    has_rag = (current_project and core_rag.is_rag_available()
+               and core_rag.is_indexed(current_project))
 
     # Display collected materials table
     if meta:
@@ -516,10 +523,10 @@ def _render_p1_step2_organize(prefix, settings, config):
             table_md += f"| {m['filename']} | {m['category']} | {size_kb:.1f} KB |\n"
         st.markdown(table_md)
 
-    # AI Analysis button
-    col1, col2 = st.columns([1, 1])
+    # Action buttons row
+    col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("🤖 AI 자료 분석 실행", type="primary", key=f"{prefix}_s2_analyze",
+        if st.button("🤖 AI 자료 분석", type="primary", key=f"{prefix}_s2_analyze",
                       use_container_width=True):
             if not file_context.strip():
                 st.warning("분석할 자료가 없습니다. 이전 단계에서 자료를 업로드해주세요.")
@@ -537,19 +544,77 @@ def _render_p1_step2_organize(prefix, settings, config):
                         st.error(f"분석 오류: {e}")
 
     with col2:
-        # RAG indexing trigger
-        current_project = st.session_state.get("current_project")
+        rag_label = "❓ 추가 질문 정리 (RAG)" if has_rag else "❓ 추가 질문 정리"
+        if st.button(rag_label, key=f"{prefix}_s2_followup",
+                      use_container_width=True):
+            if not file_context.strip():
+                st.warning("분석할 자료가 없습니다. 이전 단계에서 자료를 업로드해주세요.")
+            else:
+                with st.spinner("추가 질문 및 조사 항목을 도출 중..." + (" (RAG 인덱스 참조)" if has_rag else "")):
+                    try:
+                        # RAG 컨텍스트 보강
+                        rag_context = ""
+                        if has_rag:
+                            rag_queries = [
+                                "이 기업/투자 건에 대해 누락되거나 추가 확인이 필요한 정보는?",
+                                "핵심 리스크 요인과 추가 조사가 필요한 사항을 정리해주세요.",
+                                "재무 데이터 중 추가 검증이 필요한 항목은?",
+                            ]
+                            rag_results = core_rag.batch_query_rag(
+                                settings["api_key"], rag_queries, current_project, mode="mix"
+                            )
+                            rag_parts = []
+                            for r in rag_results:
+                                if r.get("success") and r.get("answer") and len(r["answer"].strip()) > 30:
+                                    rag_parts.append(f"Q: {r['query']}\n{r['answer']}")
+                            if rag_parts:
+                                rag_context = "\n\n".join(rag_parts)
+
+                        result = core_logic.generate_followup_questions(
+                            settings["api_key"],
+                            settings["model_name"],
+                            file_context,
+                            rag_context=rag_context,
+                        )
+                        st.session_state[f"{prefix}_followup_questions"] = result
+                        followup_questions = result
+                    except Exception as e:
+                        st.error(f"추가 질문 생성 오류: {e}")
+
+    with col3:
         if current_project and core_rag.is_rag_available():
             if st.button("📚 프로젝트 RAG 인덱싱", key=f"{prefix}_s2_rag_index",
                           use_container_width=True):
                 st.info("프로젝트 허브에서 RAG 인덱싱을 진행해주세요.")
 
-    # Display organized summary
-    if organized_summary:
-        st.markdown("##### 🔑 분석 결과")
-        summary_container = st.container(height=400, border=True)
-        with summary_container:
-            st.markdown(organized_summary)
+    # Display results in tabs
+    if organized_summary or followup_questions:
+        tab_labels = []
+        if organized_summary:
+            tab_labels.append("🔑 자료 분석 결과")
+        if followup_questions:
+            tab_labels.append("❓ 추가 질문/조사 항목")
+
+        if len(tab_labels) == 2:
+            tab1, tab2 = st.tabs(tab_labels)
+            with tab1:
+                summary_container = st.container(height=400, border=True)
+                with summary_container:
+                    st.markdown(organized_summary)
+            with tab2:
+                fq_container = st.container(height=400, border=True)
+                with fq_container:
+                    st.markdown(followup_questions)
+        elif organized_summary:
+            st.markdown("##### 🔑 분석 결과")
+            summary_container = st.container(height=400, border=True)
+            with summary_container:
+                st.markdown(organized_summary)
+        elif followup_questions:
+            st.markdown("##### ❓ 추가 질문/조사 항목")
+            fq_container = st.container(height=400, border=True)
+            with fq_container:
+                st.markdown(followup_questions)
 
     # Navigation
     st.markdown("---")
@@ -560,12 +625,15 @@ def _render_p1_step2_organize(prefix, settings, config):
             st.rerun()
     with c3:
         if st.button("다음: 보고서 생성 >>>", type="primary", key=f"{prefix}_s2_next"):
-            # Append organized summary to file context for generation
+            # Append organized summary + followup questions to file context for generation
+            current_fc = st.session_state.get(f"{prefix}_file_context", "")
+            appendix = ""
             if organized_summary:
-                current_fc = st.session_state.get(f"{prefix}_file_context", "")
-                st.session_state[f"{prefix}_file_context"] = (
-                    current_fc + f"\n\n[AI 분석 결과 요약]\n{organized_summary}"
-                )
+                appendix += f"\n\n[AI 분석 결과 요약]\n{organized_summary}"
+            if followup_questions:
+                appendix += f"\n\n[추가 질문/조사 항목]\n{followup_questions}"
+            if appendix:
+                st.session_state[f"{prefix}_file_context"] = current_fc + appendix
             st.session_state[f"{prefix}_current_step"] = 3
             st.session_state[f"{prefix}_generation_complete"] = False
             st.rerun()
@@ -1312,6 +1380,11 @@ def _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, tem
         docai_config=docai_config,
         template_option=template_option,
     )
+    # 스킵/트렁케이트된 파일 경고
+    if "SKIPPED" in file_context[:5000]:
+        st.warning("⚠️ 일부 파일이 크기 제한으로 스킵되었습니다. 상세 내용은 생성 결과에 표시됩니다.")
+    if "TRUNCATED" in file_context[:5000]:
+        st.warning("⚠️ 일부 PDF가 페이지 제한으로 잘려서 처리되었습니다.")
     st.session_state[f"{prefix}_file_context"] = file_context
     st.session_state[f"{prefix}_ocr_text"] = file_context
 

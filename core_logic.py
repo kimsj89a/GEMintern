@@ -237,6 +237,20 @@ def generate_material_summary(api_key, model_name, file_context):
     return resp.text
 
 
+def generate_followup_questions(api_key, model_name, file_context, rag_context=""):
+    """Phase 1: 수집 자료 기반 추가 질문 및 조사 항목 도출 (RAG 연동)"""
+    client = get_client(api_key)
+    template = prompts.LOGIC_PROMPTS.get('material_followup_questions', '')
+    rag_section = f"\n[RAG 검색 결과 - 프로젝트 인덱스 참조]\n{rag_context}\n" if rag_context else ""
+    prompt_text = template.replace('{rag_context}', rag_section).replace('{file_context}', file_context[:50000])
+    config = types.GenerateContentConfig(
+        max_output_tokens=8192,
+        temperature=0.3,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt_text, config=config)
+    return resp.text
+
+
 def evaluate_checklist_item(api_key, model_name, item_name, file_context):
     """Phase 2: 투자 매력도 체크리스트 항목별 자동 평가"""
     client = get_client(api_key)

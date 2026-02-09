@@ -195,17 +195,23 @@ def _build_rag_index(settings, project_name, uploaded_files, selected_saved):
     done = 0
 
     # Parse uploaded files
+    skipped_files = []
     if uploaded_files:
         for f in uploaded_files:
             progress.progress(done / max(total, 1), text=f"파싱 중: {f.name}")
-            parsed = utils.parse_uploaded_file(
-                f,
-                api_key=api_key,
-                docai_config=docai_config,
-            )
-            if parsed and len(parsed.strip()) > 50:
-                texts[f.name] = parsed
-                utils.save_to_local_storage(f.name, parsed)
+            try:
+                parsed = utils.parse_uploaded_file(
+                    f,
+                    api_key=api_key,
+                    docai_config=docai_config,
+                )
+                if parsed and "SKIPPED" in parsed[:100]:
+                    skipped_files.append(f.name)
+                elif parsed and len(parsed.strip()) > 50:
+                    texts[f.name] = parsed
+                    utils.save_to_local_storage(f.name, parsed)
+            except Exception as e:
+                skipped_files.append(f"{f.name} (오류: {e})")
             done += 1
 
     # Load saved documents
@@ -243,6 +249,9 @@ def _build_rag_index(settings, project_name, uploaded_files, selected_saved):
         if result.get("errors"):
             for err in result["errors"]:
                 st.warning(f"오류 - {err['name']}: {err['error']}")
+
+        if skipped_files:
+            st.warning(f"⚠️ {len(skipped_files)}개 파일 스킵됨: {', '.join(skipped_files)}")
 
         st.rerun()
 
