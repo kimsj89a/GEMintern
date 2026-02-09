@@ -16,7 +16,14 @@
       "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/pip.exe\" install google-generativeai)",
       "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/python.exe\" -c \"import google.generativeai; print\\(''OK''\\)\")",
       "Bash(dir:*)",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(git checkout:*)",
+      "Bash(findstr:*)",
+      "Bash(gh repo view:*)",
+      "Bash(git clone:*)",
+      "Bash(where:*)",
+      "Bash(find:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

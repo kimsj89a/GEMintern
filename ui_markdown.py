@@ -315,7 +315,17 @@ def render_markdown_converter_panel(settings):
         )
 
         if uploaded_file:
-            markdown_text = uploaded_file.read().decode('utf-8')
+            raw_bytes = uploaded_file.read()
+            markdown_text = ""
+            for encoding in ['utf-8-sig', 'utf-8', 'cp949', 'euc-kr']:
+                try:
+                    markdown_text = raw_bytes.decode(encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if not markdown_text:
+                markdown_text = raw_bytes.decode('utf-8', errors='replace')
+            
             file_name = uploaded_file.name.rsplit('.', 1)[0]
             st.text_area(
                 "파일 내용 미리보기",

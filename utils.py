@@ -82,6 +82,11 @@ def _docx_to_ppt_markdown(doc: Document, filename: str) -> str:
     return "\n".join(lines).strip() + "\n\n"
 
 
+MAX_FILE_SIZE_MB = 50       # 파일 크기 제한 (MB)
+MAX_PDF_PAGES = 200         # PDF 최대 페이지 수
+MAX_OCR_PAGES = 50          # Gemini Vision OCR 최대 페이지 수
+
+
 def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template_option=None):
     """파일 형태별 텍스트 추출 (전체 시트 지원 + OCR 지원)
 
@@ -96,6 +101,15 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
     """
     if uploaded_file is None:
         return ""
+
+    # --- 파일 크기 제한 ---
+    file_size_mb = uploaded_file.size / (1024 * 1024) if hasattr(uploaded_file, 'size') else 0
+    if file_size_mb > MAX_FILE_SIZE_MB:
+        return (
+            f"### [파일명: {uploaded_file.name} - SKIPPED]\n"
+            f"⚠️ 파일 크기 초과: {file_size_mb:.1f}MB (제한: {MAX_FILE_SIZE_MB}MB)\n"
+            f"파일이 너무 커서 처리를 건너뛰었습니다.\n\n"
+        )
 
     file_type = uploaded_file.name.split('.')[-1].lower()
 
@@ -122,7 +136,7 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
             uploaded_file.seek(0)
             # Document AI 실패 시 다음 방법으로 진행
 
-    # [MarkItDown] 우선 시도
+    # [MarkItDown] 우선 시도 (타임아웃 60초)
     # PPT 모드에서 Word는 별도 변환 로직을 사용한다.
     if MARKITDOWN_AVAILABLE and not (template_option == "presentation" and file_type in ["docx", "doc"]):
         try:
@@ -134,8 +148,13 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
             uploaded_file.seek(0)
 
             try:
-                md = MarkItDown()
-                result = md.convert(tmp_path)
+                import concurrent.futures
+                def _convert_markitdown(path):
+                    md = MarkItDown()
+                    return md.convert(path)
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(_convert_markitdown, tmp_path)
+                    result = future.result(timeout=60)
                 if result and result.text_content:
                     return f"### [파일명: {uploaded_file.name} (MarkItDown)]\n{result.text_content}\n\n"
             finally:
@@ -149,13 +168,32 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
     text_content = ""
 
     try:
-        # [PDF] PyMuPDF + Gemini Vision OCR
+        # [PDF] PyMuPDF + Gemini Vision OCR (페이지 수 제한 적용)
         if file_type == 'pdf':
             with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-                if api_key:
-                    text_content = ocr.extract_pdf_with_gemini_ocr(doc, api_key)
+                total_pages = len(doc)
+                if total_pages > MAX_PDF_PAGES:
+                    text_content = (
+                        f"### [파일명: {uploaded_file.name} - TRUNCATED]\n"
+                        f"⚠️ PDF 페이지 초과: {total_pages}페이지 (제한: {MAX_PDF_PAGES}페이지)\n"
+                        f"처음 {MAX_PDF_PAGES}페이지만 처리합니다.\n\n"
+                    )
+                    doc_to_process = fitz.open()
+                    for i in range(MAX_PDF_PAGES):
+                        doc_to_process.insert_pdf(doc, from_page=i, to_page=i)
                 else:
-                    text_content = ocr.extract_pdf_with_ocr(doc)
+                    text_content = ""
+                    doc_to_process = doc
+
+                if api_key:
+                    text_content += ocr.extract_pdf_with_gemini_ocr(
+                        doc_to_process, api_key, max_ocr_pages=MAX_OCR_PAGES,
+                    )
+                else:
+                    text_content += ocr.extract_pdf_with_ocr(doc_to_process)
+
+                if doc_to_process is not doc:
+                    doc_to_process.close()
         
         # [Word] python-docx
         elif file_type in ['docx', 'doc']:
