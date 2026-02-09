@@ -114,10 +114,20 @@ def create_project(project_name: str) -> Dict[str, Any]:
     os.makedirs(project_dir, exist_ok=True)
     os.makedirs(_get_project_docs_dir(safe_name), exist_ok=True)
 
+    # [기능 추가] 기본 템플릿 문서 자동 생성
+    templates = {
+        "README.md": f"# {safe_name}\n\n생성일: {datetime.datetime.now().strftime('%Y-%m-%d')}\n\n## 프로젝트 개요\n이 프로젝트는 GEM Intern을 통해 생성되었습니다.\n\n## 주요 목표\n- \n",
+        "Memo.md": "# 메모\n\n아이디어 및 주요 사항을 기록하세요.\n"
+    }
+    for fname, content in templates.items():
+        _save_doc_file(safe_name, fname, content)
+    _save_indexed_docs(safe_name, list(templates.keys()))
+
     new_project = {
         "name": safe_name,
         "created": datetime.datetime.now().isoformat(),
-        "doc_count": 0,
+        "last_accessed": datetime.datetime.now().isoformat(),
+        "doc_count": len(templates),
     }
     projects.append(new_project)
     _save_projects(projects)
@@ -134,6 +144,19 @@ def get_project_info(project_name: str) -> Dict[str, Any]:
             p["indexed_docs"] = _get_indexed_docs(project_name)
             return p
     return {}
+
+
+def update_project_access_time(project_name: str):
+    """Update the last_accessed timestamp for a project."""
+    projects = _load_projects()
+    updated = False
+    for p in projects:
+        if p["name"] == project_name:
+            p["last_accessed"] = datetime.datetime.now().isoformat()
+            updated = True
+            break
+    if updated:
+        _save_projects(projects)
 
 
 def delete_project(project_name: str) -> Dict[str, Any]:

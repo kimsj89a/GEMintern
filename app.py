@@ -11,6 +11,7 @@ import ui_doctemplate
 import ui_text_organizer
 import utils
 import core_logic
+import core_rag
 
 # --- 페이지 설정 ---
 st.set_page_config(layout="wide", page_title="GEM Intern v7.0", page_icon="💎")
@@ -222,16 +223,8 @@ def main():
             st.markdown("### 💎 GEM Intern v7.0")
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # 현재 프로젝트 표시
-            current_proj = st.session_state.get("current_project")
-            if current_proj:
-                st.markdown(
-                    f"<div style='background:#e6f0ff;padding:8px 12px;border-radius:6px;"
-                    f"border:1px solid #b3d1ff;margin-bottom:10px;'>"
-                    f"<small style='color:#004085;'>현재 프로젝트</small><br>"
-                    f"<b style='color:#0068c9;'>{current_proj}</b></div>",
-                    unsafe_allow_html=True,
-                )
+            # 프로젝트 퀵 스위처 렌더링
+            render_project_sidebar()
 
             # 그룹별 네비게이션 렌더링
             for section_name, items in NAV_SECTIONS.items():
