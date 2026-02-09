@@ -114,9 +114,44 @@ def _render_project_detail(settings):
         st.success(f"{doc_count}개 문서 저장됨")
         with st.expander("저장된 문서 목록", expanded=False):
             for d in indexed_docs:
-                st.text(f"  - {d}")
+                col_doc, col_trash = st.columns([5, 1])
+                with col_doc:
+                    st.text(f"  {d}")
+                with col_trash:
+                    if st.button("🗑️", key=f"trash_{current}_{d}", help="휴지통으로 이동"):
+                        result = core_rag.trash_document(current, d)
+                        if result["success"]:
+                            st.toast(f"'{d}' 휴지통으로 이동")
+                            st.rerun()
+                        else:
+                            st.error(result["error"])
     else:
         st.info("저장된 문서가 없습니다. 아래에서 문서를 업로드하세요.")
+
+    # Trash section
+    trash_items = core_rag.list_trash(current)
+    if trash_items:
+        with st.expander(f"🗑️ 휴지통 ({len(trash_items)}건)", expanded=False):
+            for t in trash_items:
+                col_name, col_restore, col_delete = st.columns([4, 1, 1])
+                with col_name:
+                    st.text(f"  {t}")
+                with col_restore:
+                    if st.button("♻️", key=f"restore_{current}_{t}", help="복구"):
+                        result = core_rag.restore_from_trash(current, t)
+                        if result["success"]:
+                            st.toast(f"'{t}' 복구 완료")
+                            st.rerun()
+                with col_delete:
+                    if st.button("❌", key=f"permdel_{current}_{t}", help="영구 삭제"):
+                        core_rag.permanently_delete_from_trash(current, t)
+                        st.toast(f"'{t}' 영구 삭제")
+                        st.rerun()
+            st.markdown("")
+            if st.button("🗑️ 휴지통 비우기", key=f"empty_trash_{current}", use_container_width=True):
+                core_rag.empty_trash(current)
+                st.toast("휴지통 비움")
+                st.rerun()
 
     st.markdown("---")
 

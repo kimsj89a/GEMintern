@@ -42,19 +42,11 @@ PHASE_CONFIGS = {
         "title": "📥 사전 정보 수집 및 접촉",
         "subtitle": "공개 자료 기반 기업/산업/인력 사전 조사 및 자료 수집 정리",
         "page_type": "collection",
-        "steps": {
-            1: ("📁", "자료 수집"),
-            2: ("🏗️", "자료 정리"),
-            3: ("🤖", "보고서 생성"),
-            4: ("💬", "수정/보완"),
-            5: ("📄", "최종 결과"),
-        },
+        "tabs": ["📁 자료 수집", "🔍 자료 분석", "❓ 추가 질문 정리", "📝 보고서 생성"],
         "default_template": "simple_review",
         "template_options": {
             "simple_review": "1. 약식 투자검토 (Quick Memo)",
-            "teaser": "2. 1-Pager Teaser",
-            "free_summary": "3. 자유 구조화 (요약)",
-            "custom": "4. 자유 구조화 (요약보고서)",
+            "free_summary": "2. 자유 구조화 (요약보고서)",
         },
         "show_gen_mode": True,
     },
@@ -150,17 +142,18 @@ def render_phase_workflow(settings, selected_page):
 
     prefix = config["key_prefix"]
     _init_phase_state(prefix, config)
-    _render_phase_step_indicator(prefix, config)
-
-    current_step = st.session_state[f"{prefix}_current_step"]
     page_type = config["page_type"]
 
     if page_type == "collection":
-        _dispatch_phase1_step(current_step, prefix, settings, config)
-    elif page_type == "analysis":
-        _dispatch_phase2_step(current_step, prefix, settings, config)
-    elif page_type == "dd_management":
-        _dispatch_phase3_step(current_step, prefix, settings, config)
+        # Tab-based layout (no step indicator)
+        _render_phase1_tabs(prefix, settings, config)
+    else:
+        _render_phase_step_indicator(prefix, config)
+        current_step = st.session_state[f"{prefix}_current_step"]
+        if page_type == "analysis":
+            _dispatch_phase2_step(current_step, prefix, settings, config)
+        elif page_type == "dd_management":
+            _dispatch_phase3_step(current_step, prefix, settings, config)
 
 
 def render_standard_workflow(settings, selected_page):
@@ -189,20 +182,6 @@ def render_standard_workflow(settings, selected_page):
 # ========================================
 # Phase dispatchers
 # ========================================
-
-def _dispatch_phase1_step(step, prefix, settings, config):
-    """Phase 1: 사전 정보 수집 (5-step)."""
-    if step == 1:
-        _render_p1_step1_collect(prefix, settings, config)
-    elif step == 2:
-        _render_p1_step2_organize(prefix, settings, config)
-    elif step == 3:
-        _render_step_generate(prefix, settings, config, step_number=3, total_steps=5)
-    elif step == 4:
-        _render_step_refine(prefix, settings, config, step_number=4, total_steps=5)
-    elif step == 5:
-        _render_step_output(prefix, settings, config, step_number=5, total_steps=5)
-
 
 def _dispatch_phase2_step(step, prefix, settings, config):
     """Phase 2: 예비실사 (5-step)."""
@@ -273,6 +252,8 @@ def _init_phase_state(prefix, config):
         defaults[f"{prefix}_organized_summary"] = ""
         defaults[f"{prefix}_followup_questions"] = ""
         defaults[f"{prefix}_file_categories"] = {}
+        defaults[f"{prefix}_context_text"] = ""
+        defaults[f"{prefix}_report_generating"] = False
     elif page_type == "analysis":
         defaults[f"{prefix}_checklist_data"] = {}
         defaults[f"{prefix}_checklist_complete"] = False
@@ -365,29 +346,64 @@ def _render_step_box(step_num, current, icon, label):
 
 
 # ========================================
-# Phase 1: 사전 정보 수집 - Custom Steps
+# Phase 1: 사전 정보 수집 - Tab-based Layout
 # ========================================
 
-def _render_p1_step1_collect(prefix, settings, config):
-    """Phase 1 Step 1: 자료 수집 (공개자료 업로드 + 분류)."""
+def _render_phase1_tabs(prefix, settings, config):
+    """Phase 1: independent tabs instead of sequential workflow."""
+    st.markdown(f"### {config['title']}")
+    st.caption(config["subtitle"])
+
+    tab_labels = config["tabs"]
+    tab_collect, tab_analyze, tab_questions, tab_report = st.tabs(tab_labels)
+
+    with tab_collect:
+        _render_p1_tab_collect(prefix, settings, config)
+    with tab_analyze:
+        _render_p1_tab_analyze(prefix, settings, config)
+    with tab_questions:
+        _render_p1_tab_questions(prefix, settings, config)
+    with tab_report:
+        _render_p1_tab_report(prefix, settings, config)
+
+
+def _render_p1_tab_collect(prefix, settings, config):
+    """Tab 1: 자료 수집 - 프로젝트 문서 로드 + 추가 파일 업로드."""
     current_project = st.session_state.get("current_project")
     has_rag = current_project and core_rag.is_rag_available() and core_rag.is_indexed(current_project)
 
+    # Show current project docs
     if has_rag:
         rag_count = core_rag.get_indexed_count(current_project)
-        st.info(
-            f"프로젝트 **{current_project}** (RAG {rag_count}건) 기반으로 생성합니다. "
-            f"추가 파일 업로드는 선택사항입니다."
-        )
+        st.success(f"프로젝트 **{current_project}** - {rag_count}개 문서 로드됨")
 
+        docs_dict = core_rag.load_project_docs_dict(current_project)
+        if docs_dict:
+            with st.expander(f"📂 프로젝트 문서 ({len(docs_dict)}건)", expanded=False):
+                for fname, content in docs_dict.items():
+                    preview = content[:200].replace("\n", " ")
+                    st.markdown(f"**{fname}** - {len(content):,}자")
+                    st.caption(preview + "...")
+
+        # Auto-load project docs into file_context
+        if not st.session_state.get(f"{prefix}_file_context"):
+            all_docs = core_rag.load_all_project_docs(current_project)
+            if all_docs:
+                st.session_state[f"{prefix}_file_context"] = f"--- [프로젝트 문서: {current_project}] ---\n{all_docs}"
+    else:
+        st.info("프로젝트를 선택하고 문서를 저장하면 자동으로 로드됩니다. 또는 아래에서 파일을 직접 업로드하세요.")
+
+    st.markdown("---")
+
+    # Additional file upload
     col_left, col_right = st.columns([1, 1], gap="medium")
 
     with col_left:
-        st.markdown("#### 📁 공개 자료 업로드" + (" (선택)" if has_rag else ""))
+        st.markdown("#### 📁 추가 자료 업로드")
         uploaded_files = st.file_uploader(
             "감사보고서, 산업보고서, Analyst 보고서, 언론기사 등",
             accept_multiple_files=True,
-            key=f"{prefix}_s1_files",
+            key=f"{prefix}_tab_collect_files",
         )
 
         # Category tagging
@@ -399,19 +415,10 @@ def _render_p1_step1_collect(prefix, settings, config):
                 file_categories[f.name] = st.selectbox(
                     f.name,
                     category_options,
-                    key=f"{prefix}_cat_{f.name}",
+                    key=f"{prefix}_tab_cat_{f.name}",
                     label_visibility="collapsed",
                 )
             st.session_state[f"{prefix}_file_categories"] = file_categories
-
-        saved_docs = utils.list_saved_docs()
-        selected_saved = []
-        if saved_docs:
-            selected_saved = st.multiselect(
-                "📚 저장된 문서에서 선택",
-                saved_docs,
-                key=f"{prefix}_s1_saved",
-            )
 
     with col_right:
         st.markdown("#### 💬 조사 배경 / 핵심 질문")
@@ -419,67 +426,35 @@ def _render_p1_step1_collect(prefix, settings, config):
             "Context",
             height=120,
             placeholder="예: 기업명, 투자 배경, 산업 동향, 핵심 확인 사항 등",
-            key=f"{prefix}_s1_context",
+            key=f"{prefix}_tab_collect_context",
             label_visibility="collapsed",
         )
 
-        template_options = config["template_options"]
-        st.markdown("#### 📝 템플릿 선택")
-        template_option = st.selectbox(
-            "Template",
-            list(template_options.keys()),
-            format_func=lambda x: template_options[x],
-            key=f"{prefix}_s1_template",
-            label_visibility="collapsed",
-        )
-
-        default_structure = core_logic.get_default_structure(template_option)
-        with st.expander("📋 문서 구조 미리보기 / 편집", expanded=False):
-            structure_text = st.text_area(
-                "Structure",
-                value=default_structure,
-                height=300,
-                key=f"{prefix}_s1_structure",
-                label_visibility="collapsed",
-            )
-
-        if config.get("show_gen_mode"):
-            generation_mode = st.radio(
-                "생성 방식",
-                ["chained", "single"],
-                format_func=lambda x: "📊 단계별 생성 (정확도↑)" if x == "chained" else "🚀 한 번에 생성 (속도↑)",
-                index=0,
-                horizontal=True,
-                key=f"{prefix}_s1_gen_mode",
-            )
+        # Project selector (if not already loaded)
+        if not has_rag:
+            selected_project, proj_doc_count = _render_project_doc_selector(prefix, "tab_collect")
         else:
-            generation_mode = "single"
+            selected_project = current_project
 
-    # Navigation
+    # Parse & load button
     st.markdown("")
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        if st.button(
-            "다음: 자료 정리 >>>",
-            type="primary",
-            use_container_width=True,
-            key=f"{prefix}_s1_next",
-        ):
-            if not uploaded_files and not selected_saved and not has_rag:
-                st.error("파일을 업로드하거나 저장된 문서를 선택해주세요.")
-            elif not settings.get("api_key"):
-                st.error("설정에서 API Key를 먼저 입력해주세요.")
-            else:
-                st.session_state[f"{prefix}_inputs"] = {
-                    "template_option": template_option,
-                    "structure_text": structure_text,
-                    "uploaded_files": uploaded_files,
-                    "context_text": context_text,
-                    "selected_saved_files": selected_saved,
-                    "generation_mode": generation_mode,
-                    "generate_btn": True,
-                }
-                st.session_state[f"{prefix}_active_mode"] = template_option
+    if st.button(
+        "📥 자료 로드 및 파싱",
+        type="primary",
+        use_container_width=True,
+        key=f"{prefix}_tab_collect_load",
+    ):
+        if not uploaded_files and not has_rag and not (not has_rag and selected_project):
+            st.error("파일을 업로드하거나 프로젝트를 선택해주세요.")
+        elif not settings.get("api_key") and uploaded_files:
+            st.error("설정에서 API Key를 먼저 입력해주세요.")
+        else:
+            with st.spinner("자료를 파싱하고 로드 중..."):
+                _parse_and_cache_files(
+                    prefix, settings, uploaded_files, [],
+                    config.get("default_template", "simple_review"),
+                    project_name=selected_project if not has_rag else current_project,
+                )
                 # Collect file metadata
                 meta = []
                 if uploaded_files:
@@ -490,140 +465,247 @@ def _render_p1_step1_collect(prefix, settings, config):
                             "size": f.size,
                         })
                 st.session_state[f"{prefix}_collected_files_meta"] = meta
-                # Parse files
-                if uploaded_files or selected_saved:
-                    _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option)
-                else:
-                    st.session_state[f"{prefix}_file_context"] = ""
-                    st.session_state[f"{prefix}_ocr_text"] = ""
-                st.session_state[f"{prefix}_current_step"] = 2
-                st.rerun()
+                if context_text:
+                    st.session_state[f"{prefix}_context_text"] = context_text
+            st.success("자료 로드 완료! 다른 탭에서 분석/질문/보고서 생성을 진행하세요.")
 
-
-def _render_p1_step2_organize(prefix, settings, config):
-    """Phase 1 Step 2: 자료 정리 (AI 요약 + 핵심 발견사항 + 추가 질문 도출)."""
-    st.markdown("#### 🏗️ 자료 정리 및 핵심 발견사항")
-
+    # Show loaded data status
     file_context = st.session_state.get(f"{prefix}_file_context", "")
-    meta = st.session_state.get(f"{prefix}_collected_files_meta", [])
+    if file_context:
+        st.markdown("---")
+        st.caption(f"현재 로드된 컨텍스트: {len(file_context):,}자")
+
+
+def _render_p1_tab_analyze(prefix, settings, config):
+    """Tab 2: 자료 분석 - AI 요약 + 핵심 발견사항 추출."""
+    file_context = st.session_state.get(f"{prefix}_file_context", "")
     organized_summary = st.session_state.get(f"{prefix}_organized_summary", "")
+
+    if not file_context.strip():
+        st.info("먼저 '자료 수집' 탭에서 자료를 로드해주세요.")
+        return
+
+    st.caption(f"분석 대상 컨텍스트: {len(file_context):,}자")
+
+    if st.button("🤖 AI 자료 분석 실행", type="primary", key=f"{prefix}_tab_analyze_run",
+                  use_container_width=True):
+        with st.spinner("자료를 분석하고 핵심 발견사항을 추출 중..."):
+            try:
+                summary = core_logic.generate_material_summary(
+                    settings["api_key"],
+                    settings["model_name"],
+                    file_context,
+                )
+                st.session_state[f"{prefix}_organized_summary"] = summary
+                organized_summary = summary
+            except Exception as e:
+                st.error(f"분석 오류: {e}")
+
+    if organized_summary:
+        st.markdown("##### 🔑 분석 결과")
+        result_container = st.container(height=500, border=True)
+        with result_container:
+            st.markdown(organized_summary)
+    else:
+        st.info("위 버튼을 눌러 AI 분석을 실행하세요.")
+
+
+def _render_p1_tab_questions(prefix, settings, config):
+    """Tab 3: 추가 질문 정리 - 프로젝트 문서 참조하여 추가 질문 도출."""
+    file_context = st.session_state.get(f"{prefix}_file_context", "")
     followup_questions = st.session_state.get(f"{prefix}_followup_questions", "")
 
-    # RAG availability check
     current_project = st.session_state.get("current_project")
     has_rag = (current_project and core_rag.is_rag_available()
                and core_rag.is_indexed(current_project))
 
-    # Display collected materials table
-    if meta:
-        st.markdown("##### 📂 수집 자료 목록")
-        table_md = "| 파일명 | 분류 | 크기 |\n| :--- | :--- | :--- |\n"
-        for m in meta:
-            size_kb = m.get("size", 0) / 1024
-            table_md += f"| {m['filename']} | {m['category']} | {size_kb:.1f} KB |\n"
-        st.markdown(table_md)
+    if not file_context.strip():
+        st.info("먼저 '자료 수집' 탭에서 자료를 로드해주세요.")
+        return
 
-    # Action buttons row
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if st.button("🤖 AI 자료 분석", type="primary", key=f"{prefix}_s2_analyze",
-                      use_container_width=True):
-            if not file_context.strip():
-                st.warning("분석할 자료가 없습니다. 이전 단계에서 자료를 업로드해주세요.")
+    rag_note = " (프로젝트 문서 참조)" if has_rag else ""
+    st.caption(f"분석 대상 컨텍스트: {len(file_context):,}자{rag_note}")
+
+    if st.button(f"❓ 추가 질문 생성{rag_note}", type="primary",
+                  key=f"{prefix}_tab_questions_run", use_container_width=True):
+        with st.spinner("추가 질문 및 조사 항목을 도출 중..."):
+            try:
+                project_docs_context = ""
+                if has_rag:
+                    project_docs_context = core_rag.load_all_project_docs(current_project)
+
+                result = core_logic.generate_followup_questions(
+                    settings["api_key"],
+                    settings["model_name"],
+                    file_context,
+                    rag_context=project_docs_context,
+                )
+                st.session_state[f"{prefix}_followup_questions"] = result
+                followup_questions = result
+            except Exception as e:
+                st.error(f"추가 질문 생성 오류: {e}")
+
+    if followup_questions:
+        st.markdown("##### ❓ 추가 질문/조사 항목")
+        result_container = st.container(height=500, border=True)
+        with result_container:
+            st.markdown(followup_questions)
+    else:
+        st.info("위 버튼을 눌러 추가 질문을 생성하세요.")
+
+
+def _render_p1_tab_report(prefix, settings, config):
+    """Tab 4: 보고서 생성 - Quick review / 요약보고서."""
+    file_context = st.session_state.get(f"{prefix}_file_context", "")
+    organized_summary = st.session_state.get(f"{prefix}_organized_summary", "")
+    followup_questions = st.session_state.get(f"{prefix}_followup_questions", "")
+    generated_text = st.session_state.get(f"{prefix}_generated_text", "")
+
+    if not file_context.strip():
+        st.info("먼저 '자료 수집' 탭에서 자료를 로드해주세요.")
+        return
+
+    col_left, col_right = st.columns([1, 2], gap="medium")
+
+    with col_left:
+        template_options = config["template_options"]
+        st.markdown("#### 📝 템플릿 선택")
+        template_option = st.selectbox(
+            "Template",
+            list(template_options.keys()),
+            format_func=lambda x: template_options[x],
+            key=f"{prefix}_tab_report_template",
+            label_visibility="collapsed",
+        )
+
+        default_structure = core_logic.get_default_structure(template_option)
+        with st.expander("📋 문서 구조 미리보기 / 편집", expanded=False):
+            structure_text = st.text_area(
+                "Structure",
+                value=default_structure,
+                height=250,
+                key=f"{prefix}_tab_report_structure",
+                label_visibility="collapsed",
+            )
+
+        generation_mode = st.radio(
+            "생성 방식",
+            ["chained", "single"],
+            format_func=lambda x: "📊 단계별 생성 (정확도↑)" if x == "chained" else "🚀 한 번에 생성 (속도↑)",
+            index=0,
+            horizontal=True,
+            key=f"{prefix}_tab_report_gen_mode",
+        )
+
+        context_text = st.session_state.get(f"{prefix}_context_text",
+                        st.session_state.get(f"{prefix}_tab_collect_context", ""))
+
+        # Include analysis results as extra context
+        include_analysis = st.checkbox(
+            "자료 분석 결과 포함",
+            value=bool(organized_summary),
+            key=f"{prefix}_tab_report_inc_analysis",
+        )
+        include_questions = st.checkbox(
+            "추가 질문 결과 포함",
+            value=bool(followup_questions),
+            key=f"{prefix}_tab_report_inc_questions",
+        )
+
+        if st.button("🤖 보고서 생성", type="primary", use_container_width=True,
+                      key=f"{prefix}_tab_report_generate"):
+            if not settings.get("api_key"):
+                st.error("설정에서 API Key를 먼저 입력해주세요.")
             else:
-                with st.spinner("자료를 분석하고 핵심 발견사항을 추출 중..."):
-                    try:
-                        summary = core_logic.generate_material_summary(
-                            settings["api_key"],
-                            settings["model_name"],
-                            file_context,
+                # Build full context
+                full_context = file_context
+                if include_analysis and organized_summary:
+                    full_context += f"\n\n[AI 분석 결과 요약]\n{organized_summary}"
+                if include_questions and followup_questions:
+                    full_context += f"\n\n[추가 질문/조사 항목]\n{followup_questions}"
+
+                st.session_state[f"{prefix}_file_context_for_gen"] = full_context
+                st.session_state[f"{prefix}_inputs"] = {
+                    "template_option": template_option,
+                    "structure_text": structure_text,
+                    "uploaded_files": [],
+                    "context_text": context_text,
+                    "selected_saved_files": [],
+                    "generation_mode": generation_mode,
+                    "generate_btn": True,
+                    "use_diagram": settings.get("use_diagram", False),
+                }
+                st.session_state[f"{prefix}_active_mode"] = template_option
+                st.session_state[f"{prefix}_report_generating"] = True
+                st.rerun()
+
+    with col_right:
+        # Generation in progress
+        if st.session_state.get(f"{prefix}_report_generating"):
+            inputs = st.session_state[f"{prefix}_inputs"]
+            gen_context = st.session_state.get(f"{prefix}_file_context_for_gen", file_context)
+
+            with st.status("🤖 보고서를 생성하는 중...", expanded=True) as status:
+                try:
+                    gen_mode = inputs.get("generation_mode", "single")
+                    if gen_mode == "chained" and core_chained.is_chained_supported(inputs.get("template_option", "")):
+                        stream = core_logic.generate_report_stream_chained(
+                            settings["api_key"], settings["model_name"],
+                            inputs, settings["thinking_level"], gen_context,
                         )
-                        st.session_state[f"{prefix}_organized_summary"] = summary
-                        organized_summary = summary
-                    except Exception as e:
-                        st.error(f"분석 오류: {e}")
-
-    with col2:
-        rag_label = "❓ 추가 질문 정리" + (" (프로젝트 문서 참조)" if has_rag else "")
-        if st.button(rag_label, key=f"{prefix}_s2_followup",
-                      use_container_width=True):
-            if not file_context.strip():
-                st.warning("분석할 자료가 없습니다. 이전 단계에서 자료를 업로드해주세요.")
-            else:
-                with st.spinner("추가 질문 및 조사 항목을 도출 중..." + (" (프로젝트 문서 참조)" if has_rag else "")):
-                    try:
-                        # 프로젝트 저장 문서를 추가 컨텍스트로 로드
-                        project_docs_context = ""
-                        if has_rag:
-                            project_docs_context = core_rag.load_all_project_docs(current_project)
-
-                        result = core_logic.generate_followup_questions(
-                            settings["api_key"],
-                            settings["model_name"],
-                            file_context,
-                            rag_context=project_docs_context,
+                    else:
+                        stream = core_logic.generate_report_stream(
+                            settings["api_key"], settings["model_name"],
+                            inputs, settings["thinking_level"], gen_context,
                         )
-                        st.session_state[f"{prefix}_followup_questions"] = result
-                        followup_questions = result
-                    except Exception as e:
-                        st.error(f"추가 질문 생성 오류: {e}")
 
-    with col3:
-        if current_project and core_rag.is_rag_available():
-            if st.button("📚 프로젝트 문서 저장", key=f"{prefix}_s2_rag_index",
-                          use_container_width=True):
-                st.info("프로젝트 허브에서 문서 저장을 진행해주세요.")
+                    full_response = ""
+                    response_placeholder = st.empty()
+                    for chunk in stream:
+                        if chunk.text:
+                            full_response += chunk.text
+                            response_placeholder.markdown(full_response + "▌")
+                    response_placeholder.markdown(full_response)
+                    status.update(label="✅ 작성 완료!", state="complete", expanded=False)
 
-    # Display results in tabs
-    if organized_summary or followup_questions:
-        tab_labels = []
-        if organized_summary:
-            tab_labels.append("🔑 자료 분석 결과")
-        if followup_questions:
-            tab_labels.append("❓ 추가 질문/조사 항목")
+                    st.session_state[f"{prefix}_generated_text"] = _strip_preamble(full_response)
+                    st.session_state[f"{prefix}_report_generating"] = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"생성 오류: {e}")
+                    st.session_state[f"{prefix}_report_generating"] = False
 
-        if len(tab_labels) == 2:
-            tab1, tab2 = st.tabs(tab_labels)
-            with tab1:
-                summary_container = st.container(height=400, border=True)
-                with summary_container:
-                    st.markdown(organized_summary)
-            with tab2:
-                fq_container = st.container(height=400, border=True)
-                with fq_container:
-                    st.markdown(followup_questions)
-        elif organized_summary:
-            st.markdown("##### 🔑 분석 결과")
-            summary_container = st.container(height=400, border=True)
-            with summary_container:
-                st.markdown(organized_summary)
-        elif followup_questions:
-            st.markdown("##### ❓ 추가 질문/조사 항목")
-            fq_container = st.container(height=400, border=True)
-            with fq_container:
-                st.markdown(followup_questions)
+        elif generated_text:
+            st.markdown("#### 📄 생성된 보고서")
+            result_container = st.container(height=500, border=True)
+            with result_container:
+                st.markdown(generated_text)
 
-    # Navigation
-    st.markdown("---")
-    c1, c2, c3 = st.columns([1, 1, 1])
-    with c1:
-        if st.button("<<< 이전 단계", key=f"{prefix}_s2_prev"):
-            st.session_state[f"{prefix}_current_step"] = 1
-            st.rerun()
-    with c3:
-        if st.button("다음: 보고서 생성 >>>", type="primary", key=f"{prefix}_s2_next"):
-            # Append organized summary + followup questions to file context for generation
-            current_fc = st.session_state.get(f"{prefix}_file_context", "")
-            appendix = ""
-            if organized_summary:
-                appendix += f"\n\n[AI 분석 결과 요약]\n{organized_summary}"
-            if followup_questions:
-                appendix += f"\n\n[추가 질문/조사 항목]\n{followup_questions}"
-            if appendix:
-                st.session_state[f"{prefix}_file_context"] = current_fc + appendix
-            st.session_state[f"{prefix}_current_step"] = 3
-            st.session_state[f"{prefix}_generation_complete"] = False
-            st.rerun()
+            # Download buttons
+            st.markdown("")
+            inputs = st.session_state.get(f"{prefix}_inputs", {})
+            current_mode = st.session_state.get(f"{prefix}_active_mode", "")
+            fname = utils.generate_filename(inputs.get("uploaded_files"), current_mode)
+
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.download_button(
+                    "📄 Word 다운로드",
+                    utils.create_docx(generated_text),
+                    fname,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True, key=f"{prefix}_tab_dl_word",
+                )
+            with col_d2:
+                st.download_button(
+                    "📊 PPT 다운로드",
+                    utils_ppt.create_ppt(generated_text),
+                    fname.replace(".docx", ".pptx"),
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    use_container_width=True, key=f"{prefix}_tab_dl_ppt",
+                )
+        else:
+            st.info("왼쪽에서 템플릿을 선택하고 보고서를 생성하세요.")
 
 
 # ========================================
@@ -652,14 +734,7 @@ def _render_p2_step1_input(prefix, settings, config):
             key=f"{prefix}_s1_files",
         )
 
-        saved_docs = utils.list_saved_docs()
-        selected_saved = []
-        if saved_docs:
-            selected_saved = st.multiselect(
-                "📚 저장된 문서에서 선택",
-                saved_docs,
-                key=f"{prefix}_s1_saved",
-            )
+        selected_project, proj_doc_count = _render_project_doc_selector(prefix, "s1")
 
         st.markdown("#### 💬 투자 배경 / 맥락")
         context_text = st.text_area(
@@ -713,8 +788,8 @@ def _render_p2_step1_input(prefix, settings, config):
             use_container_width=True,
             key=f"{prefix}_s1_next",
         ):
-            if not uploaded_files and not selected_saved and not has_rag:
-                st.error("파일을 업로드하거나 저장된 문서를 선택해주세요.")
+            if not uploaded_files and not selected_project and not has_rag:
+                st.error("파일을 업로드하거나 프로젝트를 선택해주세요.")
             elif not settings.get("api_key"):
                 st.error("설정에서 API Key를 먼저 입력해주세요.")
             else:
@@ -723,16 +798,12 @@ def _render_p2_step1_input(prefix, settings, config):
                     "structure_text": structure_text,
                     "uploaded_files": uploaded_files,
                     "context_text": context_text,
-                    "selected_saved_files": selected_saved,
+                    "selected_saved_files": [],
                     "generation_mode": generation_mode,
                     "generate_btn": True,
                 }
                 st.session_state[f"{prefix}_active_mode"] = template_option
-                if uploaded_files or selected_saved:
-                    _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option)
-                else:
-                    st.session_state[f"{prefix}_file_context"] = ""
-                    st.session_state[f"{prefix}_ocr_text"] = ""
+                _parse_and_cache_files(prefix, settings, uploaded_files, [], template_option, project_name=selected_project)
                 st.session_state[f"{prefix}_current_step"] = 2
                 st.rerun()
 
@@ -982,13 +1053,7 @@ def _render_p3_step2_rfi(prefix, settings, config):
                 key=f"{prefix}_s2_files", label_visibility="collapsed",
             )
 
-            saved_docs = utils.list_saved_docs()
-            selected_saved = []
-            if saved_docs:
-                selected_saved = st.multiselect(
-                    "📚 저장된 문서", saved_docs,
-                    key=f"{prefix}_s2_saved", label_visibility="collapsed",
-                )
+            selected_project, proj_doc_count = _render_project_doc_selector(prefix, "s2")
 
             st.caption("3. 추가 질문 및 확인 사항")
             context_text = st.text_area(
@@ -1034,14 +1099,14 @@ def _render_p3_step2_rfi(prefix, settings, config):
                     "rfi_existing": rfi_existing,
                     "generate_btn": True,
                     "generation_mode": "single",
-                    "selected_saved_files": selected_saved,
+                    "selected_saved_files": [],
                 }
                 st.session_state[f"{prefix}_inputs"] = rfi_inputs
                 st.session_state[f"{prefix}_active_mode"] = "rfi"
 
                 # Parse files
-                if uploaded_files or selected_saved:
-                    _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, "rfi")
+                if uploaded_files or selected_project:
+                    _parse_and_cache_files(prefix, settings, uploaded_files, [], "rfi", project_name=selected_project)
                 else:
                     existing_fc = st.session_state.get(f"{prefix}_file_context", "")
                     if not existing_fc:
@@ -1270,14 +1335,7 @@ def _render_step1_standard(prefix, settings, config):
             key=f"{prefix}_s1_files",
         )
 
-        saved_docs = utils.list_saved_docs()
-        selected_saved = []
-        if saved_docs:
-            selected_saved = st.multiselect(
-                "📚 저장된 문서에서 선택",
-                saved_docs,
-                key=f"{prefix}_s1_saved",
-            )
+        selected_project, proj_doc_count = _render_project_doc_selector(prefix, "s1")
 
         st.markdown("#### 💬 맥락 / 요청사항")
         context_text = st.text_area(
@@ -1331,8 +1389,8 @@ def _render_step1_standard(prefix, settings, config):
             use_container_width=True,
             key=f"{prefix}_s1_next",
         ):
-            if not uploaded_files and not selected_saved and not has_rag:
-                st.error("파일을 업로드하거나 저장된 문서를 선택해주세요.")
+            if not uploaded_files and not selected_project and not has_rag:
+                st.error("파일을 업로드하거나 프로젝트를 선택해주세요.")
             elif not settings.get("api_key"):
                 st.error("설정에서 API Key를 먼저 입력해주세요.")
             else:
@@ -1341,24 +1399,61 @@ def _render_step1_standard(prefix, settings, config):
                     "structure_text": structure_text,
                     "uploaded_files": uploaded_files,
                     "context_text": context_text,
-                    "selected_saved_files": selected_saved,
+                    "selected_saved_files": [],
                     "generation_mode": generation_mode,
                     "generate_btn": True,
                 }
                 st.session_state[f"{prefix}_active_mode"] = template_option
-                if uploaded_files or selected_saved:
-                    _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option)
-                else:
-                    st.session_state[f"{prefix}_file_context"] = ""
-                    st.session_state[f"{prefix}_ocr_text"] = ""
+                _parse_and_cache_files(prefix, settings, uploaded_files, [], template_option, project_name=selected_project)
                 st.session_state[f"{prefix}_current_step"] = 2
                 st.session_state[f"{prefix}_generation_complete"] = False
                 st.rerun()
 
 
-def _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option):
-    """Parse all files and cache the text in session state."""
+def _render_project_doc_selector(prefix, key_suffix="s1"):
+    """Render project document selector. Returns (project_name, doc_count)."""
+    projects = core_rag.list_projects()
+    if not projects:
+        return None, 0
+
+    current_project = st.session_state.get("current_project")
+    project_names = [p["name"] for p in projects]
+    options = ["(선택 안함)"] + project_names
+    default_idx = 0
+    if current_project and current_project in project_names:
+        default_idx = project_names.index(current_project) + 1
+
+    selected = st.selectbox(
+        "📂 프로젝트 문서 불러오기",
+        options,
+        index=default_idx,
+        key=f"{prefix}_{key_suffix}_project_docs",
+    )
+
+    if selected and selected != "(선택 안함)":
+        doc_count = core_rag.get_indexed_count(selected)
+        if doc_count > 0:
+            st.caption(f"'{selected}' 프로젝트의 {doc_count}개 문서가 컨텍스트에 포함됩니다.")
+        else:
+            st.caption(f"'{selected}' 프로젝트에 저장된 문서가 없습니다.")
+        return selected, doc_count
+    return None, 0
+
+
+def _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, template_option, project_name=None):
+    """Parse all files and cache the text in session state.
+    If project_name is given, also loads all project documents as base context.
+    """
     docai_config = settings.get("docai_config")
+
+    # 프로젝트 문서 로드 (base context)
+    project_context = ""
+    if project_name:
+        project_context = core_rag.load_all_project_docs(project_name)
+        if project_context:
+            project_context = f"--- [프로젝트 문서: {project_name}] ---\n{project_context}\n\n"
+
+    # 업로드/저장된 파일 파싱
     file_context, _ = core_logic.parse_all_files(
         uploaded_files,
         saved_files=selected_saved,
@@ -1372,8 +1467,10 @@ def _parse_and_cache_files(prefix, settings, uploaded_files, selected_saved, tem
         st.warning("⚠️ 일부 파일이 크기 제한으로 스킵되었습니다. 상세 내용은 생성 결과에 표시됩니다.")
     if "TRUNCATED" in file_context[:5000]:
         st.warning("⚠️ 일부 PDF가 페이지 제한으로 잘려서 처리되었습니다.")
-    st.session_state[f"{prefix}_file_context"] = file_context
-    st.session_state[f"{prefix}_ocr_text"] = file_context
+
+    combined = project_context + file_context
+    st.session_state[f"{prefix}_file_context"] = combined
+    st.session_state[f"{prefix}_ocr_text"] = combined
 
 
 # ========================================

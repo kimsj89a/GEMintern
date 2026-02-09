@@ -18,6 +18,7 @@ from typing import List, Dict, Any
 RAG_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage")
 PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
 DOCS_SUBDIR = "docs"  # 프로젝트 내 문서 저장 하위 폴더
+TRASH_SUBDIR = "_trash"  # 프로젝트 내 휴지통 하위 폴더
 
 
 # ========================================
@@ -347,3 +348,87 @@ def clear_rag_index(project_name: str):
         shutil.rmtree(docs_dir, ignore_errors=True)
     os.makedirs(docs_dir, exist_ok=True)
     _save_indexed_docs(project_name, [])
+
+
+# ========================================
+# Trash management (per-project)
+# ========================================
+
+def _get_trash_dir(project_name: str) -> str:
+    """Return the trash directory for a specific project."""
+    return os.path.join(_get_project_dir(project_name), TRASH_SUBDIR)
+
+
+def trash_document(project_name: str, doc_name: str) -> Dict[str, Any]:
+    """Move a document to the trash folder (soft delete)."""
+    docs_dir = _get_project_docs_dir(project_name)
+    trash_dir = _get_trash_dir(project_name)
+    os.makedirs(trash_dir, exist_ok=True)
+
+    # Find the actual file (original name or .md version)
+    safe_name = re.sub(r'[\\/*?:"<>|]', "_", os.path.splitext(doc_name)[0]).strip()
+    md_name = f"{safe_name}.md"
+    src_path = os.path.join(docs_dir, md_name)
+
+    if not os.path.exists(src_path):
+        return {"success": False, "error": f"파일을 찾을 수 없습니다: {doc_name}"}
+
+    dst_path = os.path.join(trash_dir, md_name)
+    shutil.move(src_path, dst_path)
+
+    # Remove from indexed docs list
+    indexed = _get_indexed_docs(project_name)
+    indexed = [d for d in indexed if d != doc_name]
+    _save_indexed_docs(project_name, indexed)
+
+    return {"success": True}
+
+
+def list_trash(project_name: str) -> List[str]:
+    """List documents in the trash folder."""
+    trash_dir = _get_trash_dir(project_name)
+    if not os.path.exists(trash_dir):
+        return []
+    return sorted([f for f in os.listdir(trash_dir) if f.endswith(".md")])
+
+
+def restore_from_trash(project_name: str, trash_filename: str) -> Dict[str, Any]:
+    """Restore a document from trash back to docs folder."""
+    trash_dir = _get_trash_dir(project_name)
+    docs_dir = _get_project_docs_dir(project_name)
+    os.makedirs(docs_dir, exist_ok=True)
+
+    src_path = os.path.join(trash_dir, trash_filename)
+    if not os.path.exists(src_path):
+        return {"success": False, "error": "휴지통에서 파일을 찾을 수 없습니다."}
+
+    dst_path = os.path.join(docs_dir, trash_filename)
+    shutil.move(src_path, dst_path)
+
+    # Re-add to indexed docs (use the .md filename as doc_name)
+    doc_name = os.path.splitext(trash_filename)[0]
+    indexed = _get_indexed_docs(project_name)
+    if doc_name not in indexed and trash_filename not in indexed:
+        indexed.append(doc_name)
+    _save_indexed_docs(project_name, indexed)
+
+    return {"success": True}
+
+
+def permanently_delete_from_trash(project_name: str, trash_filename: str) -> Dict[str, Any]:
+    """Permanently delete a document from trash."""
+    trash_dir = _get_trash_dir(project_name)
+    fpath = os.path.join(trash_dir, trash_filename)
+    if os.path.exists(fpath):
+        os.remove(fpath)
+        return {"success": True}
+    return {"success": False, "error": "파일을 찾을 수 없습니다."}
+
+
+def empty_trash(project_name: str) -> Dict[str, Any]:
+    """Permanently delete all documents in trash."""
+    trash_dir = _get_trash_dir(project_name)
+    if os.path.exists(trash_dir):
+        shutil.rmtree(trash_dir, ignore_errors=True)
+    os.makedirs(trash_dir, exist_ok=True)
+    return {"success": True}
