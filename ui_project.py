@@ -1,6 +1,6 @@
 """
-Project Hub UI for project-based RAG management.
-Users create projects, upload documents, and build RAG indexes before analysis.
+Project Hub UI for project-based document management.
+Users create projects, upload documents (parsed to markdown), and use them across all workflow steps.
 """
 
 import streamlit as st
@@ -15,12 +15,8 @@ def render_project_hub(settings):
         <div style='display:flex;align-items:center;gap:10px;margin-bottom:5px;'>
             <h2 style='margin:0;'>Project Hub</h2>
         </div>
-        <p style='color:gray;margin-top:0;'>프로젝트별 RAG 인덱스를 관리합니다. 분석 전에 프로젝트를 생성하고 문서를 인덱싱하세요.</p>
+        <p style='color:gray;margin-top:0;'>프로젝트별 문서를 관리합니다. 프로젝트를 생성하고 문서를 업로드하면, 이후 모든 분석 단계에서 활용됩니다.</p>
     """, unsafe_allow_html=True)
-
-    if not core_rag.is_rag_available():
-        st.warning("lightrag-hku가 설치되지 않았습니다. RAG 기능을 사용하려면 `pip install lightrag-hku`를 실행하세요.")
-        return
 
     col_list, col_detail = st.columns([2, 3], gap="medium")
 
@@ -98,7 +94,7 @@ def _render_project_list(settings):
 
 
 def _render_project_detail(settings):
-    """Right column: project detail, file upload, RAG indexing."""
+    """Right column: project detail, file upload, document storage."""
     current = st.session_state.get("current_project", "")
     if not current:
         st.info("왼쪽에서 프로젝트를 선택하거나 새로 생성하세요.")
@@ -115,17 +111,18 @@ def _render_project_detail(settings):
     st.markdown(f"#### {current}")
 
     if doc_count > 0:
-        st.success(f"RAG: {doc_count}개 문서 인덱싱됨")
-        with st.expander("인덱싱된 문서 목록", expanded=False):
+        st.success(f"{doc_count}개 문서 저장됨")
+        with st.expander("저장된 문서 목록", expanded=False):
             for d in indexed_docs:
                 st.text(f"  - {d}")
     else:
-        st.info("인덱싱된 문서가 없습니다. 아래에서 문서를 업로드하고 RAG 인덱스를 빌드하세요.")
+        st.info("저장된 문서가 없습니다. 아래에서 문서를 업로드하세요.")
 
     st.markdown("---")
 
     # File upload section
-    st.markdown("##### 문서 업로드 및 인덱싱")
+    st.markdown("##### 문서 업로드 및 저장")
+    st.caption("업로드된 파일은 마크다운으로 변환되어 프로젝트에 저장됩니다. 이후 모든 분석 단계에서 자동으로 활용됩니다.")
     uploaded_files = st.file_uploader(
         "파일 업로드",
         accept_multiple_files=True,
@@ -143,10 +140,10 @@ def _render_project_detail(settings):
             key=f"proj_saved_{current}",
         )
 
-    # Build RAG button
+    # Build button
     has_files = bool(uploaded_files) or bool(selected_saved)
     if st.button(
-        "RAG 인덱스 빌드",
+        "문서 저장",
         use_container_width=True,
         type="primary",
         disabled=not has_files,
@@ -156,36 +153,33 @@ def _render_project_detail(settings):
         if not api_key:
             st.error("설정에서 API Key를 먼저 입력해주세요.")
         else:
-            _build_rag_index(settings, current, uploaded_files, selected_saved)
+            _build_project_docs(settings, current, uploaded_files, selected_saved)
 
     st.markdown("---")
 
     # Management buttons
     c1, c2 = st.columns(2)
     with c1:
-        if saved_docs and st.button("저장된 문서 전체 인덱싱", use_container_width=True, key=f"proj_index_all_{current}"):
+        if saved_docs and st.button("저장된 문서 전체 가져오기", use_container_width=True, key=f"proj_index_all_{current}"):
             api_key = settings.get("api_key", "")
-            if not api_key:
-                st.error("API Key를 먼저 입력해주세요.")
-            else:
-                with st.spinner("저장된 문서 전체 인덱싱 중..."):
-                    result = core_rag.index_saved_documents(api_key, current)
-                    if result.get("success"):
-                        indexed = result.get("indexed", [])
-                        st.success(f"{len(indexed)}개 문서 인덱싱 완료")
-                        st.rerun()
-                    else:
-                        st.error(f"오류: {result.get('error', '')}")
+            with st.spinner("저장된 문서 전체를 프로젝트에 추가 중..."):
+                result = core_rag.index_saved_documents(api_key, current)
+                if result.get("success"):
+                    indexed = result.get("indexed", [])
+                    st.success(f"{len(indexed)}개 문서 추가 완료")
+                    st.rerun()
+                else:
+                    st.error(f"오류: {result.get('error', '')}")
 
     with c2:
-        if doc_count > 0 and st.button("인덱스 초기화", use_container_width=True, key=f"proj_clear_{current}"):
+        if doc_count > 0 and st.button("문서 초기화", use_container_width=True, key=f"proj_clear_{current}"):
             core_rag.clear_rag_index(current)
-            st.toast("인덱스가 초기화되었습니다.")
+            st.toast("프로젝트 문서가 초기화되었습니다.")
             st.rerun()
 
 
-def _build_rag_index(settings, project_name, uploaded_files, selected_saved):
-    """Parse files and build RAG index with progress bar."""
+def _build_project_docs(settings, project_name, uploaded_files, selected_saved):
+    """Parse files and save to project document store."""
     api_key = settings["api_key"]
     docai_config = settings.get("docai_config")
     texts = {}
@@ -225,11 +219,11 @@ def _build_rag_index(settings, project_name, uploaded_files, selected_saved):
 
     if not texts:
         progress.empty()
-        st.warning("인덱싱할 문서가 없습니다 (내용이 너무 짧음).")
+        st.warning("저장할 문서가 없습니다 (내용이 너무 짧음).")
         return
 
-    # Index into RAG
-    progress.progress(0.8, text="RAG 인덱싱 중...")
+    # Save to project
+    progress.progress(0.8, text="프로젝트에 문서 저장 중...")
     try:
         result = core_rag.index_texts(api_key, texts, project_name)
         progress.progress(1.0, text="완료!")
@@ -239,12 +233,12 @@ def _build_rag_index(settings, project_name, uploaded_files, selected_saved):
             skipped = result.get("skipped", [])
             msg_parts = []
             if indexed:
-                msg_parts.append(f"{len(indexed)}개 신규 인덱싱")
+                msg_parts.append(f"{len(indexed)}개 신규 저장")
             if skipped:
-                msg_parts.append(f"{len(skipped)}개 이미 인덱싱됨 (스킵)")
-            st.success(" / ".join(msg_parts) if msg_parts else "인덱싱 완료")
+                msg_parts.append(f"{len(skipped)}개 이미 저장됨 (스킵)")
+            st.success(" / ".join(msg_parts) if msg_parts else "저장 완료")
         else:
-            st.error(f"인덱싱 오류: {result.get('error', 'unknown')}")
+            st.error(f"저장 오류: {result.get('error', 'unknown')}")
 
         if result.get("errors"):
             for err in result["errors"]:
@@ -257,4 +251,4 @@ def _build_rag_index(settings, project_name, uploaded_files, selected_saved):
 
     except Exception as e:
         progress.empty()
-        st.error(f"RAG 인덱싱 실패: {e}")
+        st.error(f"문서 저장 실패: {e}")

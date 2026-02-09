@@ -544,37 +544,24 @@ def _render_p1_step2_organize(prefix, settings, config):
                         st.error(f"분석 오류: {e}")
 
     with col2:
-        rag_label = "❓ 추가 질문 정리 (RAG)" if has_rag else "❓ 추가 질문 정리"
+        rag_label = "❓ 추가 질문 정리" + (" (프로젝트 문서 참조)" if has_rag else "")
         if st.button(rag_label, key=f"{prefix}_s2_followup",
                       use_container_width=True):
             if not file_context.strip():
                 st.warning("분석할 자료가 없습니다. 이전 단계에서 자료를 업로드해주세요.")
             else:
-                with st.spinner("추가 질문 및 조사 항목을 도출 중..." + (" (RAG 인덱스 참조)" if has_rag else "")):
+                with st.spinner("추가 질문 및 조사 항목을 도출 중..." + (" (프로젝트 문서 참조)" if has_rag else "")):
                     try:
-                        # RAG 컨텍스트 보강
-                        rag_context = ""
+                        # 프로젝트 저장 문서를 추가 컨텍스트로 로드
+                        project_docs_context = ""
                         if has_rag:
-                            rag_queries = [
-                                "이 기업/투자 건에 대해 누락되거나 추가 확인이 필요한 정보는?",
-                                "핵심 리스크 요인과 추가 조사가 필요한 사항을 정리해주세요.",
-                                "재무 데이터 중 추가 검증이 필요한 항목은?",
-                            ]
-                            rag_results = core_rag.batch_query_rag(
-                                settings["api_key"], rag_queries, current_project, mode="mix"
-                            )
-                            rag_parts = []
-                            for r in rag_results:
-                                if r.get("success") and r.get("answer") and len(r["answer"].strip()) > 30:
-                                    rag_parts.append(f"Q: {r['query']}\n{r['answer']}")
-                            if rag_parts:
-                                rag_context = "\n\n".join(rag_parts)
+                            project_docs_context = core_rag.load_all_project_docs(current_project)
 
                         result = core_logic.generate_followup_questions(
                             settings["api_key"],
                             settings["model_name"],
                             file_context,
-                            rag_context=rag_context,
+                            rag_context=project_docs_context,
                         )
                         st.session_state[f"{prefix}_followup_questions"] = result
                         followup_questions = result
@@ -583,9 +570,9 @@ def _render_p1_step2_organize(prefix, settings, config):
 
     with col3:
         if current_project and core_rag.is_rag_available():
-            if st.button("📚 프로젝트 RAG 인덱싱", key=f"{prefix}_s2_rag_index",
+            if st.button("📚 프로젝트 문서 저장", key=f"{prefix}_s2_rag_index",
                           use_container_width=True):
-                st.info("프로젝트 허브에서 RAG 인덱싱을 진행해주세요.")
+                st.info("프로젝트 허브에서 문서 저장을 진행해주세요.")
 
     # Display results in tabs
     if organized_summary or followup_questions:

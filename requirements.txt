@@ -13,4 +13,3 @@ python-dotenv
 python-calamine
 tabulate
 openai
-lightrag-hku
