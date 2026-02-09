@@ -200,7 +200,7 @@ if "current_project" not in st.session_state:
         "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
         "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기",
     ],
-}
+)
 
 PHASE_PAGES = ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"]
 UTILITY_ANALYSIS_PAGES = ["📑 IM 작성", "🖥️ PPT 생성"]
