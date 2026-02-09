@@ -230,9 +230,22 @@ def _on_template_change(template_key, struct_key, custom_input_key=None):
         
     st.session_state[struct_key] = new_text
 
+def _render_project_docs_status(settings):
+    """프로젝트 문서 상태 표시 (각 탭 상단에 사용)"""
+    project_name = settings.get("project_name", "")
+    project_doc_names = settings.get("project_doc_names", [])
+    if project_name and project_doc_names:
+        st.success(f"📁 프로젝트 **{project_name}**: {len(project_doc_names)}개 문서가 분석에 자동 적용됩니다.")
+    elif not project_name:
+        st.info("💡 사이드바에서 프로젝트를 선택하면 자료를 체계적으로 관리할 수 있습니다.")
+    else:
+        st.info(f"ℹ️ 프로젝트 **{project_name}**에 저장된 문서가 없습니다.\n\n👈 **왼쪽 사이드바**에서 자료를 로드하거나, 아래에서 파일을 직접 업로드하세요.")
+
+
 def render_initial_review_panel(container, settings):
     """초기검토 (Quick Memo) - simple_review 전용 간소화 패널"""
     with container:
+        _render_project_docs_status(settings)
         template_option = 'simple_review'
 
         # 구조 미리보기 (접힌 상태, 편집 가능)
@@ -297,6 +310,7 @@ def render_initial_review_panel(container, settings):
 def render_investment_report_panel(container, settings):
     """투자분석 보고서 입력 패널 (약식, 투자심사, 직접입력)"""
     with container:
+        _render_project_docs_status(settings)
         # 1. 템플릿 선택
         template_options = {
             'simple_review': '1. 약식 투자검토 (요약)',
@@ -387,6 +401,7 @@ def render_investment_report_panel(container, settings):
 def render_rfi_panel(container, settings):
     """RFI 작성 입력 패널"""
     with container:
+        _render_project_docs_status(settings)
         template_option = 'rfi'
 
         # 1. 최근 RFI 목록 (Basis)
@@ -455,6 +470,7 @@ def render_rfi_panel(container, settings):
 def render_preliminary_dd_panel(container, settings):
     """예비실사 패널 - investment, im, management, presentation, free_summary, custom 통합"""
     with container:
+        _render_project_docs_status(settings)
         # 1. 템플릿 선택
         template_options = {
             'investment': '1. 투자심사보고서 (표준)',
@@ -542,6 +558,7 @@ def render_preliminary_dd_panel(container, settings):
 def render_im_ppt_panel(container, settings):
     """IM/PPT 생성 입력 패널"""
     with container:
+        _render_project_docs_status(settings)
         # 1. 템플릿 선택
         template_options = {
             'im': '1. IM (투자제안서)',
@@ -614,6 +631,7 @@ def render_im_ppt_panel(container, settings):
 def render_detailed_dd_panel(container, settings):
     """정밀실사 패널 - RFI with FDD/LDD 유형 선택"""
     with container:
+        _render_project_docs_status(settings)
         template_option = 'rfi'
 
         # DD 유형 선택

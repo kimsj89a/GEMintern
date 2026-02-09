@@ -226,7 +226,7 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
     if hasattr(uploaded_file, 'seek'):
         uploaded_file.seek(0)
 
-    return f"{text_content}\n\n"
+    return f"### [파일명: {uploaded_file.name}]\n{text_content}\n\n"
 
 def generate_filename(uploaded_files, template_option):
     template_map = {
@@ -436,3 +436,74 @@ def load_saved_doc(filename):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     return ""
+
+# ========================================
+# Project Management (프로젝트별 자료 관리)
+# ========================================
+PROJECTS_DIR = os.path.join(SAVED_DOCS_DIR, "projects")
+
+def _ensure_projects_dir():
+    if not os.path.exists(PROJECTS_DIR):
+        os.makedirs(PROJECTS_DIR)
+
+def list_projects():
+    """저장된 프로젝트 목록 반환"""
+    _ensure_projects_dir()
+    return sorted([
+        d for d in os.listdir(PROJECTS_DIR)
+        if os.path.isdir(os.path.join(PROJECTS_DIR, d))
+    ])
+
+def create_project(name):
+    """새 프로젝트 디렉토리 생성"""
+    _ensure_projects_dir()
+    safe_name = re.sub(r'[\\/*?:"<>|]', "", name).strip()
+    if not safe_name:
+        return None
+    path = os.path.join(PROJECTS_DIR, safe_name)
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return safe_name
+
+def delete_project(name):
+    """프로젝트 삭제"""
+    import shutil
+    path = os.path.join(PROJECTS_DIR, name)
+    if os.path.exists(path):
+        shutil.rmtree(path)
+
+def add_doc_to_project(project_name, filename, content):
+    """파싱된 문서를 프로젝트에 저장"""
+    path = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(path):
+        os.makedirs(path)
+    safe_name = os.path.basename(filename)
+    base, _ = os.path.splitext(safe_name)
+    save_path = os.path.join(path, f"{base}.md")
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return save_path
+
+def remove_doc_from_project(project_name, filename):
+    """프로젝트에서 문서 제거"""
+    path = os.path.join(PROJECTS_DIR, project_name, filename)
+    if os.path.exists(path):
+        os.remove(path)
+
+def list_project_docs(project_name):
+    """프로젝트 내 문서 목록"""
+    path = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(path):
+        return []
+    return sorted([f for f in os.listdir(path) if f.endswith(".md")])
+
+def load_all_project_docs(project_name):
+    """프로젝트 전체 문서 텍스트 반환"""
+    docs = list_project_docs(project_name)
+    all_text = ""
+    for doc_name in docs:
+        path = os.path.join(PROJECTS_DIR, project_name, doc_name)
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                all_text += f.read() + "\n\n"
+    return all_text

@@ -74,6 +74,13 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                         # Document AI 설정 가져오기
                         docai_config = settings.get('docai_config')
 
+                        # 프로젝트 문서 텍스트 (사이드바에서 로드됨)
+                        project_docs_text = settings.get('project_docs_text', '')
+                        if project_docs_text:
+                            project_name = settings.get('project_name', '')
+                            doc_count = len(settings.get('project_doc_names', []))
+                            st.write(f"📁 프로젝트 '{project_name}' 문서 {doc_count}개 적용됨")
+
                         if is_rfi_mode:
                             if inputs.get('uploaded_files'):
                                 st.write("📁 1. 업로드된 파일의 내용을 분석 중입니다 (OCR/Text)...")
@@ -111,6 +118,10 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                             )
                             # OCR 텍스트 저장 (다운로드용)
                             st.session_state[k_ocr] = file_context
+
+                        # 프로젝트 문서 병합
+                        if project_docs_text:
+                            file_context = project_docs_text + "\n\n" + file_context
 
                         st.write(f"🤖 2. AI가 [{st.session_state[k_mode]}] 템플릿으로 분석을 시작합니다..")
 
@@ -184,6 +195,10 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                                     docai_config=docai_config,
                                     template_option=ppt_inputs['template_option'],
                                 )
+                                # 프로젝트 문서 병합
+                                ppt_project_docs = settings.get('project_docs_text', '')
+                                if ppt_project_docs:
+                                    file_context = ppt_project_docs + "\n\n" + file_context
                                 stream = core_logic.generate_report_stream(
                                     settings['api_key'], settings['model_name'], ppt_inputs, settings['thinking_level'], file_context
                                 )
