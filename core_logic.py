@@ -82,7 +82,11 @@ def _get_system_prompt(template_opt):
         'presentation': 'ppt_system',
         'paper_review': 'paper_review_system',
         'free_summary': 'free_summary_system',
-        'custom': 'custom_system'
+        'custom': 'custom_system',
+        'teaser': 'teaser_system',
+        'term_sheet': 'term_sheet_system',
+        'loi_mou': 'loi_mou_system',
+        'dd_report': 'dd_report_system',
     }
     prompt_key = prompt_map.get(template_opt, 'custom_system')
     return prompts.LOGIC_PROMPTS.get(prompt_key, prompts.LOGIC_PROMPTS['custom_system'])
@@ -212,4 +216,48 @@ def refine_report_with_context(api_key, model_name, current_text, chat_history,
         temperature=0.3,
     )
     resp = client.models.generate_content(model=model_name, contents=refine_prompt, config=config)
+    return resp.text
+
+
+# ========================================
+# Phase-specific helper functions
+# ========================================
+
+def generate_material_summary(api_key, model_name, file_context):
+    """Phase 1: 수집 자료 요약 및 핵심 발견사항 추출"""
+    client = get_client(api_key)
+    system_prompt = prompts.LOGIC_PROMPTS.get('material_summary', '')
+    prompt = f"{system_prompt}\n\n[수집된 자료]\n{file_context[:50000]}"
+    config = types.GenerateContentConfig(
+        max_output_tokens=8192,
+        temperature=0.3,
+        system_instruction=system_prompt,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
+    return resp.text
+
+
+def evaluate_checklist_item(api_key, model_name, item_name, file_context):
+    """Phase 2: 투자 매력도 체크리스트 항목별 자동 평가"""
+    client = get_client(api_key)
+    template = prompts.LOGIC_PROMPTS.get('checklist_evaluation', '')
+    prompt = template.replace('{checklist_item}', item_name).replace('{file_context}', file_context[:30000])
+    config = types.GenerateContentConfig(
+        max_output_tokens=1024,
+        temperature=0.3,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
+    return resp.text
+
+
+def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
+    """Phase 3: 실사 자료에서 이슈 자동 추출 및 분류"""
+    client = get_client(api_key)
+    template = prompts.LOGIC_PROMPTS.get('dd_issue_analysis', '')
+    prompt = template.replace('{file_context}', file_context[:40000]).replace('{context_text}', context_text[:5000])
+    config = types.GenerateContentConfig(
+        max_output_tokens=8192,
+        temperature=0.3,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
     return resp.text

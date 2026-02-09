@@ -10,7 +10,7 @@ import ui_doctemplate
 import ui_text_organizer
 
 # --- 페이지 설정 ---
-st.set_page_config(layout="wide", page_title="GEM Intern v6.0", page_icon="💎")
+st.set_page_config(layout="wide", page_title="GEM Intern v7.0", page_icon="💎")
 
 # --- CSS 스타일 적용 ---
 st.markdown("""
@@ -21,7 +21,7 @@ st.markdown("""
     .badge-blue { background-color: #e6f0ff; color: #0068c9; border: 1px solid #b3d1ff; }
     .info-box { background-color: #fff8c5; padding: 10px; border-radius: 5px; border: 1px solid #e3d5a5; font-size: 0.85rem; color: #5c4b12; margin-bottom: 15px; }
     p, li, div { word-break: keep-all; overflow-wrap: break-word; }
-    
+
     /* 사이드바 네비게이션 버튼 스타일 (Gemini-like) */
     section[data-testid="stSidebar"] .stButton button {
         text-align: left;
@@ -43,12 +43,19 @@ st.markdown("""
         border-left: 4px solid #0068c9;
         border-radius: 0 4px 4px 0;
     }
+    /* 사이드바 섹션 헤더 */
+    .nav-section-header {
+        color: #6c757d;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        padding: 8px 20px 4px 20px;
+        letter-spacing: 0.5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- 상태 초기화 ---
-# if "generated_text" not in st.session_state: st.session_state.generated_text = "" # Removed global init
-
 if "app_started" not in st.session_state:
     st.session_state.app_started = False
 
@@ -58,13 +65,35 @@ if "selected_page" not in st.session_state:
 if "current_project" not in st.session_state:
     st.session_state.current_project = None
 
+# --- 네비게이션 구조 ---
+NAV_SECTIONS = {
+    "프로젝트": ["📂 프로젝트"],
+    "투자 프로세스": [
+        "📥 사전 정보 수집",
+        "📊 예비실사",
+        "🔍 정밀실사",
+    ],
+    "독립 도구": [
+        "📑 IM 작성",
+        "🖥️ PPT 생성",
+    ],
+    "유틸리티": [
+        "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
+        "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기",
+    ],
+}
+
+PHASE_PAGES = ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"]
+UTILITY_ANALYSIS_PAGES = ["📑 IM 작성", "🖥️ PPT 생성"]
+
+
 def main():
     if not st.session_state.app_started:
         st.markdown("""
             <div class="title-container">
                 <h1>💎 GEM Intern</h1>
-                <span class="badge">v6.0</span>
-                <span class="badge badge-blue">Cloud-Safe Indexer</span>
+                <span class="badge">v7.0</span>
+                <span class="badge badge-blue">3-Phase Workflow</span>
             </div>
             <p style='color: gray; margin-top: -10px; margin-bottom: 10px;'>AI-Powered Investment Analysis Assistant</p>
         """, unsafe_allow_html=True)
@@ -72,11 +101,10 @@ def main():
         # [화면 1] 설정 페이지 (메인)
         st.markdown("### ⚙️ 환경 설정 (Settings)")
         st.info("업무를 시작하기 전에 필요한 설정을 완료해주세요.")
-        
-        # 설정 패널 렌더링 (메인 영역)
+
         settings = ui_input.render_settings()
-        st.session_state['latest_settings'] = settings  # 설정값 저장
-        
+        st.session_state['latest_settings'] = settings
+
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -84,9 +112,9 @@ def main():
                 st.session_state.app_started = True
                 st.session_state.selected_page = "📂 프로젝트"
                 st.rerun()
-                
+
     else:
-        # 설정값 불러오기 (없으면 기본값 복구)
+        # 설정값 불러오기
         settings = st.session_state.get('latest_settings', {
             "api_key": st.session_state.get("api_key", ""),
             "model_name": st.session_state.get("model_name", "gemini-2.0-flash-thinking-exp-1219"),
@@ -97,9 +125,9 @@ def main():
 
         # [화면 2] 업무 프로세스 (사이드바 레이아웃)
         with st.sidebar:
-            st.markdown("### 📂 업무 프로세스")
+            st.markdown("### 💎 GEM Intern v7.0")
             st.markdown("<br>", unsafe_allow_html=True)
-            
+
             # 현재 프로젝트 표시
             current_proj = st.session_state.get("current_project")
             if current_proj:
@@ -111,37 +139,33 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-            # 네비게이션 항목 정의
-            nav_items = [
-                "📂 프로젝트",
-                "📋 초기검토", "📊 예비실사", "📑 IM 작성", "🔍 정밀실사",
-                "🖥️ PPT 생성", "🎤 오디오 전사", "🌐 웹 크롤러",
-                "👁️ 문서 OCR", "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기"
-            ]
-            
-            # 버튼 기반 네비게이션 렌더링
-            for item in nav_items:
-                is_active = (st.session_state.selected_page == item)
-                if st.button(item, key=f"nav_{item}", use_container_width=True, type="primary" if is_active else "secondary"):
-                    st.session_state.selected_page = item
-                    st.rerun()
+            # 그룹별 네비게이션 렌더링
+            for section_name, items in NAV_SECTIONS.items():
+                st.markdown(
+                    f"<div class='nav-section-header'>{section_name}</div>",
+                    unsafe_allow_html=True,
+                )
+                for item in items:
+                    is_active = (st.session_state.selected_page == item)
+                    if st.button(item, key=f"nav_{item}", use_container_width=True,
+                                 type="primary" if is_active else "secondary"):
+                        st.session_state.selected_page = item
+                        st.rerun()
 
             st.markdown("---")
-            
+
             # 설정 수정 버튼
-            if st.button("⚙️ 설정 수정", key="nav_settings", use_container_width=True, type="primary" if st.session_state.selected_page == "SETTINGS" else "secondary"):
+            if st.button("⚙️ 설정 수정", key="nav_settings", use_container_width=True,
+                          type="primary" if st.session_state.selected_page == "SETTINGS" else "secondary"):
                 st.session_state.selected_page = "SETTINGS"
                 st.rerun()
-                
+
             if st.button("🏠 처음으로", key="nav_home", use_container_width=True):
                 st.session_state.app_started = False
                 st.rerun()
 
         # 메인 콘텐츠 영역
         selected_page = st.session_state.selected_page
-
-        # 분석/생성 페이지 그룹 (우측 사이드바 레이아웃 적용)
-        analysis_pages = ["📋 초기검토", "📊 예비실사", "📑 IM 작성", "🔍 정밀실사", "🖥️ PPT 생성"]
 
         if selected_page == "📂 프로젝트":
             ui_project.render_project_hub(settings)
@@ -151,14 +175,17 @@ def main():
             st.info("설정을 수정한 후 하단의 '적용' 버튼을 눌러주세요.")
             updated_settings = ui_input.render_settings()
             st.session_state['latest_settings'] = updated_settings
-            
+
             st.markdown("---")
             if st.button("✅ 설정 적용 및 업무 복귀", type="primary"):
-                st.session_state.selected_page = "📋 초기검토"
+                st.session_state.selected_page = "📥 사전 정보 수집"
                 st.rerun()
 
-        elif selected_page in analysis_pages:
-            ui_workflow.render_step_workflow(settings, selected_page)
+        elif selected_page in PHASE_PAGES:
+            ui_workflow.render_phase_workflow(settings, selected_page)
+
+        elif selected_page in UTILITY_ANALYSIS_PAGES:
+            ui_workflow.render_standard_workflow(settings, selected_page)
 
         elif selected_page == "🎤 오디오 전사":
             ui_audio.render_audio_transcription_panel(settings)
