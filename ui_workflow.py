@@ -31,6 +31,27 @@ def _strip_preamble(text):
     return text
 
 
+def _render_result_actions(prefix, key_suffix, content):
+    """결과물에 복사/저장 버튼을 추가하는 헬퍼."""
+    col_copy, col_save = st.columns(2)
+    with col_copy:
+        if st.button("📋 복사", key=f"{prefix}_{key_suffix}_copy", use_container_width=True):
+            st.session_state[f"{prefix}_{key_suffix}_show_copy"] = True
+            st.toast("아래 코드블록에서 복사하세요.", icon="📋")
+    with col_save:
+        st.download_button(
+            "📄 Word 저장",
+            utils.create_docx(content),
+            f"{key_suffix}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
+            key=f"{prefix}_{key_suffix}_save",
+        )
+    if st.session_state.get(f"{prefix}_{key_suffix}_show_copy"):
+        st.code(content, language="markdown")
+        st.session_state[f"{prefix}_{key_suffix}_show_copy"] = False
+
+
 # ========================================
 # Phase configurations (3-phase workflow)
 # ========================================
@@ -506,6 +527,7 @@ def _render_p1_tab_analyze(prefix, settings, config):
         result_container = st.container(height=500, border=True)
         with result_container:
             st.markdown(organized_summary)
+        _render_result_actions(prefix, "analysis", organized_summary)
     else:
         st.info("위 버튼을 눌러 AI 분석을 실행하세요.")
 
@@ -550,6 +572,25 @@ def _render_p1_tab_questions(prefix, settings, config):
         result_container = st.container(height=500, border=True)
         with result_container:
             st.markdown(followup_questions)
+
+        # 복사/저장 버튼
+        _render_result_actions(prefix, "followup_q", followup_questions)
+
+        # 사용자 직접 질문 추가
+        st.markdown("---")
+        st.markdown("##### ✏️ 질문 직접 추가")
+        user_question = st.text_area(
+            "추가할 질문을 입력하세요",
+            height=100,
+            placeholder="예: 최근 3년간 고객 이탈률 추이는?\n예: 핵심 인력의 경업금지 조항 존재 여부?",
+            key=f"{prefix}_user_question_input",
+            label_visibility="collapsed",
+        )
+        if st.button("➕ 질문 추가", key=f"{prefix}_add_user_question",
+                      use_container_width=True) and user_question.strip():
+            appended = followup_questions + f"\n\n## ✏️ 추가 질문 (수동 입력)\n{user_question.strip()}"
+            st.session_state[f"{prefix}_followup_questions"] = appended
+            st.rerun()
     else:
         st.info("위 버튼을 눌러 추가 질문을 생성하세요.")
 
@@ -680,6 +721,14 @@ def _render_p1_tab_report(prefix, settings, config):
             result_container = st.container(height=500, border=True)
             with result_container:
                 st.markdown(generated_text)
+
+            # 복사 버튼
+            if st.button("📋 복사", key=f"{prefix}_tab_report_copy", use_container_width=False):
+                st.session_state[f"{prefix}_tab_report_show_copy"] = True
+                st.toast("아래 코드블록에서 복사하세요.", icon="📋")
+            if st.session_state.get(f"{prefix}_tab_report_show_copy"):
+                st.code(generated_text, language="markdown")
+                st.session_state[f"{prefix}_tab_report_show_copy"] = False
 
             # Download buttons
             st.markdown("")
@@ -1142,6 +1191,7 @@ def _render_p3_step2_rfi(prefix, settings, config):
             rfi_container = st.container(height=400, border=True)
             with rfi_container:
                 st.markdown(rfi_text)
+            _render_result_actions(prefix, "rfi_track", rfi_text)
         else:
             st.info("RFI 생성 탭에서 먼저 RFI를 생성해주세요.")
 
@@ -1212,6 +1262,7 @@ def _render_p3_step3_checkpoint(prefix, settings, config):
         analysis_container = st.container(height=350, border=True)
         with analysis_container:
             st.markdown(ai_analysis)
+        _render_result_actions(prefix, "dd_analysis", ai_analysis)
 
     # Manual issue log
     st.markdown("##### ✏️ 이슈 직접 추가")
@@ -1490,6 +1541,7 @@ def _render_step_generate(prefix, settings, config, step_number=2, total_steps=4
         result_container = st.container(height=500, border=True)
         with result_container:
             st.markdown(st.session_state[f"{prefix}_generated_text"])
+        _render_result_actions(prefix, "sg_result", st.session_state[f"{prefix}_generated_text"])
 
         st.markdown("")
         c1, c2, c3 = st.columns([1, 1, 1])
