@@ -63,7 +63,7 @@ PHASE_CONFIGS = {
         "title": "📥 사전 정보 수집 및 접촉",
         "subtitle": "공개 자료 기반 기업/산업/인력 사전 조사 및 자료 수집 정리",
         "page_type": "collection",
-        "tabs": ["📁 자료 수집", "🔍 자료 분석", "❓ 추가 질문 정리", "📝 보고서 생성"],
+        "tabs": ["📁 자료 수집", "🔍 자료 분석", "💬 자료 기반 답변", "❓ 추가 질문 정리", "📝 보고서 생성"],
         "default_template": "simple_review",
         "template_options": {
             "simple_review": "1. 약식 투자검토 (Quick Memo)",
@@ -376,12 +376,14 @@ def _render_phase1_tabs(prefix, settings, config):
     st.caption(config["subtitle"])
 
     tab_labels = config["tabs"]
-    tab_collect, tab_analyze, tab_questions, tab_report = st.tabs(tab_labels)
+    tab_collect, tab_analyze, tab_qa, tab_questions, tab_report = st.tabs(tab_labels)
 
     with tab_collect:
         _render_p1_tab_collect(prefix, settings, config)
     with tab_analyze:
         _render_p1_tab_analyze(prefix, settings, config)
+    with tab_qa:
+        _render_p1_tab_qa(prefix, settings, config)
     with tab_questions:
         _render_p1_tab_questions(prefix, settings, config)
     with tab_report:
@@ -558,6 +560,90 @@ def _render_p1_tab_analyze(prefix, settings, config):
                     st.error(f"후속 분석 오류: {e}")
     else:
         st.info("위 버튼을 눌러 AI 분석을 실행하세요.")
+
+
+def _render_p1_tab_qa(prefix, settings, config):
+    """Tab: 자료 기반 답변 - 로드된 자료를 기반으로 Q&A."""
+    file_context = st.session_state.get(f"{prefix}_file_context", "")
+
+    if not file_context.strip():
+        st.info("먼저 '자료 수집' 탭에서 자료를 로드해주세요.")
+        return
+
+    current_project = st.session_state.get("current_project")
+    has_rag = (current_project and core_rag.is_rag_available()
+               and core_rag.is_indexed(current_project))
+
+    rag_note = " (프로젝트 문서 포함)" if has_rag else ""
+    st.caption(f"참조 컨텍스트: {len(file_context):,}자{rag_note}")
+
+    # Q&A 히스토리
+    qa_key = f"{prefix}_qa_history"
+    if qa_key not in st.session_state:
+        st.session_state[qa_key] = []
+
+    qa_history = st.session_state[qa_key]
+
+    # 히스토리 표시
+    if qa_history:
+        qa_container = st.container(height=500, border=True)
+        with qa_container:
+            for i, qa in enumerate(qa_history):
+                st.markdown(f"**Q{i+1}. {qa['question']}**")
+                st.markdown(qa["answer"])
+                st.markdown("---")
+
+        # 전체 복사/저장
+        full_qa_text = ""
+        for i, qa in enumerate(qa_history):
+            full_qa_text += f"## Q{i+1}. {qa['question']}\n\n{qa['answer']}\n\n---\n\n"
+        _render_result_actions(prefix, "qa_full", full_qa_text)
+
+        # 초기화 버튼
+        if st.button("🗑️ Q&A 초기화", key=f"{prefix}_qa_clear"):
+            st.session_state[qa_key] = []
+            st.rerun()
+    else:
+        st.info("아래에 질문을 입력하면 로드된 자료를 기반으로 답변합니다.")
+
+    # 질문 입력
+    st.markdown("---")
+    question = st.text_input(
+        "질문을 입력하세요",
+        placeholder="예: 이 회사의 주요 매출원은? / 최근 3년 영업이익률 추이는?",
+        key=f"{prefix}_qa_question_input",
+    )
+    if st.button("💬 답변 요청", key=f"{prefix}_qa_submit",
+                  type="primary", use_container_width=True) and question.strip():
+        with st.spinner("자료를 참조하여 답변 중..."):
+            try:
+                project_docs_context = ""
+                if has_rag:
+                    project_docs_context = core_rag.load_all_project_docs(current_project)
+
+                # 이전 Q&A를 컨텍스트로 포함
+                prev_qa = ""
+                if qa_history:
+                    prev_qa = "\n".join(
+                        f"Q: {qa['question']}\nA: {qa['answer']}"
+                        for qa in qa_history[-5:]  # 최근 5개만
+                    )
+
+                answer = core_logic.generate_qa_answer(
+                    settings["api_key"],
+                    settings["model_name"],
+                    file_context,
+                    question.strip(),
+                    prev_qa_context=prev_qa,
+                    rag_context=project_docs_context,
+                )
+                st.session_state[qa_key].append({
+                    "question": question.strip(),
+                    "answer": answer,
+                })
+                st.rerun()
+            except Exception as e:
+                st.error(f"답변 생성 오류: {e}")
 
 
 def _render_p1_tab_questions(prefix, settings, config):

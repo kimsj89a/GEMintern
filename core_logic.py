@@ -276,6 +276,36 @@ def generate_followup_analysis(api_key, model_name, file_context, existing_analy
     return resp.text
 
 
+def generate_qa_answer(api_key, model_name, file_context, question, prev_qa_context="", rag_context=""):
+    """자료 기반 Q&A - 로드된 자료를 참조하여 사용자 질문에 답변"""
+    client = get_client(api_key)
+    prev_section = f"\n[이전 Q&A 맥락]\n{prev_qa_context}\n" if prev_qa_context else ""
+    rag_section = f"\n[프로젝트 문서]\n{rag_context[:15000]}\n" if rag_context else ""
+    prompt_text = f"""당신은 PE/VC 투자 분석 전문가입니다. 주어진 자료를 철저히 참조하여 질문에 정확하게 답변하십시오.
+
+[참조 자료]
+{file_context[:40000]}
+{rag_section}
+{prev_section}
+
+[질문]
+{question}
+
+[답변 지침]
+- 반드시 참조 자료에 근거하여 답변하세요
+- 자료에 명시된 수치, 데이터가 있으면 구체적으로 인용하세요
+- 자료에서 직접 확인되지 않는 내용은 "자료에서 직접 확인되지 않음"이라고 명시하세요
+- 핵심 내용을 먼저, 부연 설명을 뒤에 배치하세요
+- 관련 데이터가 있으면 표로 정리하세요
+"""
+    config = types.GenerateContentConfig(
+        max_output_tokens=4096,
+        temperature=0.2,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt_text, config=config)
+    return resp.text
+
+
 def generate_followup_questions(api_key, model_name, file_context, rag_context=""):
     """Phase 1: 수집 자료 기반 추가 질문 및 조사 항목 도출 (RAG 연동)"""
     client = get_client(api_key)
