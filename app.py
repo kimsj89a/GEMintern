@@ -170,6 +170,7 @@ def render_project_sidebar(settings):
 
 
 NAV_SECTIONS = {
+    "Main": ["🏠 홈", "📂 프로젝트"],
     "Phase Workflow": ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"],
     "Independent Tools": ["📑 IM 작성", "🖥️ PPT 생성"],
     "Utilities": [
@@ -181,6 +182,55 @@ NAV_SECTIONS = {
 PHASE_PAGES = ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"]
 UTILITY_ANALYSIS_PAGES = ["📑 IM 작성", "🖥️ PPT 생성"]
 
+def render_dashboard(settings):
+    """메인 대시보드 화면"""
+    st.markdown("### 🏠 GEM Intern Dashboard")
+    st.markdown("투자 분석 업무의 단계를 선택하세요.")
+    
+    # 1. Phase Workflow
+    st.markdown("#### 🚀 Investment Workflow")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.info("**Phase 1**")
+        if st.button("📥 사전 정보 수집", use_container_width=True, key="dash_p1"):
+            st.session_state.selected_page = "📥 사전 정보 수집"
+            st.rerun()
+        st.caption("자료 수집, 시장 조사, 초기 검토")
+
+    with col2:
+        st.info("**Phase 2**")
+        if st.button("📊 예비실사", use_container_width=True, key="dash_p2"):
+            st.session_state.selected_page = "📊 예비실사"
+            st.rerun()
+        st.caption("가치평가, 체크리스트, 투자심의")
+
+    with col3:
+        st.info("**Phase 3**")
+        if st.button("🔍 정밀실사", use_container_width=True, key="dash_p3"):
+            st.session_state.selected_page = "🔍 정밀실사"
+            st.rerun()
+        st.caption("FDD/LDD, RFI 관리, 이슈 분석")
+
+    st.markdown("---")
+    
+    # 2. Tools & Project
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### 🛠️ Independent Tools")
+        if st.button("📑 IM 작성", use_container_width=True, key="dash_im"):
+            st.session_state.selected_page = "📑 IM 작성"
+            st.rerun()
+        if st.button("🖥️ PPT 생성", use_container_width=True, key="dash_ppt"):
+            st.session_state.selected_page = "🖥️ PPT 생성"
+            st.rerun()
+            
+    with c2:
+        st.markdown("#### 📂 Project")
+        if st.button("📂 프로젝트 관리", use_container_width=True, type="primary", key="dash_proj"):
+            st.session_state.selected_page = "📂 프로젝트"
+            st.rerun()
+        st.caption("문서 저장소 및 RAG 설정")
 
 def main():
     if not st.session_state.app_started:
@@ -205,7 +255,7 @@ def main():
         with col2:
             if st.button("✅ 설정 적용 및 업무 시작", type="primary", use_container_width=True):
                 st.session_state.app_started = True
-                st.session_state.selected_page = "📂 프로젝트"
+                st.session_state.selected_page = "🏠 홈"
                 st.rerun()
 
     else:
@@ -254,7 +304,10 @@ def main():
         # 메인 콘텐츠 영역
         selected_page = st.session_state.selected_page
 
-        if selected_page == "📂 프로젝트":
+        if selected_page == "🏠 홈":
+            render_dashboard(settings)
+
+        elif selected_page == "📂 프로젝트":
             ui_project.render_project_hub(settings)
 
         elif selected_page == "SETTINGS":
