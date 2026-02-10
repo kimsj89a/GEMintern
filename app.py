@@ -69,7 +69,7 @@ def render_project_sidebar(settings):
         st.markdown("## 📁 프로젝트 자료 관리")
 
         # 프로젝트 선택/생성
-        projects = utils.list_projects()
+        projects = [p["name"] for p in core_rag.list_projects()]
         project_options = ["-- 선택하세요 --"] + projects + ["➕ 새 프로젝트 만들기"]
 
         if "current_project" not in st.session_state:
@@ -91,12 +91,12 @@ def render_project_sidebar(settings):
         if selected == "➕ 새 프로젝트 만들기":
             new_name = st.text_input("새 프로젝트 이름", placeholder="예: Redvelvet", key="sidebar_new_project")
             if st.button("프로젝트 생성", key="sidebar_create_project") and new_name:
-                created = utils.create_project(new_name)
-                if created:
-                    st.session_state["current_project"] = created
+                result = core_rag.create_project(new_name)
+                if result["success"]:
+                    st.session_state["current_project"] = result["project"]["name"]
                     st.rerun()
                 else:
-                    st.error("유효하지 않은 프로젝트 이름입니다.")
+                    st.error(result["error"])
         elif selected and selected != "-- 선택하세요 --":
             st.session_state["current_project"] = selected
         else:
@@ -123,7 +123,7 @@ def render_project_sidebar(settings):
                     for file in uploaded_files:
                         parsed = utils.parse_uploaded_file(file, api_key=api_key, docai_config=docai_config)
                         if parsed:
-                            utils.add_doc_to_project(current_project, file.name, parsed)
+                            core_rag.index_texts(api_key, {file.name: parsed}, current_project)
                             loaded_count += 1
                 if loaded_count > 0:
                     st.success(f"✅ {loaded_count}개 파일 로드 완료! (프로젝트 문서함에 저장됨)")
@@ -132,7 +132,7 @@ def render_project_sidebar(settings):
                     st.error("❌ 로드된 파일이 없습니다. (빈 파일이거나 지원되지 않는 형식)")
 
             # 현재 프로젝트 문서 목록
-            docs = utils.list_project_docs(current_project)
+            docs = core_rag.get_indexed_doc_names(current_project)
             if docs:
                 st.success(f"프로젝트 **{current_project}** - {len(docs)}개 문서 로드됨")
                 with st.expander("📚 로드된 문서 목록", expanded=False):
@@ -142,7 +142,7 @@ def render_project_sidebar(settings):
                             st.caption(doc_name)
                         with col2:
                             if st.button("🗑", key=f"del_{doc_name}", help="문서 삭제"):
-                                utils.remove_doc_from_project(current_project, doc_name)
+                                core_rag.trash_document(current_project, doc_name)
                                 st.rerun()
             else:
                 st.info("파일을 업로드하고 '자료 로드' 버튼을 눌러주세요.")
@@ -150,7 +150,7 @@ def render_project_sidebar(settings):
             # 프로젝트 삭제
             st.markdown("---")
             if st.button("🗑️ 프로젝트 삭제", key="sidebar_delete_project", type="secondary"):
-                utils.delete_project(current_project)
+                core_rag.delete_project(current_project)
                 st.session_state["current_project"] = ""
                 st.rerun()
 
@@ -158,9 +158,9 @@ def render_project_sidebar(settings):
     project_docs_text = ""
     project_doc_names = []
     if current_project:
-        project_doc_names = utils.list_project_docs(current_project)
+        project_doc_names = core_rag.get_indexed_doc_names(current_project)
         if project_doc_names:
-            project_docs_text = utils.load_all_project_docs(current_project)
+            project_docs_text = core_rag.load_all_project_docs(current_project)
 
     return {
         "project_name": current_project,
