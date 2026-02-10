@@ -224,7 +224,7 @@ def main():
             st.markdown("<br>", unsafe_allow_html=True)
 
             # 프로젝트 퀵 스위처 렌더링
-            render_project_sidebar()
+            render_project_sidebar(settings)
 
             # 그룹별 네비게이션 렌더링
             for section_name, items in NAV_SECTIONS.items():
