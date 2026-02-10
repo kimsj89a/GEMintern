@@ -237,6 +237,45 @@ def generate_material_summary(api_key, model_name, file_context):
     return resp.text
 
 
+def generate_followup_analysis(api_key, model_name, file_context, existing_analysis, user_input):
+    """사용자 요청 기반 후속 분석 - 기존 분석 결과에 추가 심화 분석 수행"""
+    client = get_client(api_key)
+    prompt_text = f"""당신은 PE/VC 투자 분석 전문가입니다.
+
+[원본 자료]
+{file_context[:30000]}
+
+[기존 분석 결과]
+{existing_analysis[:10000]}
+
+[사용자 추가 분석 요청]
+{user_input}
+
+위 사용자의 요청을 바탕으로 기존 분석을 보완하는 **후속 심화 분석**을 수행하십시오.
+
+[출력 형식]
+## 🔎 후속 분석: {user_input[:50]}
+
+### 핵심 발견사항
+- ...
+
+### 상세 분석
+(사용자 요청 영역에 대한 구체적 분석 내용. 수치, 근거, 비교 등 포함)
+
+### 시사점 및 리스크
+- ...
+
+### 추가 확인 필요 사항
+- ...
+"""
+    config = types.GenerateContentConfig(
+        max_output_tokens=4096,
+        temperature=0.3,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt_text, config=config)
+    return resp.text
+
+
 def generate_followup_questions(api_key, model_name, file_context, rag_context=""):
     """Phase 1: 수집 자료 기반 추가 질문 및 조사 항목 도출 (RAG 연동)"""
     client = get_client(api_key)

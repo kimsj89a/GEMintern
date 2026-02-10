@@ -528,6 +528,34 @@ def _render_p1_tab_analyze(prefix, settings, config):
         with result_container:
             st.markdown(organized_summary)
         _render_result_actions(prefix, "analysis", organized_summary)
+
+        # 후속 분석 생성
+        st.markdown("---")
+        st.markdown("##### 🔎 후속 분석 요청")
+        user_analysis_input = st.text_area(
+            "추가로 분석이 필요한 영역을 입력하세요",
+            height=100,
+            placeholder="예: 매출 구성 비중 변화 추이를 더 상세히 분석해줘\n예: 경쟁사 대비 마진율 비교 분석 필요",
+            key=f"{prefix}_user_analysis_input",
+            label_visibility="collapsed",
+        )
+        if st.button("🔎 후속 분석 실행", key=f"{prefix}_run_followup_analysis",
+                      type="primary", use_container_width=True) and user_analysis_input.strip():
+            with st.spinner("추가 분석을 수행 중..."):
+                try:
+                    additional = core_logic.generate_followup_analysis(
+                        settings["api_key"],
+                        settings["model_name"],
+                        file_context,
+                        organized_summary,
+                        user_analysis_input.strip(),
+                    )
+                    st.session_state[f"{prefix}_organized_summary"] = (
+                        organized_summary + "\n\n" + additional
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"후속 분석 오류: {e}")
     else:
         st.info("위 버튼을 눌러 AI 분석을 실행하세요.")
 
