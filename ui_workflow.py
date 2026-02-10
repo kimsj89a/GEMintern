@@ -576,21 +576,38 @@ def _render_p1_tab_questions(prefix, settings, config):
         # 복사/저장 버튼
         _render_result_actions(prefix, "followup_q", followup_questions)
 
-        # 사용자 직접 질문 추가
+        # 후속 질문 생성
         st.markdown("---")
-        st.markdown("##### ✏️ 질문 직접 추가")
-        user_question = st.text_area(
-            "추가할 질문을 입력하세요",
+        st.markdown("##### 🔎 후속 질문 추가")
+        user_input = st.text_area(
+            "추가 확인이 필요한 영역이나 관심사를 입력하세요",
             height=100,
-            placeholder="예: 최근 3년간 고객 이탈률 추이는?\n예: 핵심 인력의 경업금지 조항 존재 여부?",
+            placeholder="예: 고객 이탈률 및 리텐션 관련 심층 분석 필요\n예: 핵심 인력 유지 방안과 경업금지 조항 확인",
             key=f"{prefix}_user_question_input",
             label_visibility="collapsed",
         )
-        if st.button("➕ 질문 추가", key=f"{prefix}_add_user_question",
-                      use_container_width=True) and user_question.strip():
-            appended = followup_questions + f"\n\n## ✏️ 추가 질문 (수동 입력)\n{user_question.strip()}"
-            st.session_state[f"{prefix}_followup_questions"] = appended
-            st.rerun()
+        if st.button("🔎 후속 질문 생성", key=f"{prefix}_add_user_question",
+                      type="primary", use_container_width=True) and user_input.strip():
+            with st.spinner("입력 내용을 분석하고 후속 질문을 생성 중..."):
+                try:
+                    project_docs_context = ""
+                    if has_rag:
+                        project_docs_context = core_rag.load_all_project_docs(current_project)
+
+                    additional = core_logic.generate_additional_questions(
+                        settings["api_key"],
+                        settings["model_name"],
+                        file_context,
+                        followup_questions,
+                        user_input.strip(),
+                        rag_context=project_docs_context,
+                    )
+                    st.session_state[f"{prefix}_followup_questions"] = (
+                        followup_questions + "\n\n" + additional
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"후속 질문 생성 오류: {e}")
     else:
         st.info("위 버튼을 눌러 추가 질문을 생성하세요.")
 

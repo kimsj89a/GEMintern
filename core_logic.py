@@ -251,6 +251,50 @@ def generate_followup_questions(api_key, model_name, file_context, rag_context="
     return resp.text
 
 
+def generate_additional_questions(api_key, model_name, file_context, existing_questions, user_input, rag_context=""):
+    """사용자 입력 기반 후속 질문 생성 - 기존 질문 + 사용자 관심사를 반영하여 심화 질문 도출"""
+    client = get_client(api_key)
+    prompt_text = f"""당신은 PE/VC 투자 리서치 전문가입니다.
+
+[기존 분석 자료]
+{file_context[:30000]}
+
+[기존 도출된 질문/조사 항목]
+{existing_questions[:10000]}
+
+{f"[프로젝트 문서 참조]{chr(10)}{rag_context[:10000]}" if rag_context else ""}
+
+[사용자 추가 요청/관심 영역]
+{user_input}
+
+위 사용자의 추가 요청/관심 영역을 바탕으로:
+1. 해당 영역에 대한 심화 확인 질문 (경영진/대상기업 대상) 5~10개
+2. 추가 조사가 필요한 세부 항목 (표 형태)
+3. 기존 질문과의 연관성 및 우선순위 정리
+
+[출력 형식]
+## 🔎 후속 질문 (사용자 요청 기반)
+
+### 핵심 확인 질문
+1. ...
+(각 질문에 배경/목적 병기)
+
+### 추가 조사 항목
+| 영역 | 조사 항목 | 목적 | 우선순위 |
+| :--- | :--- | :--- | :--- |
+| ... | ... | ... | ... |
+
+### 기존 질문과의 연관성
+- ...
+"""
+    config = types.GenerateContentConfig(
+        max_output_tokens=4096,
+        temperature=0.3,
+    )
+    resp = client.models.generate_content(model=model_name, contents=prompt_text, config=config)
+    return resp.text
+
+
 def evaluate_checklist_item(api_key, model_name, item_name, file_context):
     """Phase 2: 투자 매력도 체크리스트 항목별 자동 평가"""
     client = get_client(api_key)
