@@ -13,3 +13,5 @@ python-dotenv
 python-calamine
 tabulate
 openai
+msal
+requests

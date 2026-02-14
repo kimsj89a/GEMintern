@@ -7,6 +7,7 @@ import streamlit as st
 import utils
 import core_rag
 import core_logic
+import ui_onedrive
 
 
 def render_project_hub(settings):
@@ -175,6 +176,27 @@ def _render_project_detail(settings):
         key=f"proj_upload_{current}",
         label_visibility="collapsed",
     )
+
+    # OneDrive Import
+    od_file, od_name = ui_onedrive.render_onedrive_importer(settings, key_prefix="proj_od")
+    if od_file and od_name:
+        # Save to local storage variable to be picked up by _build_project_docs logic if we want,
+        # or just treat it as a "file" object.
+        # Since _build_project_docs expects UploadedFile (which has read(), name), we might need a wrapper
+        # or adjust _build_project_docs.
+        # Let's create a simple BytesIO wrapper.
+        import io
+        class VirtualFile(io.BytesIO):
+             def __init__(self, content, name):
+                 super().__init__(content)
+                 self.name = name
+                 self.size = len(content)
+        
+        v_file = VirtualFile(od_file, od_name)
+        if not uploaded_files:
+            uploaded_files = []
+        uploaded_files.append(v_file)
+        st.success(f"OneDrive에서 '{od_name}' 가져오기 완료! 아래 '문서 저장' 버튼을 눌러주세요.")
 
     # Saved documents selection
     saved_docs = utils.list_saved_docs()

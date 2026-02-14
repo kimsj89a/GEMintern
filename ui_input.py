@@ -196,6 +196,15 @@ def render_settings():
                 elif not save_key and saved_key:
                     keyring.delete_password(_KR_SERVICE, _KR_KEY_GOOGLE)
 
+        # OneDrive 설정
+        st.markdown("##### ☁️ OneDrive 설정")
+        onedrive_client_id = st.text_input(
+            "Azure App Client ID",
+            placeholder="Azure Portal에서 발급받은 Client ID",
+            key="_settings_onedrive_id",
+            help="OneDrive 파일 가져오기 기능을 사용하려면 Azure App Registration이 필요합니다."
+        )
+
         st.markdown("---")
 
         # ── Section 2: AI 모델 설정 ──
@@ -281,6 +290,7 @@ def render_settings():
         "thinking_level": "High" if "High" in thinking_level else "Low",
         "use_diagram": use_diagram,
         "docai_config": docai_config,
+        "onedrive_client_id": onedrive_client_id,
     }
 
 def _on_template_change(template_key, struct_key, custom_input_key=None):
