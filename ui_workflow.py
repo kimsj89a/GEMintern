@@ -17,6 +17,19 @@ import core_rag
 # Utility
 # ========================================
 
+def _render_error_with_retry(error_msg, exception=None, retry_key=None):
+    """사용자 친화적 에러 표시 + 선택적 다시 시도 버튼.
+    Returns True if retry was clicked."""
+    st.error(f"오류가 발생했습니다: {error_msg}")
+    if exception:
+        with st.expander("기술적 상세 정보 (개발자용)", expanded=False):
+            st.code(str(exception))
+    if retry_key:
+        if st.button("🔄 다시 시도", key=retry_key, type="primary"):
+            return True
+    return False
+
+
 def _strip_preamble(text):
     """Remove AI preamble text before the first markdown heading."""
     if not text:
@@ -315,7 +328,7 @@ def _render_step_indicator(prefix):
     for i, col in enumerate(cols, 1):
         icon, label = steps[i]
         with col:
-            _render_step_box(i, current, icon, label)
+            _render_step_box(i, current, icon, label, prefix)
     st.markdown("---")
 
 
@@ -334,34 +347,33 @@ def _render_phase_step_indicator(prefix, config):
         step_num = i + 1
         icon, label = steps[step_num]
         with col:
-            _render_step_box(step_num, current, icon, label)
+            _render_step_box(step_num, current, icon, label, prefix)
     st.markdown("---")
 
 
-def _render_step_box(step_num, current, icon, label):
-    """Render a single step box with appropriate styling."""
+def _render_step_box(step_num, current, icon, label, prefix=""):
+    """Render a single step box with appropriate styling.
+    Completed steps are clickable to navigate back."""
     if step_num < current:
-        st.markdown(
-            f"<div style='text-align:center;padding:6px;background:#d4edda;"
-            f"border-radius:8px;border:2px solid #28a745;'>"
-            f"<span style='font-size:1.1em;'>✅</span><br>"
-            f"<small style='color:#155724;'>{label}</small></div>",
-            unsafe_allow_html=True,
-        )
+        # 완료된 스텝: 클릭하면 해당 스텝으로 이동
+        if st.button(f"✅ {label}", key=f"{prefix}_step_nav_{step_num}",
+                     use_container_width=True, help=f"Step {step_num}으로 돌아가기"):
+            st.session_state[f"{prefix}_current_step"] = step_num
+            st.rerun()
     elif step_num == current:
         st.markdown(
-            f"<div style='text-align:center;padding:6px;background:#cce5ff;"
-            f"border-radius:8px;border:2px solid #0068c9;'>"
+            f"<div style='text-align:center;padding:6px;background:var(--gem-step-active-bg);"
+            f"border-radius:8px;border:2px solid var(--gem-step-active-border);'>"
             f"<span style='font-size:1.1em;'>{icon}</span><br>"
-            f"<small style='color:#004085;font-weight:bold;'>{label}</small></div>",
+            f"<small style='color:var(--gem-step-active-text);font-weight:bold;'>{label}</small></div>",
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            f"<div style='text-align:center;padding:6px;background:#f8f9fa;"
-            f"border-radius:8px;border:2px solid #dee2e6;'>"
+            f"<div style='text-align:center;padding:6px;background:var(--gem-step-pending-bg);"
+            f"border-radius:8px;border:2px solid var(--gem-step-pending-border);'>"
             f"<span style='font-size:1.1em;'>{icon}</span><br>"
-            f"<small style='color:#6c757d;'>{label}</small></div>",
+            f"<small style='color:var(--gem-step-pending-text);'>{label}</small></div>",
             unsafe_allow_html=True,
         )
 
@@ -375,7 +387,17 @@ def _render_phase1_tabs(prefix, settings, config):
     st.markdown(f"### {config['title']}")
     st.caption(config["subtitle"])
 
-    tab_labels = config["tabs"]
+    # 각 탭의 데이터 존재 여부 확인 후 라벨에 상태 표시
+    has_files = bool(st.session_state.get(f"{prefix}_file_context", "").strip())
+    has_analysis = bool(st.session_state.get(f"{prefix}_organized_summary", "").strip())
+    has_qa = bool(st.session_state.get(f"{prefix}_chat_history", []))
+    has_questions = bool(st.session_state.get(f"{prefix}_followup_questions", "").strip())
+    has_report = bool(st.session_state.get(f"{prefix}_generated_text", "").strip())
+    statuses = [has_files, has_analysis, has_qa, has_questions, has_report]
+
+    base_labels = config["tabs"]
+    tab_labels = [f"{lbl} ✅" if done else lbl for lbl, done in zip(base_labels, statuses)]
+
     tab_collect, tab_analyze, tab_qa, tab_questions, tab_report = st.tabs(tab_labels)
 
     with tab_collect:
@@ -446,11 +468,12 @@ def _render_p1_tab_collect(prefix, settings, config):
     with col_right:
         st.markdown("#### 💬 조사 배경 / 핵심 질문")
         context_text = st.text_area(
-            "Context",
+            "조사 배경 입력",
             height=120,
             placeholder="예: 기업명, 투자 배경, 산업 동향, 핵심 확인 사항 등",
             key=f"{prefix}_tab_collect_context",
             label_visibility="collapsed",
+            help="기업명, 딜 규모, 투자 배경 등 AI 분석에 도움이 되는 맥락 정보를 입력하세요.",
         )
 
         # Project selector (if not already loaded)
@@ -522,7 +545,10 @@ def _render_p1_tab_analyze(prefix, settings, config):
                 st.session_state[f"{prefix}_organized_summary"] = summary
                 organized_summary = summary
             except Exception as e:
-                st.error(f"분석 오류: {e}")
+                _render_error_with_retry(
+                    "자료 분석 중 문제가 발생했습니다. 네트워크 연결을 확인해주세요.",
+                    exception=e,
+                )
 
     if organized_summary:
         st.markdown("##### 🔑 분석 결과")
@@ -844,7 +870,10 @@ def _render_p1_tab_report(prefix, settings, config):
                     st.session_state[f"{prefix}_report_generating"] = False
                     st.rerun()
                 except Exception as e:
-                    st.error(f"생성 오류: {e}")
+                    _render_error_with_retry(
+                        "보고서 생성 중 문제가 발생했습니다. 네트워크 연결을 확인해주세요.",
+                        exception=e,
+                    )
                     st.session_state[f"{prefix}_report_generating"] = False
 
         elif generated_text:
@@ -918,22 +947,24 @@ def _render_p2_step1_input(prefix, settings, config):
 
         st.markdown("#### 💬 투자 배경 / 맥락")
         context_text = st.text_area(
-            "Context",
+            "투자 배경 입력",
             height=120,
             placeholder="예: 기업명, 딜 규모, 타겟 밸류에이션, 투자 배경 등",
             key=f"{prefix}_s1_context",
             label_visibility="collapsed",
+            help="투자 배경, 맥락 등 AI 분석에 참고할 정보를 입력하세요.",
         )
 
     with col_right:
         template_options = config["template_options"]
         st.markdown("#### 📝 템플릿 선택")
         template_option = st.selectbox(
-            "Template",
+            "보고서 템플릿",
             list(template_options.keys()),
             format_func=lambda x: template_options[x],
             key=f"{prefix}_s1_template",
             label_visibility="collapsed",
+            help="생성할 보고서의 유형을 선택하세요.",
         )
 
         default_structure = core_logic.get_default_structure(template_option)
@@ -1035,7 +1066,7 @@ def _render_p2_step2_checklist(prefix, settings, config):
                 if st.button("🤖 AI 평가", key=f"{prefix}_cl_ai_{item_name}",
                               use_container_width=True):
                     if file_context.strip():
-                        with st.spinner("AI 분석 중..."):
+                        with st.spinner("🤖 AI 분석을 수행하는 중..."):
                             try:
                                 result = core_logic.evaluate_checklist_item(
                                     settings["api_key"],
@@ -1223,7 +1254,7 @@ def _render_p3_step2_rfi(prefix, settings, config):
             )
             rfi_existing = ""
             if uploaded_rfi_file:
-                with st.spinner("RFI 파싱..."):
+                with st.spinner("📋 RFI 자료를 파싱하는 중..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success("RFI 로드 완료")
 
@@ -1763,7 +1794,10 @@ def _render_step_generate(prefix, settings, config, step_number=2, total_steps=4
         st.rerun()
 
     except Exception as e:
-        st.error(f"생성 중 오류 발생: {e}")
+        _render_error_with_retry(
+            "보고서 생성 중 문제가 발생했습니다. 네트워크 연결을 확인해주세요.",
+            exception=e,
+        )
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             if st.button("<<< 이전 단계", key=f"{prefix}_sg_prev_err"):
@@ -1838,7 +1872,7 @@ def _render_step_refine(prefix, settings, config, step_number=3, total_steps=4):
                             f, api_key=settings["api_key"],
                             docai_config=settings.get("docai_config"),
                         )
-                with st.spinner("수정 중..."):
+                with st.spinner("✏️ 수정 사항을 반영하는 중..."):
                     try:
                         refined = core_logic.refine_report_with_context(
                             settings["api_key"],

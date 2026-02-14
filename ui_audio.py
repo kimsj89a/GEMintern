@@ -301,7 +301,7 @@ def render_audio_transcription_panel(settings=None):
             if not api_key:
                 st.error("⚠️ 상단 설정에서 API Key를 입력해주세요")
             else:
-                with st.spinner("🤖 Gemini로 후처리 중..."):
+                with st.spinner("🤖 AI 후처리를 수행하는 중..."):
                     try:
                         processed_text = _postprocess_with_gemini(
                             raw_text=input_text,

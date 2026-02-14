@@ -24,8 +24,11 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
             with sub_c2:
                 if k_editing not in st.session_state:
                     st.session_state[k_editing] = False
-                edit_label = "✏️ 완료" if st.session_state[k_editing] else "✏️ 편집"
-                if st.button(edit_label, key=f"{key_prefix}_btn_toggle_edit", use_container_width=True):
+                is_editing = st.session_state[k_editing]
+                edit_label = "✅ 편집 완료" if is_editing else "✏️ 직접 편집"
+                edit_type = "primary" if is_editing else "secondary"
+                if st.button(edit_label, key=f"{key_prefix}_btn_toggle_edit",
+                             use_container_width=True, type=edit_type):
                     st.session_state[k_editing] = not st.session_state[k_editing]
                     st.rerun()
 
@@ -188,6 +191,18 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
                 else:
                     st.markdown(st.session_state[k_text])
 
+        # 빈 상태 UI (아직 결과가 없는 경우)
+        else:
+            with result_container:
+                st.markdown(
+                    "<div style='text-align:center;padding:80px 20px;color:var(--gem-muted);'>"
+                    "<p style='font-size:2.5rem;margin-bottom:8px;'>📄</p>"
+                    "<p style='font-weight:600;font-size:1.05rem;'>아직 생성된 결과가 없습니다</p>"
+                    "<p style='font-size:0.85rem;'>설정을 완료하고 '생성' 버튼을 눌러주세요.</p>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+
         # 3. 하단 액션
         if st.session_state[k_text]:
             st.markdown("---")
@@ -243,7 +258,7 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
             if refine_query:
                 if not settings['api_key']: st.error("API Key 필요")
                 else:
-                    with st.spinner("수정 내용 생성 중.."):
+                    with st.spinner("✏️ 수정 내용을 생성하는 중..."):
                         try:
                             refined_text = core_logic.refine_report(
                                 settings['api_key'], settings['model_name'], st.session_state[k_text], refine_query

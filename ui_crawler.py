@@ -123,7 +123,7 @@ def render_crawler_panel(settings):
                 st.warning("⚠️ 상단 설정에서 Google API Key를 입력하면 요약 기능을 사용할 수 있습니다.")
             else:
                 if st.button("📝 수집 데이터 요약하기", type="primary", use_container_width=True):
-                    with st.spinner("Gemini가 수집된 데이터를 분석 중입니다..."):
+                    with st.spinner("🤖 수집된 데이터를 AI로 분석하는 중..."):
                         try:
                             # 텍스트 통합
                             combined_text = ""

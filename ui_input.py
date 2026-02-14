@@ -165,14 +165,20 @@ def render_settings():
         st.session_state["_settings_api_key"] = saved_key or env_key or browser_key or ""
 
     with st.expander("⚙️ 설정 (SETTINGS)", expanded=True):
-        c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
-        with c1:
-            api_key = st.text_input(
-                "Google API Key", type="password",
-                placeholder="Enter Key...", key="_settings_api_key",
-            )
+        # ── Section 1: API 연결 ──
+        st.markdown("##### 🔑 API 연결")
+        api_key = st.text_input(
+            "Google API Key", type="password",
+            placeholder="API Key를 입력하세요...", key="_settings_api_key",
+        )
+        if api_key:
+            if len(api_key) > 20:
+                st.caption("✅ API Key 입력됨")
+            else:
+                st.caption("⚠️ API Key가 너무 짧습니다. 올바른 키를 입력해주세요.")
 
-            # 브라우저 저장 옵션
+        save_col1, save_col2 = st.columns(2)
+        with save_col1:
             save_browser = st.checkbox(
                 "🌐 API Key 브라우저에 저장",
                 value=bool(browser_key),
@@ -182,8 +188,7 @@ def render_settings():
                 local_storage_set("gem_api_key", api_key, st_key="ls_api_write")
             elif not save_browser and browser_key:
                 local_storage_set("gem_api_key", "", st_key="ls_api_clear")
-
-            # keyring (로컬 환경 전용)
+        with save_col2:
             if _KEYRING_AVAILABLE:
                 save_key = st.checkbox("🔐 OS 자격 증명에도 저장", value=bool(saved_key))
                 if save_key and api_key:
@@ -191,13 +196,18 @@ def render_settings():
                 elif not save_key and saved_key:
                     keyring.delete_password(_KR_SERVICE, _KR_KEY_GOOGLE)
 
-        with c2:
-            model_name = st.selectbox("사용할 모델", ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.0-flash-exp", "gemini-1.5-pro"])
-        with c3:
+        st.markdown("---")
+
+        # ── Section 2: AI 모델 설정 ──
+        st.markdown("##### 🤖 AI 모델 설정")
+        m_col1, m_col2, m_col3 = st.columns([2, 2, 1])
+        with m_col1:
+            model_name = st.selectbox("AI 모델", ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.0-flash-exp", "gemini-1.5-pro"])
+        with m_col2:
             thinking_level = st.selectbox("사고 수준", ["High (추론 깊이 극대화)", "Low (속도 우선)"])
-        with c4:
-            st.write(""); st.write("")
-            use_diagram = st.checkbox("🎨 도식화 생성", value=False)
+        with m_col3:
+            st.write("")
+            use_diagram = st.checkbox("🎨 도식화", value=False, help="보고서에 mermaid 다이어그램 포함")
 
         # OCR 상태 표시
         ocr_available, ocr_msg = utils.get_ocr_status()
@@ -206,9 +216,9 @@ def render_settings():
         else:
             st.warning(f"🔍 PDF OCR: 비활성화 - {ocr_msg}")
 
-        # Document AI 설정 (고급)
         st.markdown("---")
 
+        # ── Section 3: 문서 처리 (고급) ──
         # .env에서 Document AI 기본값 로드
         env_docai_project = os.getenv("GCP_PROJECT_ID", "")
         env_docai_location = os.getenv("DOCAI_LOCATION", "us")
@@ -501,7 +511,7 @@ def render_rfi_panel(container, settings):
             uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일", type=['xlsx', 'xls', 'csv'], key="rfi_basis", label_visibility="collapsed")
             rfi_existing = ""
             if uploaded_rfi_file:
-                with st.spinner("RFI 파싱..."):
+                with st.spinner("📋 RFI 자료를 파싱하는 중..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success(f"✅ RFI 로드")
 
@@ -794,7 +804,7 @@ def render_detailed_dd_panel(container, settings):
             uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일", type=['xlsx', 'xls', 'csv'], key="dd_basis", label_visibility="collapsed")
             rfi_existing = ""
             if uploaded_rfi_file:
-                with st.spinner("RFI 파싱..."):
+                with st.spinner("📋 RFI 자료를 파싱하는 중..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success(f"✅ RFI 로드")
 
@@ -862,7 +872,7 @@ def _legacy_render_input_panel(container, settings):
             uploaded_rfi_file = st.file_uploader("RFI 엑셀 파일 드래그 & 드롭", type=['xlsx', 'xls', 'csv'], key="rfi_basis")
             
             if uploaded_rfi_file:
-                with st.spinner("RFI 파일 파싱 중..."):
+                with st.spinner("📋 RFI 파일을 파싱하는 중..."):
                     rfi_existing = utils.parse_uploaded_file(uploaded_rfi_file)
                 st.success(f"✅ RFI 로드 완료! ({uploaded_rfi_file.name})")
             else:

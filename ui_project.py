@@ -112,8 +112,19 @@ def _render_project_detail(settings):
 
     if doc_count > 0:
         st.success(f"{doc_count}개 문서 저장됨")
-        with st.expander("저장된 문서 목록", expanded=False):
-            for d in indexed_docs:
+
+        # 문서 검색 필터 (5건 이상)
+        if doc_count > 5:
+            doc_filter = st.text_input(
+                "문서 검색", placeholder="파일명으로 검색...",
+                key=f"doc_filter_{current}",
+            )
+        else:
+            doc_filter = ""
+        filtered_docs = [d for d in indexed_docs if doc_filter.lower() in d.lower()] if doc_filter else indexed_docs
+
+        with st.expander(f"저장된 문서 목록 ({len(filtered_docs)}/{doc_count}건)", expanded=False):
+            for d in filtered_docs:
                 col_doc, col_trash = st.columns([5, 1])
                 with col_doc:
                     st.text(f"  {d}")
