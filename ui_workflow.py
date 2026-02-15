@@ -84,10 +84,10 @@ PHASE_CONFIGS = {
         },
         "show_gen_mode": True,
     },
-    "📊 예비실사": {
+    "📝 투심보고서 작성": {
         "phase_id": "phase2",
         "key_prefix": "p2",
-        "title": "📊 예비실사 (Preliminary Due Diligence)",
+        "title": "📝 투심보고서 작성 (Investment Memo)",
         "subtitle": "NDA 후 내부 정보 기반 투자 매력도 분석 및 Valuation 검토",
         "page_type": "analysis",
         "steps": {
@@ -108,11 +108,11 @@ PHASE_CONFIGS = {
         },
         "show_gen_mode": True,
     },
-    "🔍 정밀실사": {
+    "💰 FDD (재무실사)": {
         "phase_id": "phase3",
         "key_prefix": "p3",
-        "title": "🔍 정밀실사 (Detailed Due Diligence)",
-        "subtitle": "외부 자문사 활용 상세 실사, RFI 관리 및 실사결과 보고",
+        "title": "💰 FDD (Financial Due Diligence)",
+        "subtitle": "회계법인 실사 대응, Q&A 관리, 재무 이슈 분석",
         "page_type": "dd_management",
         "steps": {
             1: ("📥", "실사 설정"),
@@ -122,10 +122,31 @@ PHASE_CONFIGS = {
             5: ("💬", "수정/보완"),
             6: ("📄", "최종 결과"),
         },
-        "default_template": "rfi",
+        "default_template": "dd_report",
         "template_options": {
             "rfi": "1. RFI (자료요청목록)",
-            "dd_report": "2. 실사결과보고서",
+            "dd_report": "2. 실사결과보고서 (FDD)",
+        },
+        "show_gen_mode": False,
+    },
+    "⚖️ LDD (법률실사)": {
+        "phase_id": "phase4",
+        "key_prefix": "p4",
+        "title": "⚖️ LDD (Legal Due Diligence)",
+        "subtitle": "법무법인 실사 대응, 법률 리스크 분석",
+        "page_type": "dd_management",
+        "steps": {
+            1: ("📥", "실사 설정"),
+            2: ("📋", "RFI 관리"),
+            3: ("🔍", "실사 점검"),
+            4: ("🤖", "보고서 생성"),
+            5: ("💬", "수정/보완"),
+            6: ("📄", "최종 결과"),
+        },
+        "default_template": "dd_report",
+        "template_options": {
+            "rfi": "1. RFI (자료요청목록)",
+            "dd_report": "2. 실사결과보고서 (LDD)",
         },
         "show_gen_mode": False,
     },
@@ -187,7 +208,11 @@ def render_phase_workflow(settings, selected_page):
         if page_type == "analysis":
             _dispatch_phase2_step(current_step, prefix, settings, config)
         elif page_type == "dd_management":
-            _dispatch_phase3_step(current_step, prefix, settings, config)
+            # Reuse dispatch logic for both FDD and LDD as they share structure
+            if prefix == "p3":
+                _dispatch_phase3_step(current_step, prefix, settings, config)
+            elif prefix == "p4":
+                _dispatch_phase4_step(current_step, prefix, settings, config)
 
 
 def render_standard_workflow(settings, selected_page):
@@ -247,6 +272,11 @@ def _dispatch_phase3_step(step, prefix, settings, config):
         _render_step_output(prefix, settings, config, step_number=6, total_steps=6)
 
 
+def _dispatch_phase4_step(step, prefix, settings, config):
+    """Phase 4: LDD (Same logic as Phase 3 for now)."""
+    _dispatch_phase3_step(step, prefix, settings, config)
+
+
 # ========================================
 # State management
 # ========================================
@@ -297,7 +327,10 @@ def _init_phase_state(prefix, config):
         defaults[f"{prefix}_rfi_text"] = ""
         defaults[f"{prefix}_rfi_tracking"] = []
         defaults[f"{prefix}_dd_issues"] = []
-        defaults[f"{prefix}_dd_active_template"] = "rfi"
+        defaults[f"{prefix}_dd_issues"] = []
+        # Support both RFI and DD Report templates
+        template = config.get("default_template", "rfi")
+        defaults[f"{prefix}_dd_active_template"] = template
 
     for key, default in defaults.items():
         if key not in st.session_state:

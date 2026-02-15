@@ -14,6 +14,7 @@ import core_logic
 import core_logic
 import core_rag
 import ui_ppt_tools
+import ui_lp_qa
 
 # --- 페이지 설정 ---
 st.set_page_config(layout="wide", page_title="GEM Intern v7.0", page_icon="💎")
@@ -252,15 +253,15 @@ def render_project_sidebar(settings):
 
 NAV_SECTIONS = {
     "Main": ["🏠 홈", "📂 프로젝트"],
-    "Phase Workflow": ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"],
-    "Independent Tools": ["📑 IM 작성", "📢 발표자료 (PPT)"],
+    "Phase Workflow": ["📥 사전 정보 수집", "📝 투심보고서 작성", "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"],
+    "Independent Tools": ["📑 IM 작성", "📢 발표자료 (PPT)", "🙋‍♂️ LP Q&A 대응"],
     "Utilities": [
         "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
         "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기",
     ],
 }
 
-PHASE_PAGES = ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"]
+PHASE_PAGES = ["📥 사전 정보 수집", "📝 투심보고서 작성", "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"]
 UTILITY_ANALYSIS_PAGES = ["📑 IM 작성"]
 
 def render_dashboard(settings):
@@ -278,18 +279,23 @@ def render_dashboard(settings):
             "prefix": "p1", "key": "dash_p1",
         },
         {
-            "num": "Phase 2", "icon": "📊", "page": "📊 예비실사",
-            "title": "예비실사", "desc": "가치평가, 체크리스트, 투자심의",
+            "num": "Phase 2", "icon": "📝", "page": "📝 투심보고서 작성",
+            "title": "투심보고서 작성", "desc": "IM 작성, Valuation, 투자심의",
             "prefix": "p2", "key": "dash_p2",
         },
         {
-            "num": "Phase 3", "icon": "🔍", "page": "🔍 정밀실사",
-            "title": "정밀실사", "desc": "FDD/LDD, RFI 관리, 이슈 분석",
+            "num": "Phase 3", "icon": "💰", "page": "💰 FDD (재무실사)",
+            "title": "FDD (재무실사)", "desc": "회계법인 대응, 재무 이슈 관리",
             "prefix": "p3", "key": "dash_p3",
+        },
+        {
+            "num": "Phase 4", "icon": "⚖️", "page": "⚖️ LDD (법률실사)",
+            "title": "LDD (법률실사)", "desc": "법무법인 대응, 법률 리스크 관리",
+            "prefix": "p4", "key": "dash_p4",
         },
     ]
 
-    cols = st.columns(3)
+    cols = st.columns(4)
     for col, ph in zip(cols, phases):
         with col:
             has_result = bool(st.session_state.get(f"{ph['prefix']}_generated_text", ""))
@@ -318,6 +324,9 @@ def render_dashboard(settings):
             st.rerun()
         if st.button("📢 발표자료 (PPT)", use_container_width=True, key="dash_ppt"):
             st.session_state.selected_page = "📢 발표자료 (PPT)"
+            st.rerun()
+        if st.button("🙋‍♂️ LP Q&A 대응", use_container_width=True, key="dash_lp_qa"):
+            st.session_state.selected_page = "🙋‍♂️ LP Q&A 대응"
             st.rerun()
 
     with c2:
@@ -516,6 +525,9 @@ def main():
             
         elif selected_page == "📢 발표자료 (PPT)":
             ui_ppt_tools.render_ppt_tools_panel(settings)
+            
+        elif selected_page == "🙋‍♂️ LP Q&A 대응":
+            ui_lp_qa.render_lp_qa_panel(settings)
 
 if __name__ == "__main__":
     main()
