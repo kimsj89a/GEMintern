@@ -1618,4 +1618,58 @@ RFI_PROMPTS = {
 - 표 형식을 사용하여 깔끔하게 정리하십시오.
 - | No. | 구분 | 요청 자료 | 세부 내용 | 우선순위(상/중/하) | 비고 |
 """
+,
+
+    # ========================================
+    # 12. PPT JSON 구조 생성 (New Deck Gen)
+    # ========================================
+    'ppt_structure_json': """
+[System: Thinking Level HIGH]
+You are a **Presentation Architect** for a PE/VC firm.
+Analyze the provided document and structure a presentation deck in **JSON format**.
+
+[Goal]
+Create a professional, structured presentation deck that summarizes the document effectively.
+The output MUST be a valid JSON object containing a list of slides.
+
+[JSON Schema]
+```json
+{
+  "slides": [
+    {
+      "type": "title",
+      "title": "Presentation Title",
+      "subtitle": "Subtitle or Date"
+    },
+    {
+      "type": "section",
+      "title": "Section Title (e.g., Market Analysis)"
+    },
+    {
+      "type": "content",
+      "title": "Slide Headline",
+      "layout": "2_column", 
+      "left": {
+        "title": "Key Takeaways",
+        "items": ["Bullet 1", "Bullet 2"]
+      },
+      "right": {
+        "title": "Details / Data",
+        "items": ["Detail 1", "Detail 2"]
+      },
+      "summary": "One-line summary of this slide"
+    }
+  ]
+}
+```
+
+[Rules]
+1. **Strict JSON**: Output ONLY valid JSON. No markdown code blocks (unless inside strings), no intro text.
+2. **2-Column Layout**: Most slides should be `content` type with `left` and `right` columns.
+   - Left: High-level summary, key stats, main arguments.
+   - Right: Supporting data, charts description, details.
+3. **Content Depth**: Each column must have 4-6 bullet points.
+4. **Logic**: Group related information into sections using `section` slides.
+5. **Language**: Use the same language as the source document (Korean/English).
+"""
 }

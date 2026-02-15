@@ -388,3 +388,35 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
     )
     resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
     return resp.text
+
+
+def generate_slide_json(api_key, model_name, file_context, context_text=""):
+    """
+    Generates structured JSON for PPT slides directly from source material.
+    """
+    client = get_client(api_key)
+    system_prompt = prompts.LOGIC_PROMPTS.get('ppt_structure_json', '')
+
+    user_prompt = f"""
+[Context/Goal]
+{context_text}
+
+[Source Material]
+{file_context[:100000]}
+"""
+    
+    # Force JSON output
+    config = types.GenerateContentConfig(
+        max_output_tokens=8192,
+        temperature=0.3,
+        system_instruction=system_prompt,
+        response_mime_type="application/json"
+    )
+    
+    resp = client.models.generate_content(
+        model=model_name, 
+        contents=user_prompt, 
+        config=config
+    )
+    return resp.text
+

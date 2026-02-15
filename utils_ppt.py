@@ -1,4 +1,5 @@
 import io
+import json
 import re
 import datetime
 from pptx import Presentation
@@ -482,3 +483,63 @@ def create_ppt(markdown_text):
     bio = io.BytesIO()
     prs.save(bio)
     return bio.getvalue()
+
+
+def create_deck_from_json(json_data):
+    """
+    JSON Structure -> PPTX
+    Experimenting with direct JSON to PPTX generation.
+    """
+    if isinstance(json_data, str):
+        try:
+            # Clean up potential markdown blocks in JSON string
+            if json_data.startswith("```json"):
+                json_data = json_data.strip("```json").strip("```").strip()
+            data = json.loads(json_data)
+        except json.JSONDecodeError:
+            print("Invalid JSON for PPT")
+            return None
+    else:
+        data = json_data
+
+    slides = data.get('slides', [])
+    if not slides:
+        return None
+
+    prs = Presentation()
+    prs.slide_width = SLIDE_WIDTH
+    prs.slide_height = SLIDE_HEIGHT
+
+    for slide in slides:
+        sType = slide.get('type', 'content')
+        title = slide.get('title', '')
+        
+        if sType == 'title':
+            subtitle = slide.get('subtitle', '')
+            create_title_slide(prs, title, subtitle)
+            
+        elif sType == 'section':
+            create_section_slide(prs, title)
+            
+        elif sType == 'content':
+            # Handle 2-column layout
+            left = slide.get('left', {})
+            right = slide.get('right', {})
+            summary = slide.get('summary', '')
+            
+            # Helper to convert simpler list to expected dict format if needed
+            # But the prompt asks for specific schema. We assume schema compliance.
+            
+            # Map JSON items to 'bullet' type
+            l_items = [{'type': 'bullet', 'text': item} for item in left.get('items', [])]
+            r_items = [{'type': 'bullet', 'text': item} for item in right.get('items', [])]
+            
+            l_title = left.get('title', '')
+            r_title = right.get('title', '')
+            
+            create_two_column_slide(prs, title, summary, l_title, l_items, r_title, r_items)
+            
+    bio = io.BytesIO()
+    prs.save(bio)
+    return bio.getvalue()
+

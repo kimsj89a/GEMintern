@@ -13,7 +13,7 @@ import utils
 import core_logic
 import core_logic
 import core_rag
-import ui_ppt_updater
+import ui_ppt_tools
 
 # --- 페이지 설정 ---
 st.set_page_config(layout="wide", page_title="GEM Intern v7.0", page_icon="💎")
@@ -253,7 +253,7 @@ def render_project_sidebar(settings):
 NAV_SECTIONS = {
     "Main": ["🏠 홈", "📂 프로젝트"],
     "Phase Workflow": ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"],
-    "Independent Tools": ["📑 IM 작성", "🖥️ PPT 생성", "📈 투자유치 업데이트"],
+    "Independent Tools": ["📑 IM 작성", "📢 발표자료 (PPT)"],
     "Utilities": [
         "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
         "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기",
@@ -261,7 +261,7 @@ NAV_SECTIONS = {
 }
 
 PHASE_PAGES = ["📥 사전 정보 수집", "📊 예비실사", "🔍 정밀실사"]
-UTILITY_ANALYSIS_PAGES = ["📑 IM 작성", "🖥️ PPT 생성"]
+UTILITY_ANALYSIS_PAGES = ["📑 IM 작성"]
 
 def render_dashboard(settings):
     """메인 대시보드 화면"""
@@ -316,11 +316,8 @@ def render_dashboard(settings):
         if st.button("📑 IM 작성", use_container_width=True, key="dash_im"):
             st.session_state.selected_page = "📑 IM 작성"
             st.rerun()
-        if st.button("🖥️ PPT 생성", use_container_width=True, key="dash_ppt"):
-            st.session_state.selected_page = "🖥️ PPT 생성"
-            st.rerun()
-        if st.button("📈 투자유치 업데이트", use_container_width=True, key="dash_ppt_update"):
-            st.session_state.selected_page = "📈 투자유치 업데이트"
+        if st.button("📢 발표자료 (PPT)", use_container_width=True, key="dash_ppt"):
+            st.session_state.selected_page = "📢 발표자료 (PPT)"
             st.rerun()
 
     with c2:
@@ -517,8 +514,8 @@ def main():
         elif selected_page == "✏️ 문장 정리기":
             ui_text_organizer.render_text_organizer_panel(settings)
             
-        elif selected_page == "📈 투자유치 업데이트":
-            ui_ppt_updater.render_ppt_updater_panel(settings)
+        elif selected_page == "📢 발표자료 (PPT)":
+            ui_ppt_tools.render_ppt_tools_panel(settings)
 
 if __name__ == "__main__":
     main()
