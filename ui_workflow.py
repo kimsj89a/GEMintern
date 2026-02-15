@@ -108,48 +108,8 @@ PHASE_CONFIGS = {
         },
         "show_gen_mode": True,
     },
-    "💰 FDD (재무실사)": {
-        "phase_id": "phase3",
-        "key_prefix": "p3",
-        "title": "💰 FDD (Financial Due Diligence)",
-        "subtitle": "회계법인 실사 대응, Q&A 관리, 재무 이슈 분석",
-        "page_type": "dd_management",
-        "steps": {
-            1: ("📥", "실사 설정"),
-            2: ("📋", "RFI 관리"),
-            3: ("🔍", "실사 점검"),
-            4: ("🤖", "보고서 생성"),
-            5: ("💬", "수정/보완"),
-            6: ("📄", "최종 결과"),
-        },
-        "default_template": "dd_report",
-        "template_options": {
-            "rfi": "1. RFI (자료요청목록)",
-            "dd_report": "2. 실사결과보고서 (FDD)",
-        },
-        "show_gen_mode": False,
-    },
-    "⚖️ LDD (법률실사)": {
-        "phase_id": "phase4",
-        "key_prefix": "p4",
-        "title": "⚖️ LDD (Legal Due Diligence)",
-        "subtitle": "법무법인 실사 대응, 법률 리스크 분석",
-        "page_type": "dd_management",
-        "steps": {
-            1: ("📥", "실사 설정"),
-            2: ("📋", "RFI 관리"),
-            3: ("🔍", "실사 점검"),
-            4: ("🤖", "보고서 생성"),
-            5: ("💬", "수정/보완"),
-            6: ("📄", "최종 결과"),
-        },
-        "default_template": "dd_report",
-        "template_options": {
-            "rfi": "1. RFI (자료요청목록)",
-            "dd_report": "2. 실사결과보고서 (LDD)",
-        },
-        "show_gen_mode": False,
-    },
+    # "💰 FDD (재무실사)": { ... } # Temporarily disabled
+    # "⚖️ LDD (법률실사)": { ... } # Temporarily disabled
 }
 
 # ========================================

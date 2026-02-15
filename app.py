@@ -253,7 +253,7 @@ def render_project_sidebar(settings):
 
 NAV_SECTIONS = {
     "Main": ["🏠 홈", "📂 프로젝트"],
-    "Phase Workflow": ["📥 사전 정보 수집", "📝 투심보고서 작성", "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"],
+    "Phase Workflow": ["📥 사전 정보 수집", "📝 투심보고서 작성"], #, "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"],
     "Independent Tools": ["📑 IM 작성", "📢 발표자료 (PPT)", "🙋‍♂️ LP Q&A 대응"],
     "Utilities": [
         "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
@@ -261,7 +261,8 @@ NAV_SECTIONS = {
     ],
 }
 
-PHASE_PAGES = ["📥 사전 정보 수집", "📝 투심보고서 작성", "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"]
+# FDD/LDD temporarily disabled
+PHASE_PAGES = ["📥 사전 정보 수집", "📝 투심보고서 작성"] #, "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"]
 UTILITY_ANALYSIS_PAGES = ["📑 IM 작성"]
 
 def render_dashboard(settings):
@@ -283,19 +284,19 @@ def render_dashboard(settings):
             "title": "투심보고서 작성", "desc": "IM 작성, Valuation, 투자심의",
             "prefix": "p2", "key": "dash_p2",
         },
-        {
-            "num": "Phase 3", "icon": "💰", "page": "💰 FDD (재무실사)",
-            "title": "FDD (재무실사)", "desc": "회계법인 대응, 재무 이슈 관리",
-            "prefix": "p3", "key": "dash_p3",
-        },
-        {
-            "num": "Phase 4", "icon": "⚖️", "page": "⚖️ LDD (법률실사)",
-            "title": "LDD (법률실사)", "desc": "법무법인 대응, 법률 리스크 관리",
-            "prefix": "p4", "key": "dash_p4",
-        },
+        # {
+        #     "num": "Phase 3", "icon": "💰", "page": "💰 FDD (재무실사)",
+        #     "title": "FDD (재무실사)", "desc": "회계법인 대응, 재무 이슈 관리",
+        #     "prefix": "p3", "key": "dash_p3",
+        # },
+        # {
+        #     "num": "Phase 4", "icon": "⚖️", "page": "⚖️ LDD (법률실사)",
+        #     "title": "LDD (법률실사)", "desc": "법무법인 대응, 법률 리스크 관리",
+        #     "prefix": "p4", "key": "dash_p4",
+        # },
     ]
 
-    cols = st.columns(4)
+    cols = st.columns(2) # Adjusted columns
     for col, ph in zip(cols, phases):
         with col:
             has_result = bool(st.session_state.get(f"{ph['prefix']}_generated_text", ""))
