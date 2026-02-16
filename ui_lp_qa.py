@@ -4,6 +4,7 @@ import io
 import core_rag
 import core_logic
 import utils
+import utils_markdown
 
 def render_lp_qa_panel(settings):
     st.markdown("### 🙋‍♂️ LP Q&A 대응")
@@ -81,23 +82,74 @@ def render_lp_qa_panel(settings):
     # 4. Display & Export Results
     if "lp_qa_results" in st.session_state:
         results = st.session_state["lp_qa_results"]
-        df_results = pd.DataFrame(results)
-        
+
         st.markdown("### ✅ 답변 생성 결과")
-        st.dataframe(df_results, use_container_width=True)
-        
-        # Excel Export
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_results.to_excel(writer, index=False, sheet_name='Sheet1')
-            worksheet = writer.sheets['Sheet1']
-            worksheet.set_column('A:A', 40) # Question width
-            worksheet.set_column('B:B', 60) # Answer width
-            
-        output.seek(0)
-        st.download_button(
-            label="📥 엑셀로 다운로드",
-            data=output,
-            file_name="LP_QA_Results.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+
+        # Display each Q&A with markdown rendering and export options
+        for i, result in enumerate(results, 1):
+            with st.container():
+                st.markdown(f"#### Q{i}: {result['Question']}")
+
+                # Render answer as markdown
+                st.markdown(result['Answer'])
+
+                # Action buttons for each Q&A
+                col1, col2, col3 = st.columns([1, 1, 4])
+
+                with col1:
+                    # Copy button (copies answer to clipboard)
+                    if st.button(f"📋 복사", key=f"copy_{i}"):
+                        st.code(result['Answer'], language=None)
+                        st.success("답변이 표시되었습니다. 복사하세요.")
+
+                with col2:
+                    # Individual Word export
+                    md_content = f"# Q: {result['Question']}\n\n{result['Answer']}"
+                    docx_bytes = utils_markdown.markdown_to_docx(md_content, use_template=True)
+                    st.download_button(
+                        label="📄 Word",
+                        data=docx_bytes,
+                        file_name=f"qa_{i}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"word_{i}"
+                    )
+
+                st.markdown("---")
+
+        # Batch export options
+        st.markdown("### 📥 전체 내보내기")
+        col1, col2, col3 = st.columns([1, 1, 4])
+
+        with col1:
+            # Excel Export
+            df_results = pd.DataFrame(results)
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_results.to_excel(writer, index=False, sheet_name='Sheet1')
+                worksheet = writer.sheets['Sheet1']
+                worksheet.set_column('A:A', 40)
+                worksheet.set_column('B:B', 60)
+
+            output.seek(0)
+            st.download_button(
+                label="📥 Excel 다운로드",
+                data=output,
+                file_name="LP_QA_Results.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        with col2:
+            # Word Export (All Q&A)
+            all_md_content = "# LP Q&A 답변 모음\n\n"
+            for i, r in enumerate(results, 1):
+                all_md_content += f"## Q{i}: {r['Question']}\n\n"
+                all_md_content += f"{r['Answer']}\n\n"
+                all_md_content += "---\n\n"
+
+            all_docx_bytes = utils_markdown.markdown_to_docx(all_md_content, use_template=True)
+            st.download_button(
+                label="📄 Word 다운로드 (전체)",
+                data=all_docx_bytes,
+                file_name="LP_QA_All.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )

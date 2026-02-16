@@ -125,7 +125,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 {inputs['context_text']}
 
 [Source Data]
-{file_context[:50000]}
+{file_context}
 """
 
     # 템플릿별 config 설정
@@ -196,7 +196,7 @@ def refine_report_with_context(api_key, model_name, current_text, chat_history,
 
     additional_section = ""
     if additional_file_context:
-        additional_section = f"\n[추가 제공된 자료]\n{additional_file_context[:10000]}\n"
+        additional_section = f"\n[추가 제공된 자료]\n{additional_file_context}\n"
 
     refine_prompt = (
         f"You are a document refinement assistant.\n"
@@ -227,7 +227,7 @@ def generate_material_summary(api_key, model_name, file_context):
     """Phase 1: 수집 자료 요약 및 핵심 발견사항 추출"""
     client = get_client(api_key)
     system_prompt = prompts.LOGIC_PROMPTS.get('material_summary', '')
-    prompt = f"{system_prompt}\n\n[수집된 자료]\n{file_context[:50000]}"
+    prompt = f"{system_prompt}\n\n[수집된 자료]\n{file_context}"
     config = types.GenerateContentConfig(
         max_output_tokens=8192,
         temperature=0.3,
@@ -243,10 +243,10 @@ def generate_followup_analysis(api_key, model_name, file_context, existing_analy
     prompt_text = f"""당신은 PE/VC 투자 분석 전문가입니다.
 
 [원본 자료]
-{file_context[:30000]}
+{file_context}
 
 [기존 분석 결과]
-{existing_analysis[:10000]}
+{existing_analysis}
 
 [사용자 추가 분석 요청]
 {user_input}
@@ -280,11 +280,11 @@ def generate_qa_answer(api_key, model_name, file_context, question, prev_qa_cont
     """자료 기반 Q&A - 로드된 자료를 참조하여 사용자 질문에 답변"""
     client = get_client(api_key)
     prev_section = f"\n[이전 Q&A 맥락]\n{prev_qa_context}\n" if prev_qa_context else ""
-    rag_section = f"\n[프로젝트 문서]\n{rag_context[:15000]}\n" if rag_context else ""
+    rag_section = f"\n[프로젝트 문서]\n{rag_context}\n" if rag_context else ""
     prompt_text = f"""당신은 PE/VC 투자 분석 전문가입니다. 주어진 자료를 철저히 참조하여 질문에 정확하게 답변하십시오.
 
 [참조 자료]
-{file_context[:40000]}
+{file_context}
 {rag_section}
 {prev_section}
 
@@ -311,7 +311,7 @@ def generate_followup_questions(api_key, model_name, file_context, rag_context="
     client = get_client(api_key)
     template = prompts.LOGIC_PROMPTS.get('material_followup_questions', '')
     rag_section = f"\n[RAG 검색 결과 - 프로젝트 인덱스 참조]\n{rag_context}\n" if rag_context else ""
-    prompt_text = template.replace('{rag_context}', rag_section).replace('{file_context}', file_context[:50000])
+    prompt_text = template.replace('{rag_context}', rag_section).replace('{file_context}', file_context)
     config = types.GenerateContentConfig(
         max_output_tokens=8192,
         temperature=0.3,
@@ -326,12 +326,12 @@ def generate_additional_questions(api_key, model_name, file_context, existing_qu
     prompt_text = f"""당신은 PE/VC 투자 리서치 전문가입니다.
 
 [기존 분석 자료]
-{file_context[:30000]}
+{file_context}
 
 [기존 도출된 질문/조사 항목]
-{existing_questions[:10000]}
+{existing_questions}
 
-{f"[프로젝트 문서 참조]{chr(10)}{rag_context[:10000]}" if rag_context else ""}
+{f"[프로젝트 문서 참조]{chr(10)}{rag_context}" if rag_context else ""}
 
 [사용자 추가 요청/관심 영역]
 {user_input}
@@ -368,7 +368,7 @@ def evaluate_checklist_item(api_key, model_name, item_name, file_context):
     """Phase 2: 투자 매력도 체크리스트 항목별 자동 평가"""
     client = get_client(api_key)
     template = prompts.LOGIC_PROMPTS.get('checklist_evaluation', '')
-    prompt = template.replace('{checklist_item}', item_name).replace('{file_context}', file_context[:30000])
+    prompt = template.replace('{checklist_item}', item_name).replace('{file_context}', file_context)
     config = types.GenerateContentConfig(
         max_output_tokens=1024,
         temperature=0.3,
@@ -381,7 +381,7 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
     """Phase 3: 실사 자료에서 이슈 자동 추출 및 분류"""
     client = get_client(api_key)
     template = prompts.LOGIC_PROMPTS.get('dd_issue_analysis', '')
-    prompt = template.replace('{file_context}', file_context[:40000]).replace('{context_text}', context_text[:5000])
+    prompt = template.replace('{file_context}', file_context).replace('{context_text}', context_text)
     config = types.GenerateContentConfig(
         max_output_tokens=8192,
         temperature=0.3,
@@ -402,7 +402,7 @@ def generate_slide_json(api_key, model_name, file_context, context_text=""):
 {context_text}
 
 [Source Material]
-{file_context[:100000]}
+{file_context}
 """
     
     # Force JSON output

@@ -1,0 +1,36 @@
+# GEM Intern v7.0 - PyQt6 Desktop App Requirements
+# Replaces streamlit-based requirements.txt
+
+# UI Framework
+PyQt6
+
+# AI / LLM
+google-genai
+openai
+
+# Document Processing
+python-docx
+python-pptx
+markitdown
+pypdf
+PyMuPDF
+
+# Data
+pandas
+openpyxl
+XlsxWriter
+python-calamine
+tabulate
+
+# Google Cloud (OCR)
+google-cloud-documentai
+
+# Microsoft OneDrive
+msal
+
+# Utilities
+python-dotenv
+requests
+beautifulsoup4
+lxml
+Pillow

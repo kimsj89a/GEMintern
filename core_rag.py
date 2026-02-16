@@ -192,8 +192,17 @@ def get_indexed_count(project_name: str) -> int:
 
 
 def get_indexed_doc_names(project_name: str) -> List[str]:
-    """Get names of stored documents in a project."""
-    return _get_indexed_docs(project_name)
+    """Get names of stored documents in a project.
+    Falls back to reading actual .md files from disk if index is empty/missing.
+    """
+    names = _get_indexed_docs(project_name)
+    if names:
+        return names
+    # Fallback: read actual .md files from disk
+    docs_dir = _get_project_docs_dir(project_name)
+    if os.path.exists(docs_dir):
+        return [os.path.splitext(f)[0] for f in sorted(os.listdir(docs_dir)) if f.endswith(".md")]
+    return []
 
 
 # ========================================
@@ -248,6 +257,46 @@ def load_all_project_docs(project_name: str) -> str:
     return "\n\n".join(parts)
 
 
+def load_selected_project_docs(project_name: str, selected_doc_names: List[str]) -> str:
+    """Load only selected documents from a project as concatenated text.
+
+    Args:
+        project_name: Name of the project
+        selected_doc_names: List of document names to load (without .md extension)
+
+    Returns:
+        Concatenated text of selected documents
+    """
+    if not selected_doc_names:
+        return ""
+
+    docs_dir = _get_project_docs_dir(project_name)
+    if not os.path.exists(docs_dir):
+        return ""
+
+    parts = []
+    # Normalize selected names: remove ANY extension to get base name
+    # This handles .xlsx, .pdf, .md etc. stored in _indexed_docs.json
+    normalized_names = set()
+    for name in selected_doc_names:
+        normalized_names.add(os.path.splitext(name)[0])
+
+    for fname in sorted(os.listdir(docs_dir)):
+        if fname.endswith(".md"):
+            doc_name = fname[:-3]  # Remove .md extension
+            if doc_name in normalized_names or fname in selected_doc_names:
+                fpath = os.path.join(docs_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    if content:
+                        parts.append(content)
+                except Exception:
+                    pass
+
+    return "\n\n".join(parts)
+
+
 def load_project_docs_dict(project_name: str) -> Dict[str, str]:
     """Load all documents from a project as a dict {filename: content}."""
     docs_dir = _get_project_docs_dir(project_name)
@@ -278,8 +327,11 @@ def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[
     api_key is kept in the signature for backward compatibility but not used.
     """
     already_indexed = set(_get_indexed_docs(project_name))
+    # Compare using base names (without extension) to avoid duplicates
+    already_indexed_stems = {os.path.splitext(d)[0] for d in already_indexed}
 
-    new_texts = {k: v for k, v in texts.items() if k not in already_indexed}
+    new_texts = {k: v for k, v in texts.items()
+                 if os.path.splitext(k)[0] not in already_indexed_stems}
     if not new_texts:
         return {
             "success": True,
@@ -294,18 +346,21 @@ def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[
     for name, text in new_texts.items():
         try:
             if text and len(text.strip()) > 50:
-                _save_doc_file(project_name, name, text)
-                indexed.append(name)
+                saved_path = _save_doc_file(project_name, name, text)
+                # Store the stem of the actual saved .md file
+                saved_stem = os.path.splitext(os.path.basename(saved_path))[0]
+                indexed.append(saved_stem)
         except Exception as e:
             errors.append({"name": name, "error": str(e)})
 
-    all_indexed = list(already_indexed | set(indexed))
-    _save_indexed_docs(project_name, all_indexed)
+    # Merge with existing, normalizing all to stems
+    all_stems = already_indexed_stems | set(indexed)
+    _save_indexed_docs(project_name, list(all_stems))
 
     return {
         "success": len(errors) == 0,
         "indexed": indexed,
-        "skipped": list(already_indexed & set(texts.keys())),
+        "skipped": [k for k in texts.keys() if k not in new_texts],
         "errors": errors,
         "total": len(texts),
     }
