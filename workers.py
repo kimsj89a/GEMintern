@@ -272,6 +272,51 @@ class AnalysisWorker(QThread):
                 self.error.emit(str(e))
 
 
+class SyncWorker(QThread):
+    """Worker for cloud sync operations (runs in background)."""
+    finished = pyqtSignal(dict)   # result dict
+    error = pyqtSignal(str)
+    status_update = pyqtSignal(str)  # progress messages
+
+    def __init__(self, sync_manager, action="full_sync", project_name=None, parent=None):
+        super().__init__(parent)
+        self.sync_manager = sync_manager
+        self.action = action  # "push", "pull", "full_sync", "sync_registry"
+        self.project_name = project_name
+        self._stopped = False
+
+    def stop(self):
+        self._stopped = True
+
+    def run(self):
+        try:
+            if not self.sync_manager:
+                self.error.emit("Sync manager not initialized")
+                return
+
+            result = {}
+            if self.action == "push" and self.project_name:
+                self.status_update.emit("☁️ 업로드 중...")
+                result = self.sync_manager.push_project(self.project_name)
+            elif self.action == "pull" and self.project_name:
+                self.status_update.emit("📥 다운로드 중...")
+                result = self.sync_manager.pull_project(self.project_name)
+            elif self.action == "full_sync" and self.project_name:
+                self.status_update.emit("🔄 동기화 중...")
+                result = self.sync_manager.full_sync(self.project_name)
+            elif self.action == "sync_registry":
+                self.status_update.emit("📋 프로젝트 목록 동기화 중...")
+                result = self.sync_manager.sync_all_projects()
+            else:
+                result = {"success": False, "error": f"Unknown action: {self.action}"}
+
+            if not self._stopped:
+                self.finished.emit(result)
+        except Exception as e:
+            if not self._stopped:
+                self.error.emit(f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+
+
 class _FileWrapper:
     """Simple wrapper to make a file object look like a Streamlit UploadedFile.
     Uses io.BytesIO internally so pandas/openpyxl read, seek, tell all work."""

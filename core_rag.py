@@ -14,6 +14,21 @@ import shutil
 from typing import List, Dict, Any
 
 
+# --- Cloud sync hook ---
+_sync_manager = None
+
+
+def set_sync_manager(manager):
+    """Set the CloudSyncManager instance for automatic cloud sync."""
+    global _sync_manager
+    _sync_manager = manager
+
+
+def get_sync_manager():
+    """Get the current CloudSyncManager instance (or None)."""
+    return _sync_manager
+
+
 # --- Constants ---
 RAG_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage")
 PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
@@ -131,6 +146,12 @@ def create_project(project_name: str) -> Dict[str, Any]:
     }
     projects.append(new_project)
     _save_projects(projects)
+
+    if _sync_manager:
+        try:
+            _sync_manager.on_project_created(safe_name)
+        except Exception:
+            pass
 
     return {"success": True, "project": new_project}
 
@@ -357,6 +378,15 @@ def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[
     all_stems = already_indexed_stems | set(indexed)
     _save_indexed_docs(project_name, list(all_stems))
 
+    if _sync_manager and indexed:
+        try:
+            for name in indexed:
+                content = _load_doc_file(project_name, name)
+                if content:
+                    _sync_manager.on_document_saved(project_name, name, content)
+        except Exception:
+            pass
+
     return {
         "success": len(errors) == 0,
         "indexed": indexed,
@@ -458,6 +488,12 @@ def trash_document(project_name: str, doc_name: str) -> Dict[str, Any]:
     indexed = _get_indexed_docs(project_name)
     indexed = [d for d in indexed if d != doc_name]
     _save_indexed_docs(project_name, indexed)
+
+    if _sync_manager:
+        try:
+            _sync_manager.on_document_deleted(project_name, doc_name)
+        except Exception:
+            pass
 
     return {"success": True}
 

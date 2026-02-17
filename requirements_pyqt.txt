@@ -28,6 +28,9 @@ google-cloud-documentai
 # Microsoft OneDrive
 msal
 
+# Google Sheets
+gspread
+
 # Utilities
 python-dotenv
 requests

@@ -10,23 +10,9 @@ class OneDriveClient:
     def __init__(self, client_id, authority=None, scopes=None, redirect_uri=None):
         self.client_id = client_id
         self.authority = authority or "https://login.microsoftonline.com/common"
-        self.scopes = scopes or ["Files.Read", "User.Read"]
+        self.scopes = scopes or ["Files.ReadWrite", "User.Read"]
         self.redirect_uri = redirect_uri or "http://localhost:8501"
-        
-        # Initialize MSAL Public Client (for Device Code or Interactive flow)
-        # Note: Streamlit runs on server, but for "import", we act as a public client in some flows,
-        # or confidential if we had a secret. Here we assume implicit/code flow for simplicity in Streamlit.
-        self.app = msal.ConfidentialClientApplication(
-            client_id=self.client_id,
-            authority=self.authority,
-            client_credential=None, # We are using strictly public client flow or just constructing URLs manually if needed
-            # Actually for Streamlit, the best way without a backend callback handler is often 
-            # the "Device Code Flow" or just constructing the auth URL manually and asking user to paste code/token.
-            # But let's try to support a standard flow if we can. 
-            # For simplicity in this "Intern" app, we might use the Device Flow which is easiest for scripts,
-            # but for web, we need a redirect.
-        )
-        # Re-init as Public for cleaner usage if no secret
+
         self.app = msal.PublicClientApplication(
             client_id=self.client_id,
             authority=self.authority
@@ -89,8 +75,109 @@ class OneDriveClient:
         """Downloads a file by ID."""
         headers = self.get_headers(access_token)
         url = f'{GRAPH_API_ENDPOINT}/me/drive/items/{file_id}/content'
-        
+
         response = requests.get(url, headers=headers, stream=True)
         if response.status_code == 200:
             return response.content
         return None
+
+    # ========================================
+    # Write operations
+    # ========================================
+
+    def upload_file(self, access_token, parent_id, filename, content_bytes):
+        """Upload a file (up to 250MB) into a folder.
+        PUT /me/drive/items/{parent-id}:/{filename}:/content
+        """
+        safe_name = urllib.parse.quote(filename)
+        url = f'{GRAPH_API_ENDPOINT}/me/drive/items/{parent_id}:/{safe_name}:/content'
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/octet-stream',
+        }
+        if isinstance(content_bytes, str):
+            content_bytes = content_bytes.encode('utf-8')
+        resp = requests.put(url, headers=headers, data=content_bytes)
+        if resp.status_code in (200, 201):
+            return resp.json()
+        return {"error": resp.status_code, "message": resp.text}
+
+    def update_file(self, access_token, file_id, content_bytes):
+        """Update an existing file's contents.
+        PUT /me/drive/items/{file-id}/content
+        """
+        url = f'{GRAPH_API_ENDPOINT}/me/drive/items/{file_id}/content'
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/octet-stream',
+        }
+        if isinstance(content_bytes, str):
+            content_bytes = content_bytes.encode('utf-8')
+        resp = requests.put(url, headers=headers, data=content_bytes)
+        if resp.status_code in (200, 201):
+            return resp.json()
+        return {"error": resp.status_code, "message": resp.text}
+
+    def create_folder(self, access_token, parent_id, folder_name):
+        """Create a folder under parent_id.
+        POST /me/drive/items/{parent-id}/children
+        """
+        url = f'{GRAPH_API_ENDPOINT}/me/drive/items/{parent_id}/children'
+        headers = self.get_headers(access_token)
+        body = {
+            "name": folder_name,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": "rename"
+        }
+        resp = requests.post(url, headers=headers, json=body)
+        if resp.status_code in (200, 201):
+            return resp.json()
+        return {"error": resp.status_code, "message": resp.text}
+
+    def delete_file(self, access_token, file_id):
+        """Delete (move to recycle bin) a file or folder.
+        DELETE /me/drive/items/{file-id}
+        """
+        url = f'{GRAPH_API_ENDPOINT}/me/drive/items/{file_id}'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.delete(url, headers=headers)
+        return resp.status_code == 204
+
+    def find_item_by_name(self, access_token, parent_id, name):
+        """Find a child item by name under parent_id. Returns item dict or None."""
+        items = self.list_files(access_token, parent_id)
+        for item in items:
+            if item.get("name") == name:
+                return item
+        return None
+
+    def ensure_app_folder(self, access_token):
+        """Ensure 'GEMintern' folder exists in OneDrive root. Returns folder ID."""
+        # Search in root
+        items = self.list_files(access_token)
+        for item in items:
+            if item.get("name") == "GEMintern" and "folder" in item:
+                return item["id"]
+        # Create if not found
+        result = self.create_folder(access_token, "root", "GEMintern")
+        return result.get("id")
+
+    def ensure_project_folder(self, access_token, project_name):
+        """Ensure 'GEMintern/{project_name}/docs/' structure exists. Returns docs folder ID."""
+        app_folder_id = self.ensure_app_folder(access_token)
+        if not app_folder_id:
+            return None
+
+        # Project folder
+        proj = self.find_item_by_name(access_token, app_folder_id, project_name)
+        if not proj:
+            proj = self.create_folder(access_token, app_folder_id, project_name)
+        proj_id = proj.get("id")
+        if not proj_id:
+            return None
+
+        # docs sub-folder
+        docs = self.find_item_by_name(access_token, proj_id, "docs")
+        if not docs:
+            docs = self.create_folder(access_token, proj_id, "docs")
+        return docs.get("id")

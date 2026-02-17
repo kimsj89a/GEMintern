@@ -11,7 +11,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QFont
+import os
 from app_state import AppState
+from workers import SyncWorker
 
 # Import pages
 from pages.home_page import HomePage
@@ -253,6 +255,19 @@ class MainWindow(QMainWindow):
 
         bottom.addLayout(zoom_row)
 
+        # Sync status button
+        self.sync_btn = QPushButton("🔴 클라우드 미연결")
+        self.sync_btn.setToolTip("클릭하여 수동 동기화 실행")
+        self.sync_btn.setStyleSheet("""
+            QPushButton {
+                color: #787774; background: transparent; border: 1px solid #E9E9E7;
+                border-radius: 6px; padding: 6px 12px; margin: 2px 0px; font-size: 12px;
+            }
+            QPushButton:hover { background: #E8F3FC; border-color: #2383E2; }
+        """)
+        self.sync_btn.clicked.connect(self._on_sync_clicked)
+        bottom.addWidget(self.sync_btn)
+
         # Settings + Restart
         btn_settings = QPushButton("⚙️ 설정 수정")
         btn_settings.setProperty("page_id", "settings_bottom")
@@ -443,6 +458,7 @@ class MainWindow(QMainWindow):
 
     def _on_settings_applied(self):
         AppState.set("app_started", True)
+        self._init_cloud_sync()
         self._navigate_to("home")
 
     def _on_project_changed(self, text):
@@ -477,3 +493,99 @@ class MainWindow(QMainWindow):
             for pid, page in self._pages.items():
                 if hasattr(page, 'refresh'):
                     page.refresh()
+        elif key == "cloud_sync":
+            self._init_cloud_sync()
+
+    # ========================================
+    # Cloud Sync
+    # ========================================
+
+    def _init_cloud_sync(self):
+        """Initialize CloudSyncManager from current settings and register with core_rag."""
+        cs = AppState.get("cloud_sync", {})
+        if not cs:
+            return
+
+        auto_sync = cs.get("auto_sync", True)
+        onedrive_client = None
+        gsheets_client = None
+
+        # OneDrive client (token is acquired separately via OAuth flow)
+        if cs.get("onedrive_enabled") and cs.get("onedrive_client_id"):
+            try:
+                from utils_onedrive import OneDriveClient
+                onedrive_client = OneDriveClient(cs["onedrive_client_id"])
+            except Exception as e:
+                print(f"OneDrive init error: {e}")
+
+        # Google Sheets client
+        if cs.get("gsheets_enabled") and cs.get("gsheets_credentials_path"):
+            cred_path = cs["gsheets_credentials_path"]
+            if os.path.exists(cred_path):
+                try:
+                    from utils_gsheets import GSheetsClient
+                    gsheets_client = GSheetsClient(cred_path)
+                    gsheets_client.ensure_workbook(
+                        spreadsheet_id=cs.get("gsheets_spreadsheet_id") or None
+                    )
+                    # Store the resolved spreadsheet ID back
+                    if gsheets_client.spreadsheet_id:
+                        cs["gsheets_spreadsheet_id"] = gsheets_client.spreadsheet_id
+                except Exception as e:
+                    print(f"GSheets init error: {e}")
+
+        if onedrive_client or gsheets_client:
+            from cloud_sync import CloudSyncManager
+            import core_rag
+            manager = CloudSyncManager(
+                onedrive_client=onedrive_client,
+                gsheets_client=gsheets_client,
+            )
+            if auto_sync:
+                core_rag.set_sync_manager(manager)
+            self._sync_manager = manager
+            self._update_sync_status("connected")
+        else:
+            self._sync_manager = None
+            import core_rag
+            core_rag.set_sync_manager(None)
+            self._update_sync_status("disconnected")
+
+    def _update_sync_status(self, status):
+        """Update sync button appearance."""
+        labels = {
+            "connected": "🟢 클라우드 연결됨",
+            "syncing": "🟡 동기화 중...",
+            "disconnected": "🔴 클라우드 미연결",
+        }
+        self.sync_btn.setText(labels.get(status, labels["disconnected"]))
+
+    def _on_sync_clicked(self):
+        """Manual sync: sync current project if available."""
+        if not hasattr(self, '_sync_manager') or not self._sync_manager:
+            QMessageBox.information(self, "동기화", "클라우드 연결이 설정되지 않았습니다.\n설정 페이지에서 OneDrive 또는 Google Sheets를 활성화하세요.")
+            return
+
+        project = AppState.get("current_project", "")
+        if not project:
+            # Just sync registry
+            self._run_sync("sync_registry")
+        else:
+            self._run_sync("full_sync", project)
+
+    def _run_sync(self, action, project_name=None):
+        """Run sync in background thread."""
+        self._update_sync_status("syncing")
+        self._sync_worker = SyncWorker(
+            self._sync_manager, action=action, project_name=project_name
+        )
+        self._sync_worker.finished.connect(self._on_sync_finished)
+        self._sync_worker.error.connect(self._on_sync_error)
+        self._sync_worker.start()
+
+    def _on_sync_finished(self, result):
+        self._update_sync_status("connected")
+
+    def _on_sync_error(self, error_msg):
+        self._update_sync_status("connected")
+        print(f"Sync error: {error_msg}")

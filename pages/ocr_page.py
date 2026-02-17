@@ -25,18 +25,32 @@ class OcrWorker(QThread):
 
     def run(self):
         try:
+            import os
+            import fitz
             results = {}
             total = len(self.file_paths)
             for i, fpath in enumerate(self.file_paths):
                 self.progress.emit(i + 1, total)
-                import os
                 name = os.path.basename(fpath)
                 if self.engine == "gemini":
                     import ocr as ocr_module
-                    text = ocr_module.extract_pdf_with_gemini_ocr(fpath, self.api_key)
+                    with fitz.open(fpath) as doc:
+                        text = ocr_module.extract_pdf_with_gemini_ocr(doc, self.api_key)
                 else:
                     import utils_docai
-                    text = utils_docai.process_document(fpath, self.docai_config)
+                    with open(fpath, "rb") as f:
+                        file_bytes = f.read()
+                    mime_type = utils_docai.get_mime_type(name)
+                    cfg = self.docai_config or {}
+                    result = utils_docai.process_document(
+                        file_bytes=file_bytes,
+                        mime_type=mime_type,
+                        project_id=cfg.get("project_id", ""),
+                        location=cfg.get("location", "us"),
+                        processor_id=cfg.get("processor_id", ""),
+                        credentials_json=cfg.get("credentials_json"),
+                    )
+                    text = result.get("text", "") if isinstance(result, dict) else result
                 results[name] = text if text else "(OCR 결과 없음)"
             self.finished.emit(results)
         except Exception as e:
