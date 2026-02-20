@@ -8,16 +8,18 @@ import traceback
 
 class CloudSyncManager:
     def __init__(self, onedrive_client=None, onedrive_token=None,
-                 gsheets_client=None):
+                 gsheets_client=None, gdrive_client=None):
         """
         Args:
             onedrive_client: OneDriveClient instance (or None to disable)
             onedrive_token: access_token string for OneDrive API calls
             gsheets_client: GSheetsClient instance (or None to disable)
+            gdrive_client: GoogleDriveClient instance (or None to disable)
         """
         self.onedrive = onedrive_client
         self.onedrive_token = onedrive_token
         self.gsheets = gsheets_client
+        self.gdrive = gdrive_client
         self._last_error = None
 
     def set_onedrive_token(self, token):
@@ -30,6 +32,10 @@ class CloudSyncManager:
     @property
     def gsheets_enabled(self):
         return self.gsheets is not None
+
+    @property
+    def gdrive_enabled(self):
+        return self.gdrive is not None and self.gdrive.is_authenticated
 
     @property
     def last_error(self):
@@ -56,6 +62,17 @@ class CloudSyncManager:
                     )
             except Exception as e:
                 self._last_error = f"OneDrive upload: {e}"
+                traceback.print_exc()
+
+        # Google Drive: upload .md file
+        if self.gdrive_enabled:
+            try:
+                docs_folder_id = self.gdrive.ensure_project_folder(project_name)
+                if docs_folder_id:
+                    md_name = filename if filename.endswith(".md") else f"{filename}.md"
+                    self.gdrive.upload_file(docs_folder_id, md_name, content)
+            except Exception as e:
+                self._last_error = f"Google Drive upload: {e}"
                 traceback.print_exc()
 
         # GSheets: log
@@ -125,6 +142,14 @@ class CloudSyncManager:
                 self._last_error = f"OneDrive folder creation: {e}"
                 traceback.print_exc()
 
+        # Google Drive: create folder structure
+        if self.gdrive_enabled:
+            try:
+                self.gdrive.ensure_project_folder(project_name)
+            except Exception as e:
+                self._last_error = f"Google Drive folder creation: {e}"
+                traceback.print_exc()
+
         # GSheets: log + registry update
         if self.gsheets_enabled:
             try:
@@ -143,73 +168,105 @@ class CloudSyncManager:
     # ========================================
 
     def push_project(self, project_name):
-        """Push all local docs for a project to OneDrive."""
+        """Push all local docs for a project to cloud (OneDrive + Google Drive)."""
         self._last_error = None
-        if not self.onedrive_enabled:
-            return {"success": False, "error": "OneDrive not connected"}
+        results = {}
 
-        try:
-            import core_rag
-            docs = core_rag.load_project_docs_dict(project_name)
-            if not docs:
-                return {"success": True, "uploaded": 0}
+        import core_rag
+        docs = core_rag.load_project_docs_dict(project_name)
+        if not docs:
+            return {"success": True, "uploaded": 0}
 
-            docs_folder_id = self.onedrive.ensure_project_folder(
-                self.onedrive_token, project_name
-            )
-            if not docs_folder_id:
-                return {"success": False, "error": "Could not create OneDrive folder"}
-
-            uploaded = 0
-            for fname, content in docs.items():
-                result = self.onedrive.upload_file(
-                    self.onedrive_token, docs_folder_id, fname, content
+        # OneDrive push
+        if self.onedrive_enabled:
+            try:
+                docs_folder_id = self.onedrive.ensure_project_folder(
+                    self.onedrive_token, project_name
                 )
-                if "id" in result:
-                    uploaded += 1
+                if docs_folder_id:
+                    uploaded = 0
+                    for fname, content in docs.items():
+                        result = self.onedrive.upload_file(
+                            self.onedrive_token, docs_folder_id, fname, content
+                        )
+                        if "id" in result:
+                            uploaded += 1
+                    results["onedrive"] = {"success": True, "uploaded": uploaded}
+            except Exception as e:
+                results["onedrive"] = {"success": False, "error": str(e)}
+                self._last_error = f"OneDrive push: {e}"
 
-            return {"success": True, "uploaded": uploaded, "total": len(docs)}
-        except Exception as e:
-            self._last_error = str(e)
-            return {"success": False, "error": str(e)}
+        # Google Drive push
+        if self.gdrive_enabled:
+            try:
+                gdrive_result = self.gdrive.push_project(project_name, docs)
+                results["gdrive"] = gdrive_result
+            except Exception as e:
+                results["gdrive"] = {"success": False, "error": str(e)}
+                self._last_error = f"Google Drive push: {e}"
+
+        if not self.onedrive_enabled and not self.gdrive_enabled:
+            return {"success": False, "error": "클라우드 스토리지가 연결되지 않았습니다"}
+
+        return {"success": True, "total": len(docs), **results}
 
     def pull_project(self, project_name):
-        """Pull documents from OneDrive into local storage."""
+        """Pull documents from cloud (OneDrive + Google Drive) into local storage."""
         self._last_error = None
-        if not self.onedrive_enabled:
-            return {"success": False, "error": "OneDrive not connected"}
+        results = {}
+        import core_rag
 
-        try:
-            import core_rag
+        # OneDrive pull
+        if self.onedrive_enabled:
+            try:
+                app_folder_id = self.onedrive.ensure_app_folder(self.onedrive_token)
+                proj = self.onedrive.find_item_by_name(
+                    self.onedrive_token, app_folder_id, project_name
+                )
+                if not proj:
+                    results["onedrive"] = {"success": True, "downloaded": 0}
+                else:
+                    docs_folder = self.onedrive.find_item_by_name(
+                        self.onedrive_token, proj["id"], "docs"
+                    )
+                    if not docs_folder:
+                        results["onedrive"] = {"success": True, "downloaded": 0}
+                    else:
+                        files = self.onedrive.list_files(self.onedrive_token, docs_folder["id"])
+                        downloaded = 0
+                        for f in files:
+                            if f.get("name", "").endswith(".md"):
+                                content_bytes = self.onedrive.download_file(
+                                    self.onedrive_token, f["id"]
+                                )
+                                if content_bytes:
+                                    content = content_bytes.decode("utf-8", errors="replace")
+                                    core_rag.index_single_document(
+                                        "", f["name"], content, project_name
+                                    )
+                                    downloaded += 1
+                        results["onedrive"] = {"success": True, "downloaded": downloaded}
+            except Exception as e:
+                results["onedrive"] = {"success": False, "error": str(e)}
+                self._last_error = f"OneDrive pull: {e}"
 
-            # Find the project docs folder on OneDrive
-            app_folder_id = self.onedrive.ensure_app_folder(self.onedrive_token)
-            proj = self.onedrive.find_item_by_name(
-                self.onedrive_token, app_folder_id, project_name
-            )
-            if not proj:
-                return {"success": True, "downloaded": 0, "message": "No OneDrive folder found"}
+        # Google Drive pull
+        if self.gdrive_enabled:
+            try:
+                gdrive_docs = self.gdrive.pull_project(project_name)
+                downloaded = 0
+                for fname, content in gdrive_docs.items():
+                    core_rag.index_single_document("", fname, content, project_name)
+                    downloaded += 1
+                results["gdrive"] = {"success": True, "downloaded": downloaded}
+            except Exception as e:
+                results["gdrive"] = {"success": False, "error": str(e)}
+                self._last_error = f"Google Drive pull: {e}"
 
-            docs_folder = self.onedrive.find_item_by_name(
-                self.onedrive_token, proj["id"], "docs"
-            )
-            if not docs_folder:
-                return {"success": True, "downloaded": 0}
+        if not self.onedrive_enabled and not self.gdrive_enabled:
+            return {"success": False, "error": "클라우드 스토리지가 연결되지 않았습니다"}
 
-            files = self.onedrive.list_files(self.onedrive_token, docs_folder["id"])
-            downloaded = 0
-            for f in files:
-                if f.get("name", "").endswith(".md"):
-                    content_bytes = self.onedrive.download_file(self.onedrive_token, f["id"])
-                    if content_bytes:
-                        content = content_bytes.decode("utf-8", errors="replace")
-                        core_rag.index_single_document("", f["name"], content, project_name)
-                        downloaded += 1
-
-            return {"success": True, "downloaded": downloaded}
-        except Exception as e:
-            self._last_error = str(e)
-            return {"success": False, "error": str(e)}
+        return {"success": True, **results}
 
     def full_sync(self, project_name):
         """Bidirectional sync: push local, then pull remote additions."""

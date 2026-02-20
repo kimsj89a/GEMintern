@@ -62,6 +62,7 @@ class SettingsPage(QWidget):
 
         self.model_combo = QComboBox()
         self.model_combo.addItems([
+            "gemini-3.1-pro-preview",
             "gemini-3-pro-preview",
             "gemini-3-flash-preview",
             "gemini-2.5-flash",
@@ -146,6 +147,79 @@ class SettingsPage(QWidget):
         self.gsheets_spreadsheet_id.setEnabled(False)
         cloud_form.addRow("Spreadsheet ID:", self.gsheets_spreadsheet_id)
 
+        # Google Drive (OAuth)
+        gdrive_sep = QLabel("── Google Drive ──")
+        gdrive_sep.setStyleSheet("color: #6c757d; font-size: 11px; margin-top: 8px;")
+        cloud_form.addRow(gdrive_sep)
+
+        self.gdrive_check = QCheckBox("Google Drive 동기화 사용")
+        self.gdrive_check.toggled.connect(self._toggle_gdrive)
+        cloud_form.addRow(self.gdrive_check)
+
+        # JSON upload button
+        gdrive_json_row = QHBoxLayout()
+        self.gdrive_json_btn = QPushButton("📂 credentials.json 업로드")
+        self.gdrive_json_btn.setEnabled(False)
+        self.gdrive_json_btn.setStyleSheet("""
+            QPushButton {
+                color: #495057; border: 1px solid #ced4da; border-radius: 6px;
+                padding: 6px 14px; background: #f8f9fa; font-size: 12px;
+            }
+            QPushButton:hover { background: #e9ecef; border-color: #4285f4; color: #4285f4; }
+            QPushButton:disabled { background: #f0f0f0; color: #b0b0b0; }
+        """)
+        self.gdrive_json_btn.clicked.connect(self._gdrive_load_json)
+        gdrive_json_row.addWidget(self.gdrive_json_btn)
+        self.gdrive_json_label = QLabel("")
+        self.gdrive_json_label.setStyleSheet("color: #6c757d; font-size: 11px;")
+        gdrive_json_row.addWidget(self.gdrive_json_label)
+        gdrive_json_row.addStretch()
+        cloud_form.addRow("인증 JSON:", gdrive_json_row)
+
+        self.gdrive_client_id = QLineEdit()
+        self.gdrive_client_id.setPlaceholderText("Google OAuth Client ID")
+        self.gdrive_client_id.setEnabled(False)
+        cloud_form.addRow("Client ID:", self.gdrive_client_id)
+
+        self.gdrive_client_secret = QLineEdit()
+        self.gdrive_client_secret.setPlaceholderText("Google OAuth Client Secret")
+        self.gdrive_client_secret.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gdrive_client_secret.setEnabled(False)
+        cloud_form.addRow("Client Secret:", self.gdrive_client_secret)
+
+        gdrive_btn_row = QHBoxLayout()
+        self.gdrive_login_btn = QPushButton("Google 로그인")
+        self.gdrive_login_btn.setEnabled(False)
+        self.gdrive_login_btn.setStyleSheet("""
+            QPushButton {
+                background: #4285f4; color: white; border: none;
+                padding: 8px 20px; border-radius: 6px; font-weight: bold;
+            }
+            QPushButton:hover { background: #3367d6; }
+            QPushButton:disabled { background: #b0b0b0; }
+        """)
+        self.gdrive_login_btn.clicked.connect(self._gdrive_login)
+        gdrive_btn_row.addWidget(self.gdrive_login_btn)
+
+        self.gdrive_logout_btn = QPushButton("로그아웃")
+        self.gdrive_logout_btn.setEnabled(False)
+        self.gdrive_logout_btn.setStyleSheet("""
+            QPushButton {
+                color: #dc3545; border: 1px solid #dc3545; border-radius: 6px;
+                padding: 8px 16px; background: white;
+            }
+            QPushButton:hover { background: #f8d7da; }
+            QPushButton:disabled { background: #f0f0f0; color: #b0b0b0; border-color: #b0b0b0; }
+        """)
+        self.gdrive_logout_btn.clicked.connect(self._gdrive_logout)
+        gdrive_btn_row.addWidget(self.gdrive_logout_btn)
+        gdrive_btn_row.addStretch()
+        cloud_form.addRow("", gdrive_btn_row)
+
+        self.gdrive_status = QLabel("미연결")
+        self.gdrive_status.setStyleSheet("color: #6c757d; font-size: 12px;")
+        cloud_form.addRow("상태:", self.gdrive_status)
+
         # Auto sync toggle
         self.auto_sync_check = QCheckBox("자동 동기화 (문서 저장/분석 완료 시)")
         self.auto_sync_check.setChecked(True)
@@ -187,6 +261,105 @@ class SettingsPage(QWidget):
         self.gsheets_browse_btn.setEnabled(checked)
         self.gsheets_spreadsheet_id.setEnabled(checked)
 
+    def _toggle_gdrive(self, checked):
+        self.gdrive_json_btn.setEnabled(checked)
+        self.gdrive_client_id.setEnabled(checked)
+        self.gdrive_client_secret.setEnabled(checked)
+        self.gdrive_login_btn.setEnabled(checked)
+        if not checked:
+            self.gdrive_logout_btn.setEnabled(False)
+            self.gdrive_status.setText("미연결")
+            self.gdrive_status.setStyleSheet("color: #6c757d; font-size: 12px;")
+        else:
+            self._check_gdrive_token()
+
+    def _check_gdrive_token(self):
+        """Check if a saved Google Drive token exists and is valid."""
+        client_id = self.gdrive_client_id.text().strip()
+        client_secret = self.gdrive_client_secret.text().strip()
+        if not client_id or not client_secret:
+            return
+        try:
+            from utils_gdrive import GoogleDriveClient
+            client = GoogleDriveClient(client_id, client_secret)
+            if client.load_saved_token():
+                self.gdrive_status.setText("연결됨 (토큰 유효)")
+                self.gdrive_status.setStyleSheet("color: #28a745; font-size: 12px; font-weight: bold;")
+                self.gdrive_logout_btn.setEnabled(True)
+            else:
+                self.gdrive_status.setText("미연결 - 로그인 필요")
+                self.gdrive_status.setStyleSheet("color: #ffc107; font-size: 12px;")
+        except Exception:
+            pass
+
+    def _gdrive_load_json(self):
+        """Load credentials.json from Google Cloud Console and fill Client ID/Secret."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Google OAuth JSON 선택", "",
+            "JSON 파일 (*.json);;모든 파일 (*)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Google Cloud Console JSON format: {"installed": {"client_id": ..., "client_secret": ...}}
+            installed = data.get("installed") or data.get("web") or data
+            client_id = installed.get("client_id", "")
+            client_secret = installed.get("client_secret", "")
+            if not client_id:
+                QMessageBox.warning(self, "오류", "유효한 Google OAuth JSON 파일이 아닙니다.\nclient_id를 찾을 수 없습니다.")
+                return
+            self.gdrive_client_id.setText(client_id)
+            self.gdrive_client_secret.setText(client_secret)
+            self.gdrive_json_label.setText(f"✅ {os.path.basename(path)}")
+            self._check_gdrive_token()
+        except Exception as e:
+            QMessageBox.warning(self, "오류", f"JSON 파일 읽기 실패:\n{e}")
+
+    def _gdrive_login(self):
+        client_id = self.gdrive_client_id.text().strip()
+        client_secret = self.gdrive_client_secret.text().strip()
+        if not client_id or not client_secret:
+            QMessageBox.warning(self, "경고", "Client ID와 Client Secret을 입력해주세요.")
+            return
+
+        self.gdrive_login_btn.setEnabled(False)
+        self.gdrive_login_btn.setText("로그인 중...")
+
+        try:
+            from utils_gdrive import GoogleDriveClient
+            client = GoogleDriveClient(client_id, client_secret)
+            success = client.login()
+            if success:
+                self.gdrive_status.setText("연결됨")
+                self.gdrive_status.setStyleSheet("color: #28a745; font-size: 12px; font-weight: bold;")
+                self.gdrive_logout_btn.setEnabled(True)
+                QMessageBox.information(self, "성공", "Google Drive 로그인 성공!")
+            else:
+                self.gdrive_status.setText("로그인 실패")
+                self.gdrive_status.setStyleSheet("color: #dc3545; font-size: 12px;")
+                QMessageBox.warning(self, "실패", "Google Drive 로그인에 실패했습니다.")
+        except Exception as e:
+            self.gdrive_status.setText("오류")
+            QMessageBox.critical(self, "오류", f"로그인 중 오류 발생:\n{e}")
+        finally:
+            self.gdrive_login_btn.setEnabled(True)
+            self.gdrive_login_btn.setText("Google 로그인")
+
+    def _gdrive_logout(self):
+        try:
+            from utils_gdrive import GoogleDriveClient
+            client_id = self.gdrive_client_id.text().strip()
+            client_secret = self.gdrive_client_secret.text().strip()
+            client = GoogleDriveClient(client_id, client_secret)
+            client.logout()
+        except Exception:
+            pass
+        self.gdrive_status.setText("미연결")
+        self.gdrive_status.setStyleSheet("color: #6c757d; font-size: 12px;")
+        self.gdrive_logout_btn.setEnabled(False)
+
     def _browse_gsheets_cred(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "서비스 계정 JSON 선택", "", "JSON Files (*.json)"
@@ -212,6 +385,9 @@ class SettingsPage(QWidget):
                 "gsheets_enabled": self.gsheets_check.isChecked(),
                 "gsheets_credentials_path": self.gsheets_cred_path.text().strip(),
                 "gsheets_spreadsheet_id": self.gsheets_spreadsheet_id.text().strip(),
+                "gdrive_enabled": self.gdrive_check.isChecked(),
+                "gdrive_client_id": self.gdrive_client_id.text().strip(),
+                "gdrive_client_secret": self.gdrive_client_secret.text().strip(),
                 "auto_sync": self.auto_sync_check.isChecked(),
             },
         }
@@ -277,6 +453,11 @@ class SettingsPage(QWidget):
                     self.gsheets_check.setChecked(True)
                     self.gsheets_cred_path.setText(cs.get("gsheets_credentials_path", ""))
                     self.gsheets_spreadsheet_id.setText(cs.get("gsheets_spreadsheet_id", ""))
+                if cs.get("gdrive_enabled"):
+                    self.gdrive_check.setChecked(True)
+                    self.gdrive_client_id.setText(cs.get("gdrive_client_id", ""))
+                    self.gdrive_client_secret.setText(cs.get("gdrive_client_secret", ""))
+                    self._check_gdrive_token()
                 if "auto_sync" in cs:
                     self.auto_sync_check.setChecked(cs["auto_sync"])
         except Exception as e:

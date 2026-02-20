@@ -23,7 +23,9 @@
       "Bash(git clone:*)",
       "Bash(where:*)",
       "Bash(find:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(c:\\\\Users\\\\kimsj\\\\GEMintern\\\\GEMintern\\\\.venv\\\\Scripts\\\\pip.exe install:*)",
+      "Bash(\"c:/Users/kimsj/GEMintern/GEMintern/.venv/Scripts/pip.exe\" install -r \"c:/Users/kimsj/GEMintern/GEMintern/requirements_pyqt.txt\")"
     ]
   }
 }

@@ -180,7 +180,7 @@ streamlit run app.py
 ## Working with AI (Gemini)
 
 ### Model Configuration
-- Default Model: `gemini-2.0-flash-thinking-exp-1219`
+- Default Model: `gemini-3.1-pro-preview`
 - Thinking Levels: MINIMAL, MEDIUM, MAXIMUM
 - Structured output support (JSON schemas)
 

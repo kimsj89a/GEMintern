@@ -28,6 +28,7 @@ from pages.doctemplate_page import DocTemplatePage
 from pages.text_organizer_page import TextOrganizerPage
 from pages.ppt_tools_page import PptToolsPage
 from pages.lp_qa_page import LpQaPage
+from pages.qa_session_page import QaSessionPage
 
 
 # Navigation structure
@@ -44,6 +45,7 @@ NAV_SECTIONS = {
         ("📑 IM 작성", "im"),
         ("📢 발표자료 (PPT)", "ppt_tools"),
         ("🙋‍♂️ LP Q&A 대응", "lp_qa"),
+        ("💬 자료기반 Q&A", "qa_session"),
     ],
     "Utilities": [
         ("🎤 오디오 전사", "audio"),
@@ -72,6 +74,7 @@ PAGE_FACTORIES = {
     "im": lambda: WorkflowPage("im"),
     "ppt_tools": PptToolsPage,
     "lp_qa": LpQaPage,
+    "qa_session": QaSessionPage,
     "audio": AudioPage,
     "crawler": CrawlerPage,
     "ocr": OcrPage,
@@ -534,12 +537,26 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     print(f"GSheets init error: {e}")
 
-        if onedrive_client or gsheets_client:
+        # Google Drive client
+        gdrive_client = None
+        if cs.get("gdrive_enabled") and cs.get("gdrive_client_id"):
+            try:
+                from utils_gdrive import GoogleDriveClient
+                gdrive_client = GoogleDriveClient(
+                    cs["gdrive_client_id"],
+                    cs.get("gdrive_client_secret", ""),
+                )
+                gdrive_client.load_saved_token()
+            except Exception as e:
+                print(f"Google Drive init error: {e}")
+
+        if onedrive_client or gsheets_client or gdrive_client:
             from cloud_sync import CloudSyncManager
             import core_rag
             manager = CloudSyncManager(
                 onedrive_client=onedrive_client,
                 gsheets_client=gsheets_client,
+                gdrive_client=gdrive_client,
             )
             if auto_sync:
                 core_rag.set_sync_manager(manager)
@@ -553,12 +570,21 @@ class MainWindow(QMainWindow):
 
     def _update_sync_status(self, status):
         """Update sync button appearance."""
-        labels = {
-            "connected": "🟢 클라우드 연결됨",
-            "syncing": "🟡 동기화 중...",
-            "disconnected": "🔴 클라우드 미연결",
-        }
-        self.sync_btn.setText(labels.get(status, labels["disconnected"]))
+        if status == "connected" and hasattr(self, '_sync_manager') and self._sync_manager:
+            services = []
+            mgr = self._sync_manager
+            if mgr.onedrive_enabled:
+                services.append("OneDrive")
+            if mgr.gdrive_enabled:
+                services.append("GDrive")
+            if mgr.gsheets_enabled:
+                services.append("GSheets")
+            svc_text = "+".join(services) if services else "클라우드"
+            self.sync_btn.setText(f"🟢 {svc_text} 연결됨")
+        elif status == "syncing":
+            self.sync_btn.setText("🟡 동기화 중...")
+        else:
+            self.sync_btn.setText("🔴 클라우드 미연결")
 
     def _on_sync_clicked(self):
         """Manual sync: sync current project if available."""
