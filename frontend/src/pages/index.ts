@@ -1,0 +1,22 @@
+import { lazy } from 'react';
+
+export const PAGE_REGISTRY: Record<
+  string,
+  { label: string; component: React.LazyExoticComponent<any> }
+> = {
+  home: { label: '🏠 홈', component: lazy(() => import('./HomePage')) },
+  settings: { label: '⚙️ 설정', component: lazy(() => import('./SettingsPage')) },
+  project: { label: '📂 프로젝트', component: lazy(() => import('./ProjectPage')) },
+  phase1: { label: '📥 사전 정보 수집', component: lazy(() => import('./WorkflowPage')) },
+  phase2: { label: '📝 투심보고서 작성', component: lazy(() => import('./WorkflowPage')) },
+  im: { label: '📑 문서작성', component: lazy(() => import('./WorkflowPage')) },
+  ppt_tools: { label: '📢 PPT작성', component: lazy(() => import('./PptToolsPage')) },
+  lp_qa: { label: '🙋‍♂️ LP Q&A', component: lazy(() => import('./LpQaPage')) },
+  qa_session: { label: '💬 자료기반 Q&A', component: lazy(() => import('./QaSessionPage')) },
+  audio: { label: '🎤 오디오 전사', component: lazy(() => import('./AudioPage')) },
+  crawler: { label: '🌐 웹 크롤러', component: lazy(() => import('./CrawlerPage')) },
+  ocr: { label: '👁️ 문서 OCR', component: lazy(() => import('./OcrPage')) },
+  markdown: { label: '📝 MD to Word', component: lazy(() => import('./MarkdownPage')) },
+  doctemplate: { label: '📋 문서양식', component: lazy(() => import('./DocTemplatePage')) },
+  text_organizer: { label: '✏️ 문장 정리기', component: lazy(() => import('./TextOrganizerPage')) },
+};

@@ -1,5 +1,4 @@
 ### [파일명: Rebellions_Tech deck_260212_vShare.pdf]
-[Page 1]
 © 2026 Rebellions Inc. Confidential and Proprietary
 1
 Technology
@@ -31,7 +30,7 @@ Chip TDP
 © 2026 Rebellions Inc. Confidential and Proprietary
 REBELTM-Quad: the world’s first UCIe-A based, peta-scale chiplet AI accelerator
 
-[Page 2]
+
 Roadmap
 PCIe
 GDDR6
@@ -135,7 +134,7 @@ REBELTM-Quad
 UCIe-Advanced based chiplet
 for enterprise-grade AI systems
 
-[Page 3]
+
 Roadmap
 REBELTM-IO
 (IO Die: TSMC 7nm)
@@ -171,7 +170,7 @@ ARM Neoverse
 V3
 CPU Die
 
-[Page 4]
+
 4
 © 2026 Rebellions Inc. Confidential and Proprietary
 Design Philosophy
@@ -211,7 +210,7 @@ chiplet synchronization
 Scalable memory and DMA 
 architectures
 
-[Page 5]
+
 5
 © 2026 Rebellions Inc. Confidential and Proprietary
 Multi-chiplet Dataflow
@@ -230,7 +229,7 @@ Traffic priority control for any type of AI workloads
 Dynamic bottleneck-aware routing, scheduling and runtime
 parameter tuning
 
-[Page 6]
+
 © 2026 Rebellions Inc. Confidential and Proprietary
 6
 REBELTM-IO
@@ -252,7 +251,7 @@ REBELTM-Quad
 REBELTM-IO : 6.4 Tbps ETH-based Scale-up Fabric Enables REBELTM Inference Cluster 
 Note: ISC = Integrated Silicon Capacitor
 
-[Page 7]
+
 7
 © 2026 Rebellions Inc. Confidential and Proprietary
 Rack Solution
@@ -290,7 +289,7 @@ x8
 x8
 x8
 
-[Page 8]
+
 © 2026 Rebellions Inc. Confidential and Proprietary
 8
 REBELTM-CPU
@@ -307,6 +306,3 @@ Coherency for efficient AI compute
 IO (REBELTM-Quad) to Full/IO coherency (REBELTM-Next)
 •
 CPUs to local command processors in NPU
-
-
-

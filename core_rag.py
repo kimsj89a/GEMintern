@@ -571,6 +571,9 @@ def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[
         except Exception:
             pass
 
+    # Vector DB 인덱싱은 별도 /reindex 엔드포인트에서 수행
+    # (ChromaDB가 uvicorn 프로세스에서 segfault를 유발할 수 있어 업로드 시 자동 인덱싱 제거)
+
     return {
         "success": len(errors) == 0,
         "indexed": indexed,
@@ -657,10 +660,21 @@ def trash_document(project_name: str, doc_name: str) -> Dict[str, Any]:
     trash_dir = _get_trash_dir(project_name)
     os.makedirs(trash_dir, exist_ok=True)
 
-    # Find the actual file (original name or .md version)
-    safe_name = re.sub(r'[\\/*?:"<>|]', "_", os.path.splitext(doc_name)[0]).strip()
-    md_name = f"{safe_name}.md"
+    # doc_name은 보통 확장자 없는 stem (예: "1.2.1.3 Cardinal_FAQ_202505")
+    # os.path.splitext를 쓰면 이름 내 점(.)을 확장자로 잘못 인식하므로
+    # stem 그대로 사용하고, 파일 존재 여부로 판단
+    sanitized = re.sub(r'[\\/*?:"<>|]', "_", doc_name).strip()
+    md_name = f"{sanitized}.md"
     src_path = os.path.join(docs_dir, md_name)
+
+    # Fallback: 확장자가 포함된 이름이 전달된 경우 (예: "report.pdf")
+    if not os.path.exists(src_path):
+        sanitized_stem = re.sub(r'[\\/*?:"<>|]', "_", os.path.splitext(doc_name)[0]).strip()
+        alt_md = f"{sanitized_stem}.md"
+        alt_path = os.path.join(docs_dir, alt_md)
+        if os.path.exists(alt_path):
+            md_name = alt_md
+            src_path = alt_path
 
     if not os.path.exists(src_path):
         return {"success": False, "error": f"파일을 찾을 수 없습니다: {doc_name}"}
@@ -668,19 +682,14 @@ def trash_document(project_name: str, doc_name: str) -> Dict[str, Any]:
     dst_path = os.path.join(trash_dir, md_name)
     shutil.move(src_path, dst_path)
 
-    # Remove from indexed docs list and folder structure
-    indexed = _get_indexed_docs(project_name)
-    indexed = [d for d in indexed if d != doc_name]
-    _save_indexed_docs(project_name, indexed)
-
-    # Remove from folder structure
+    # Remove from folder structure (_save_folders가 _indexed_docs.json도 동기화)
     folders = _load_folders(project_name)
-    stem = os.path.splitext(doc_name)[0]
+    stem_fallback = os.path.splitext(doc_name)[0]
     for folder_key, doc_list in folders.items():
-        if doc_name in doc_list:
-            doc_list.remove(doc_name)
-        if stem in doc_list:
-            doc_list.remove(stem)
+        # 가능한 모든 형태의 이름으로 제거
+        for name_variant in {doc_name, sanitized, stem_fallback}:
+            while name_variant in doc_list:
+                doc_list.remove(name_variant)
     _save_folders(project_name, folders)
 
     if _sync_manager:

@@ -31,6 +31,9 @@ msal
 # Google Sheets
 gspread
 
+# Vector DB (RAG)
+chromadb
+
 # Utilities
 python-dotenv
 requests
