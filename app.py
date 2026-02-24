@@ -9,6 +9,7 @@ import ui_ocr
 import ui_markdown
 import ui_doctemplate
 import ui_text_organizer
+import ui_freeform_writer
 import utils
 import core_logic
 import core_logic
@@ -256,6 +257,7 @@ NAV_SECTIONS = {
     "Phase Workflow": ["📥 사전 정보 수집", "📝 투심보고서 작성"], #, "💰 FDD (재무실사)", "⚖️ LDD (법률실사)"],
     "Independent Tools": ["📑 IM 작성", "📢 발표자료 (PPT)", "🙋‍♂️ LP Q&A 대응"],
     "Utilities": [
+        "📝 자유양식 작성기",
         "🎤 오디오 전사", "🌐 웹 크롤러", "👁️ 문서 OCR",
         "📝 MD to Word", "📋 문서양식", "✏️ 문장 정리기",
     ],
@@ -505,6 +507,9 @@ def main():
             except Exception as e:
                 st.error(f"워크플로우 오류: {type(e).__name__}: {e}")
                 st.code(traceback.format_exc())
+
+        elif selected_page == "📝 자유양식 작성기":
+            ui_freeform_writer.render_freeform_writer_panel(settings)
 
         elif selected_page == "🎤 오디오 전사":
             ui_audio.render_audio_transcription_panel(settings)
