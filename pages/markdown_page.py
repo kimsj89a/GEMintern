@@ -109,8 +109,8 @@ class MarkdownPage(QWidget):
         )
         if path:
             try:
-                from utils_markdown import markdown_to_docx
-                docx_data = markdown_to_docx(text, use_template=self.template_check.isChecked())
+                import utils
+                docx_data = utils.create_docx(text)
                 with open(path, 'wb') as f:
                     f.write(docx_data)
                 QMessageBox.information(self, "완료", f"파일이 저장되었습니다:\n{path}")

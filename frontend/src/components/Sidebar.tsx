@@ -20,8 +20,8 @@ const NAV_SECTIONS = [
   {
     title: 'Independent Tools',
     items: [
-      { label: '📑 IM 작성', id: 'im' },
-      { label: '📢 발표자료 (PPT)', id: 'ppt_tools' },
+      { label: '📑 문서작성', id: 'im' },
+      { label: '📢 PPT작성', id: 'ppt_tools' },
       { label: '🙋‍♂️ LP Q&A 대응', id: 'lp_qa' },
       { label: '💬 자료기반 Q&A', id: 'qa_session' },
     ],

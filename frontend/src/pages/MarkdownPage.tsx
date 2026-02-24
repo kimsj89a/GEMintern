@@ -1,13 +1,22 @@
 import { useRef, useState } from 'react';
 import MarkdownViewer from '../components/MarkdownViewer';
+import { extractTitle } from '../utils/clipboard';
 
 export default function MarkdownPage() {
   const [inputMode, setInputMode] = useState<'file' | 'direct'>('direct');
   const [markdown, setMarkdown] = useState('');
-  const [filename, setFilename] = useState('output.docx');
+  const [filename, setFilename] = useState('');
+  const [userEditedFilename, setUserEditedFilename] = useState(false);
   const [preview, setPreview] = useState(false);
   const [converting, setConverting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  /** 마크다운 내용에서 파일명 자동 생성 (사용자가 직접 수정하지 않은 경우) */
+  const getEffectiveFilename = () => {
+    if (userEditedFilename && filename) return filename;
+    const title = extractTitle(markdown);
+    return `${title}.docx`;
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -23,16 +32,17 @@ export default function MarkdownPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      const effectiveName = getEffectiveFilename();
       const res = await fetch('/api/markdown-to-docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown, filename }),
+        body: JSON.stringify({ markdown, filename: effectiveName }),
         signal: controller.signal,
       });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
+      a.href = url; a.download = effectiveName; a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
       if (err.name !== 'AbortError') alert(`변환 실패: ${err.message}`);
@@ -84,8 +94,16 @@ export default function MarkdownPage() {
       {/* Filename */}
       <div className="flex items-center gap-3 mb-4">
         <label className="text-sm text-[#787774]">파일명:</label>
-        <input value={filename} onChange={(e) => setFilename(e.target.value)}
-          className="px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-sm w-48 focus:outline-none focus:border-[#2383E2]" />
+        <input
+          value={filename}
+          placeholder={extractTitle(markdown) + '.docx'}
+          onChange={(e) => { setFilename(e.target.value); setUserEditedFilename(true); }}
+          className="px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-sm w-64 focus:outline-none focus:border-[#2383E2]"
+        />
+        {userEditedFilename && filename && (
+          <button onClick={() => { setFilename(''); setUserEditedFilename(false); }}
+            className="text-xs text-[#9B9A97] hover:text-[#37352F]">자동</button>
+        )}
       </div>
 
       {/* Actions */}

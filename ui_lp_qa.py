@@ -4,7 +4,7 @@ import io
 import core_rag
 import core_logic
 import utils
-import utils_markdown
+import utils
 
 def render_lp_qa_panel(settings):
     st.markdown("### 🙋‍♂️ LP Q&A 대응")
@@ -105,7 +105,7 @@ def render_lp_qa_panel(settings):
                 with col2:
                     # Individual Word export
                     md_content = f"# Q: {result['Question']}\n\n{result['Answer']}"
-                    docx_bytes = utils_markdown.markdown_to_docx(md_content, use_template=True)
+                    docx_bytes = utils.create_docx(md_content)
                     st.download_button(
                         label="📄 Word",
                         data=docx_bytes,
@@ -146,7 +146,7 @@ def render_lp_qa_panel(settings):
                 all_md_content += f"{r['Answer']}\n\n"
                 all_md_content += "---\n\n"
 
-            all_docx_bytes = utils_markdown.markdown_to_docx(all_md_content, use_template=True)
+            all_docx_bytes = utils.create_docx(all_md_content)
             st.download_button(
                 label="📄 Word 다운로드 (전체)",
                 data=all_docx_bytes,

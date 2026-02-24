@@ -415,29 +415,259 @@ Private Equity(PE)의 시니어 투자 심사역으로, Investment Banking(IB) �
     # ========================================
     # 3. IM (투자제안서)
     # ========================================
-    'im_system': """
-당신은 **투자제안서(IM, Information Memorandum) 전문가**입니다.
-투자 유치를 위해 잠재 투자자(FI/SI/LP)에게 배포하는 **공식 투자제안서**를 작성합니다.
+    'im_full_system': """
+당신은 한국 PEF/VC의 투자심의위원회(IC) 제출용 **Information Memorandum(IM)**을 작성하는 시니어 투자 어소시에이트입니다.
+최종 산출물은 PPT로 변환되는 것을 전제로, 마크다운 형식으로 작성합니다.
 
-[문서 목적]
-- 대상회사의 투자 매력을 체계적으로 전달하여 투자자의 관심과 참여를 유도
+[Role Definition]
+Private Equity(PE)의 시니어 투자 심사역으로, FA(Financial Advisor) 경력을 보유합니다.
+설득력 있으면서도 팩트 기반으로 작성하며, 투자 매력을 체계적으로 전달합니다.
+
+[IM 문서 목적]
+- 대상회사의 투자 매력을 잠재 투자자(FI/SI/LP)에게 체계적으로 전달
 - FA(주관사) 또는 매도자 측에서 작성하여 복수의 잠재 투자자에게 배포
 - 투자자가 예비적 관심표명(IOI) 또는 인수의향서(LOI) 제출 여부를 판단하는 근거
 
 [작성 원칙]
 1. **톤**: 투자 매력을 부각하되, 과장은 지양. 팩트 기반으로 어필
-2. **서술 방식**: 전문적이고 격조 있는 문체, 핵심 강점 중심
-3. **구성**: Investment Highlights → Company → Market → Business → Financials → Transaction 순서
-4. **정량 데이터**: 매출/이익 Track Record, 성장률(CAGR), 시장 점유율 등 수치 적극 활용
-5. **차별화**: Peer 대비 차별점을 명확히 부각
-6. **성장 스토리**: 과거 실적 → 현재 위치 → 미래 성장 경로의 논리적 흐름
-7. **표 활용**: Markdown Table로 Financial Summary, Peer Comparison 등 정리
-8. **헤더 금지**: '수신:', '발신:' 등 메모 데이터 작성 금지
+2. **데이터 중심**: 주장에는 반드시 수치적 근거를 포함 (CAGR, 시장 규모, 매출 비중 등)
+3. **출처 명시**: 주요 데이터에 Source 표기
+4. **한국어 기본**, 고유명사/산업 용어는 영문 병기
+5. **슬라이드 제목**: 핵심 메시지를 담은 문장형 권장
+6. **표 활용**: Markdown Table로 Financial Summary, Peer Comparison, Term Sheet 등 정리
+7. **헤더 금지**: '수신:', '발신:' 등 메모 데이터 작성 금지
+8. **차트 표시**: 차트가 필요한 곳에 `[차트: 설명]` 태그 삽입
 
-[Investment Highlights 작성 가이드]
-- 3~5개의 핵심 투자 포인트를 선두에 배치
-- 각 포인트는 한 줄 헤드라인 + 2~3줄 근거로 구성
-- 정량적 근거(수치, %, CAGR)를 반드시 포함
+[투자 유형별 강조점]
+투자 유형이 `{investment_type}`인 경우:
+- **Growth/VC**: 기술력, TAM, 성장 가시성 강조. Valuation은 PSR, 유사 라운드 비교 중심. Exit은 IPO/후속 라운드.
+- **Buyout**: Cash Flow, 시장 지배력, Value-up 강조. Valuation은 EV/EBITDA, DCF 중심. Exit은 Trade Sale/Secondary.
+- **Pre-IPO**: 실적 성장, IPO 비교군, 하방 보호 강조. Valuation은 PER, 상장사 비교 중심. Exit은 IPO.
+
+[PPT 변환 규칙 - 마크다운 작성 시 반드시 준수]
+- `#` (H1): 첫 번째는 표지, 이후는 섹션 구분자 (간지 슬라이드)
+- `##` (H2): 개별 슬라이드 제목 → 새 슬라이드 시작
+- `###` (H3): 슬라이드 내 소제목
+- 불릿(`-`): 슬라이드 내 콘텐츠
+- 테이블: PPT 테이블로 변환
+- `[차트: 설명]`: 차트 placeholder로 변환
+
+[슬라이드 구성 원칙]
+1. 슬라이드당 핵심 메시지 1개
+2. 좌측 상단에 섹션 라벨 (예: I. Executive Summary)
+3. 슬라이드 하단에 Source 및 Note 배치
+4. 기밀 자료 표시: Private & Confidential
+""",
+
+    'im_full_part1': """
+[Part 1/5: Executive Summary & Deal Structure]
+다음 섹션들을 상세히 작성하십시오. 투자 유형은 `{investment_type}` 입니다.
+
+# [Project Name] Information Memorandum
+(이 첫 번째 H1은 표지 슬라이드가 됩니다)
+
+# I. Executive Summary
+
+## Deal Structure
+- 투자 구조도: GP → PEF → 대상회사 투자 흐름
+- 핵심 지표: Pre-money Valuation, 투자형태, 투자금액/지분율
+- Cap Table (투자 전/후 지분 변동)
+
+## Term Sheet 요약
+| 구분 | 내용 |
+|------|------|
+| 투자대상 | [회사명] |
+| 투자형태 | [RCPS/보통주 등] |
+| 투자금액 | [X]억원 |
+| Valuation | Pre [X]조 / Post [X]조 |
+| 배당/이자 | [조건] |
+| 전환/상환 | [조건] |
+| 동반매도권 | [조건] |
+| 우선매수권 | [조건] |
+
+## Funding History
+- Growth/VC의 경우: Seed → Series A → B → 본건 투자이력 테이블
+- Buyout의 경우: 기존 주주구성 → 본건 거래구조
+
+## Deal Timeline
+| 일정 | 구분 | 비고 |
+|------|------|------|
+| [날짜] | NDA 체결 | |
+| [날짜] | 예비 실사 | |
+| [날짜] | 투심위 상정 | |
+| [날짜] | 클로징 | |
+
+## Investment Highlights
+- 핵심 투자 포인트 3~6개를 넘버링하여 요약
+- 각 포인트별 한 줄 요약 + 2~3줄 부연 (수치 포함)
+
+제공된 deal terms 정보를 반드시 반영하여 구체적으로 작성하십시오.
+""",
+
+    'im_full_part2': """
+[Part 2/5: 대상회사 분석 (Target Overview)]
+다음 섹션들을 상세히 작성하십시오. 투자 유형은 `{investment_type}` 입니다.
+
+# II. 대상회사 분석
+
+## 회사 개요 (Company at a Glance)
+- 기본 정보 테이블 (회사명, 설립일, 대표이사, 본사, 주요사업, 종업원수, 주요주주)
+- 요약 재무 테이블 (최근 3년: 매출액, 영업이익, EBITDA, 순이익)
+
+## 사업 구조 / Value Chain
+- 사업 흐름도: 원재료 → 생산 → 제품/서비스 → 고객
+- 매출 구성 비중 (사업부문별, 제품별)
+- 주요 파트너/공급망 관계
+
+## 제품/서비스 라인업
+- 제품군별 설명
+- 각 제품의 타겟 고객, 매출 기여도
+- 제품 로드맵
+
+## 기술 경쟁력 / 핵심 역량
+- 기술적 차별점 (특허, 공정, 노하우)
+- 경쟁사 대비 비교 테이블
+
+## 고객 관계 / 사업화 현황
+- 주요 고객사별 매출 비중 및 거래 이력
+- 주요 계약/파이프라인 현황
+- 지역별 사업 현황
+
+## 조직 / 경영진
+- 주요 경영진 약력 (대표이사, CTO 등)
+- 조직도 (핵심 부서 중심)
+- 인력 구성 (R&D 비중 등)
+
+각 슬라이드에 표(Markdown Table)를 적극 활용하여 정보를 체계적으로 정리하십시오.
+""",
+
+    'im_full_part3': """
+[Part 3/5: 시장 분석 (Industry Overview)]
+다음 섹션들을 상세히 작성하십시오. 투자 유형은 `{investment_type}` 입니다.
+
+# III. 시장 분석
+
+## TAM / SAM / SOM
+- 글로벌 시장 규모 → 대상 시장 → 대상회사 목표 시장
+- 각 단계별 규모(금액)와 CAGR 명시
+- 시장 규모 산출 근거 (Bottom-up 또는 Top-down)
+- Source 명시
+
+## 전방 시장 / 수요 동향
+- 전방 산업(수요처)의 성장 드라이버
+- 수요 증가를 뒷받침하는 데이터
+- 매크로 트렌드와의 연계 (정책, 기술, 소비 변화)
+
+## 경쟁 구도 / Competitive Landscape
+- 경쟁사 비교 테이블:
+  | 구분 | 대표 기업 | 주요 제품 | 강점 | 한계 |
+  |------|-----------|-----------|------|------|
+- 대상회사의 포지셔닝
+- 진입장벽 분석
+
+## 산업 리스크 / 규제 환경
+- 주요 규제 및 정책 방향
+- 기술 변화 리스크
+- 글로벌 트렌드 (ESG, 지정학 등)
+
+웹 검색을 활용하여 최신 시장 데이터와 경쟁사 정보를 보완하십시오.
+수치와 출처를 명확히 기재하십시오.
+""",
+
+    'im_full_part4': """
+[Part 4/5: 재무 분석 (Financial Analysis)]
+다음 섹션들을 상세히 작성하십시오. 투자 유형은 `{investment_type}` 입니다.
+
+# IV. 재무 분석
+
+## 재무 실적 요약
+- 매출/영업이익/EBITDA 추이 (3~5년)
+- 주요 마진 추이 (GPM, OPM, EBITDA Margin)
+- CAGR 명시
+- [차트: 막대그래프 - 매출/영업이익 추이]
+
+## 매출 분석 / KPI
+- 사업부문별 매출 Breakdown
+- 주요 KPI 추이 (ASP, 물량, 고객수, 재구매율 등)
+- 매출 성장 드라이버 분석
+
+## 비용 구조 분석
+- 원가 구성 (재료비, 노무비, 경비 등)
+- 고정비/변동비 분석
+- 수익성 개선 레버
+
+## 매출 전망 / Projection
+| 단위: 억원 | 20XXA | 20XXE | 20XXE | 20XXE |
+|------------|-------|-------|-------|-------|
+| 매출액 | | | | |
+| YoY Growth | | | | |
+| EBITDA | | | | |
+| EBITDA Margin | | | | |
+- Key Assumptions (매출 드라이버별 가정)
+- 가시성 높은 파이프라인/수주 기반 설명
+
+## B/S 및 운전자본 분석
+- Buyout 딜의 경우 반드시 포함:
+  - 대차대조표 요약, 순운전자본(NWC) 추이
+  - CAPEX 추이 및 향후 투자 계획
+  - FCF 분석
+
+표(Markdown Table)를 활용하여 재무 데이터를 정리하십시오.
+""",
+
+    'im_full_part5': """
+[Part 5/5: Valuation, Risk & Exit]
+다음 섹션들을 상세히 작성하십시오. 투자 유형은 `{investment_type}` 입니다.
+
+# V. Valuation
+
+## Valuation 요약
+- 적용 Valuation 방법론 및 결과 요약
+- 결론: 본건 투자가액 = 적용 멀티플 명시
+
+## Comparable Company Analysis
+| 회사명 | 시가총액 | EV/EBITDA | P/E | EV/Revenue |
+|--------|----------|-----------|-----|------------|
+| [Comp1] | | | | |
+| [Comp2] | | | | |
+| Median | | | | |
+- 벤치마크 선정 근거
+
+## Transaction Comparables
+- 유사 M&A 거래 사례 테이블 (해당 시)
+
+## 수익성 분석 / Return Analysis
+| 시나리오 | Exit Year | Exit Multiple | IRR | MoM |
+|----------|-----------|---------------|-----|-----|
+| Base | | | | |
+| Bull | | | | |
+| Bear | | | | |
+- 투자 원금 회수 안전장치 (Put Option, 전환/상환 조건 등)
+
+# VI. Key Risks & Mitigants
+
+## Upside Potential & Risks
+| 구분 | 설명 | Impact | Probability | 대응 방안 |
+|------|------|--------|-------------|-----------|
+| Upside 1 | | | | |
+| Risk 1 | | | | |
+| Risk 2 | | | | |
+| Risk 3 | | | | |
+
+- 리스크 카테고리: 사업 리스크, 시장 리스크, 재무 리스크, 거래 리스크
+
+# VII. Exit Strategy
+
+## Exit 전략
+- 예상 Exit 경로:
+  1. IPO (상장 시나리오, 예상 시기)
+  2. Trade Sale (전략적 투자자 매각)
+  3. Secondary Sale (재무적 투자자 매각)
+  4. 상환/전환 (RCPS의 경우)
+- Exit Timeline
+- 예상 수익률 시나리오
+
+각 리스크에 반드시 대응 방안을 함께 제시하십시오.
 """,
 
     # ========================================
@@ -1106,6 +1336,58 @@ TEMPLATE_STRUCTURES = {
 ## 6.1 성장 전략 (Growth Plan)
 ## 6.2 자금 사용 계획 (Use of Proceeds)
 ## 6.3 Exit 시나리오 (IPO/M&A)""",
+
+    'im_full': """# [Project Name] Information Memorandum
+
+# I. Executive Summary
+## Deal Structure
+## Term Sheet 요약
+## Funding History
+## Deal Timeline
+## Investment Highlights
+
+---
+
+# II. 대상회사 분석
+## 회사 개요 (Company at a Glance)
+## 사업 구조 / Value Chain
+## 제품/서비스 라인업
+## 기술 경쟁력 / 핵심 역량
+## 고객 관계 / 사업화 현황
+## 조직 / 경영진
+
+---
+
+# III. 시장 분석
+## TAM / SAM / SOM
+## 전방 시장 / 수요 동향
+## 경쟁 구도 / Competitive Landscape
+## 산업 리스크 / 규제 환경
+
+---
+
+# IV. 재무 분석
+## 재무 실적 요약
+## 매출 분석 / KPI
+## 비용 구조 분석
+## 매출 전망 / Projection
+
+---
+
+# V. Valuation
+## Valuation 요약
+## Comparable Company Analysis
+## 수익성 분석 / Return Analysis
+
+---
+
+# VI. Key Risks & Mitigants
+## Upside Potential & Risks
+
+---
+
+# VII. Exit Strategy
+## Exit 전략""",
 
     'management': """# 1. 투자 현황 요약
 

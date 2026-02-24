@@ -13,6 +13,10 @@ export default function ProjectPage() {
   const [uploading, setUploading] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const [vectorStats, setVectorStats] = useState<any>(null);
+  const [syncData, setSyncData] = useState<any>(null);
+  const [showSync, setShowSync] = useState(false);
+  const [selectedSync, setSelectedSync] = useState<Set<string>>(new Set());
+  const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState('');
   const reindexAbortRef = useRef<AbortController | null>(null);
 
@@ -33,6 +37,11 @@ export default function ProjectPage() {
   };
 
   useEffect(() => { loadProjects(); }, []);
+  const loadSyncStatus = () => {
+    if (!currentProject) { setSyncData(null); return; }
+    api.syncStatus(currentProject).then(setSyncData).catch(() => setSyncData(null));
+  };
+
   useEffect(() => { loadDocs(); loadVectorStats(); }, [currentProject]);
 
   const handleCreateProject = async () => {
@@ -250,6 +259,122 @@ export default function ProjectPage() {
                     </button>
                   </div>
                 )}
+              </div>
+
+              {/* RAG DB Sync Panel */}
+              <div className="mb-4">
+                <button
+                  onClick={() => { setShowSync(!showSync); if (!showSync) { loadSyncStatus(); setSelectedSync(new Set()); } }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-[#37352F] hover:bg-[#F7F6F3] rounded-lg w-full text-left"
+                >
+                  <span>{showSync ? '▾' : '▸'}</span>
+                  <span className="font-medium">📊 RAG DB 동기화</span>
+                  {syncData && (
+                    <span className="ml-auto text-xs text-[#9B9A97]">
+                      {syncData.total_disk}개 파일 / {syncData.total_indexed}개 인덱싱
+                      {(syncData.disk_only > 0 || syncData.index_only > 0) && (
+                        <span className="text-amber-500 ml-1">({syncData.disk_only + syncData.index_only}개 미동기화)</span>
+                      )}
+                    </span>
+                  )}
+                </button>
+
+                {showSync && syncData && (() => {
+                  const unsyncedDocs = syncData.docs.filter((d: any) => d.status !== 'synced');
+                  const toggleDoc = (name: string) => {
+                    setSelectedSync((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(name)) next.delete(name); else next.add(name);
+                      return next;
+                    });
+                  };
+                  const selectAllUnsynced = () => {
+                    setSelectedSync(new Set(unsyncedDocs.map((d: any) => d.name)));
+                  };
+                  const handleSyncSelected = async () => {
+                    if (!currentProject || selectedSync.size === 0) return;
+                    setSyncing(true);
+                    const toAdd = syncData.docs
+                      .filter((d: any) => d.status === 'disk_only' && selectedSync.has(d.name))
+                      .map((d: any) => d.name);
+                    const toRemove = syncData.docs
+                      .filter((d: any) => d.status === 'index_only' && selectedSync.has(d.name))
+                      .map((d: any) => d.name);
+                    try {
+                      const res = await api.syncDocs(currentProject, toAdd, toRemove);
+                      if (res.success) {
+                        setStatus(`✅ 동기화 완료: ${res.added}개 추가, ${res.removed}개 제거`);
+                        loadSyncStatus();
+                        loadDocs();
+                        setSelectedSync(new Set());
+                      } else {
+                        setStatus(`❌ 동기화 실패: ${res.error}`);
+                      }
+                    } catch { setStatus('❌ 동기화 요청 실패'); }
+                    setSyncing(false);
+                  };
+
+                  return (
+                    <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 mt-1">
+                      {/* Summary */}
+                      <div className="flex gap-3 mb-3 text-xs">
+                        <span className="px-2 py-1 bg-green-50 text-green-700 rounded">✓ 동기화 {syncData.synced}</span>
+                        {syncData.disk_only > 0 && <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded">⚠ 미인덱싱 {syncData.disk_only}</span>}
+                        {syncData.index_only > 0 && <span className="px-2 py-1 bg-red-50 text-red-700 rounded">✕ 고아 {syncData.index_only}</span>}
+                      </div>
+
+                      {/* Select all unsynced */}
+                      {unsyncedDocs.length > 0 && (
+                        <div className="flex items-center gap-2 mb-2 text-xs text-[#787774]">
+                          <button onClick={selectAllUnsynced} className="hover:text-[#2383E2]">전체 선택</button>
+                          <span>·</span>
+                          <button onClick={() => setSelectedSync(new Set())} className="hover:text-[#2383E2]">선택 해제</button>
+                        </div>
+                      )}
+
+                      {/* Doc list */}
+                      <div className="max-h-56 overflow-y-auto space-y-0.5">
+                        {syncData.docs.map((doc: any) => (
+                          <label key={doc.name} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs cursor-pointer hover:bg-[#F7F6F3] ${
+                            doc.status === 'synced' ? 'text-[#787774]' :
+                            doc.status === 'disk_only' ? 'text-amber-700' :
+                            'text-red-700'
+                          }`}>
+                            {doc.status !== 'synced' ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedSync.has(doc.name)}
+                                onChange={() => toggleDoc(doc.name)}
+                                className="rounded border-gray-300"
+                              />
+                            ) : (
+                              <span className="w-4 text-center text-green-500">✓</span>
+                            )}
+                            <span className={`w-5 text-center ${
+                              doc.status === 'synced' ? 'text-green-500' :
+                              doc.status === 'disk_only' ? 'text-amber-500' : 'text-red-500'
+                            }`}>
+                              {doc.status === 'synced' ? '' : doc.status === 'disk_only' ? '⚠' : '✕'}
+                            </span>
+                            <span className="flex-1 truncate">{doc.name}</span>
+                            <span className="text-[#9B9A97]">{doc.size > 0 ? `${(doc.size / 1024).toFixed(0)}KB` : ''}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Sync action */}
+                      {selectedSync.size > 0 && (
+                        <button
+                          onClick={handleSyncSelected}
+                          disabled={syncing}
+                          className="mt-3 w-full py-2 bg-[#2383E2] text-white text-xs font-medium rounded-lg hover:bg-[#1b6ec2] disabled:opacity-50"
+                        >
+                          {syncing ? '동기화 중...' : `🔄 선택한 ${selectedSync.size}개 파일 동기화`}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* File Upload */}

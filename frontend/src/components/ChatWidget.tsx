@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import MarkdownViewer from './MarkdownViewer';
+import { copyRichText, extractTitle } from '../utils/clipboard';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -40,13 +41,14 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
   };
 
   const handleCopy = (text: string, idx: number) => {
-    navigator.clipboard.writeText(text);
+    copyRichText(text);
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 1500);
   };
 
-  const handleExportSingle = (text: string, idx: number) => {
-    downloadText(text, `answer_${idx + 1}.md`);
+  const handleExportSingle = (text: string, _idx: number) => {
+    const title = extractTitle(text);
+    downloadText(text, `${title}.md`);
   };
 
   const handleExportAll = () => {

@@ -61,7 +61,7 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level, file_contex
     {file_context[:50000]}
 
     [사용자 추가 질문/맥락]
-    {inputs['context_text']}
+    {inputs.get('context_text', '')}
     """
     
     config = types.GenerateContentConfig(

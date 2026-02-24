@@ -12,7 +12,7 @@ from widgets.file_picker import FilePicker
 from widgets.status_box import StatusBox
 from widgets.markdown_viewer import MarkdownViewer
 from widgets.document_list import DocumentListWidget
-import utils_markdown
+import utils
 import core_rag
 
 
@@ -104,10 +104,23 @@ class QaItemWidget(QFrame):
         layout.addLayout(btn_row)
 
     def _copy_to_clipboard(self):
-        """Copy answer to clipboard."""
-        clipboard = QApplication.clipboard()
-        clipboard.setText(self.answer)
-        QMessageBox.information(self, "복사 완료", "답변이 클립보드에 복사되었습니다.")
+        """Copy answer to clipboard with HTML formatting for Word paste."""
+        from PyQt6.QtCore import QMimeData
+        from widgets import MarkdownViewer
+        viewer = MarkdownViewer()
+        html = viewer._md_to_html(self.answer)
+        styled_html = f"""<html><body style="font-family: -apple-system, Malgun Gothic, sans-serif; font-size: 13px; line-height: 1.6;">
+        <style>
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #dee2e6; padding: 6px 10px; text-align: left; }}
+            th {{ background-color: #f0f2f6; font-weight: bold; }}
+        </style>
+        {html}</body></html>"""
+        mime = QMimeData()
+        mime.setText(self.answer)
+        mime.setHtml(styled_html)
+        QApplication.clipboard().setMimeData(mime)
+        QMessageBox.information(self, "복사 완료", "답변이 클립보드에 복사되었습니다.\n(Word에 붙여넣기 시 서식이 유지됩니다)")
 
     def _export_to_word(self):
         """Export Q&A to Word document."""
@@ -118,7 +131,7 @@ class QaItemWidget(QFrame):
             try:
                 # Create markdown with question and answer
                 markdown_content = f"# Q: {self.question}\n\n{self.answer}"
-                docx_bytes = utils_markdown.markdown_to_docx(markdown_content, use_template=True)
+                docx_bytes = utils.create_docx(markdown_content)
 
                 with open(path, 'wb') as f:
                     f.write(docx_bytes)
@@ -384,7 +397,7 @@ class LpQaPage(QWidget):
                     markdown_content += f"{r['answer']}\n\n"
                     markdown_content += "---\n\n"
 
-                docx_bytes = utils_markdown.markdown_to_docx(markdown_content, use_template=True)
+                docx_bytes = utils.create_docx(markdown_content)
 
                 with open(path, 'wb') as f:
                     f.write(docx_bytes)

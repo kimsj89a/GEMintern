@@ -74,11 +74,17 @@ export const api = {
     request<any>(`/projects/${encodeURIComponent(project)}/reindex?force=${force}`, { method: 'POST' }),
   vectorStats: (project: string) =>
     request<any>(`/projects/${encodeURIComponent(project)}/vector-stats`),
+  syncStatus: (project: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/sync-status`),
+  syncDocs: (project: string, add: string[], remove: string[]) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/sync-docs`, {
+      method: 'POST', body: JSON.stringify({ add, remove }),
+    }),
 
   // Sync
   syncPush: (project: string) =>
     request<any>('/sync/push', { method: 'POST', body: JSON.stringify({ project_name: project }) }),
   syncPull: (project: string) =>
     request<any>('/sync/pull', { method: 'POST', body: JSON.stringify({ project_name: project }) }),
-  syncStatus: () => request<any>('/sync/status'),
+  cloudSyncStatus: () => request<any>('/sync/status'),
 };

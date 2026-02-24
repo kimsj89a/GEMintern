@@ -266,7 +266,28 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
 
     return f"### [파일명: {uploaded_file.name}]\n{text_content}\n\n"
 
-def generate_filename(uploaded_files, template_option):
+def extract_title_from_markdown(text):
+    """마크다운 텍스트에서 첫 번째 헤딩 또는 첫 줄을 제목으로 추출."""
+    if not text:
+        return None
+    for line in text.split('\n'):
+        line = line.strip()
+        if line.startswith('#'):
+            title = line.lstrip('#').strip()
+            title = re.sub(r'[\\/*?:"<>|]', '', title).strip()
+            if title:
+                return title[:50].rstrip()
+    # 헤딩이 없으면 첫 번째 비어있지 않은 줄 사용
+    for line in text.split('\n'):
+        line = line.strip()
+        if line:
+            title = re.sub(r'[\\/*?:"<>|]', '', line).strip()
+            if title:
+                return title[:50].rstrip()
+    return None
+
+
+def generate_filename(uploaded_files, template_option, generated_text=None):
     template_map = {
         "simple_review": "simple_review",
         "rfi": "RFI",
@@ -277,6 +298,13 @@ def generate_filename(uploaded_files, template_option):
         "custom": "report",
     }
     suffix = template_map.get(template_option, "report")
+
+    # 생성된 텍스트에서 제목 추출 시도
+    if generated_text:
+        title = extract_title_from_markdown(generated_text)
+        if title:
+            return f"{title}.docx"
+
     project_name = "Investment_Report"
     if uploaded_files:
         first_file = uploaded_files[0].name

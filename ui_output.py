@@ -272,7 +272,10 @@ def render_output_panel(container, settings, inputs, key_prefix="output"):
             st.write("")
             col_d1, col_d2, col_d3 = st.columns(3)
             current_mode = st.session_state.get(k_mode, inputs['template_option'])
-            fname = utils.generate_filename(inputs['uploaded_files'], current_mode)
+            fname = utils.generate_filename(
+                inputs['uploaded_files'], current_mode,
+                generated_text=st.session_state.get(k_text, "")
+            )
 
             with col_d1:
                 if current_mode == 'rfi':

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from '../components/MarkdownViewer';
+import { copyRichText, downloadAsWord } from '../utils/clipboard';
 
 export default function DocTemplatePage() {
   const [formatText, setFormatText] = useState('');
@@ -162,8 +163,9 @@ export default function DocTemplatePage() {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold text-[#37352F]">결과</div>
             <div className="flex gap-2">
+              <button onClick={() => downloadAsWord(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">📄 Word</button>
               <button onClick={() => downloadResult('md')} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">MD</button>
-              <button onClick={() => navigator.clipboard.writeText(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">복사</button>
+              <button onClick={() => copyRichText(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">복사</button>
             </div>
           </div>
           <div className="max-h-96 overflow-y-auto">

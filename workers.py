@@ -33,7 +33,15 @@ class GenerateWorker(QThread):
             import core_logic
             import core_chained
 
-            if self.mode == "chained" and core_chained.is_chained_supported(
+            if self.mode == "im_chained":
+                import core_im
+                self.status_update.emit("📑 IM 단계별 생성 모드로 작성 중...")
+                stream = core_im.generate_im_chained_stream(
+                    self.api_key, self.model_name,
+                    self.inputs, self.thinking_level, self.file_context,
+                    investment_type=self.inputs.get("investment_type", "Growth"),
+                )
+            elif self.mode == "chained" and core_chained.is_chained_supported(
                 self.inputs.get("template_option", "")
             ):
                 self.status_update.emit("🔗 단계별 생성 모드로 작성 중...")

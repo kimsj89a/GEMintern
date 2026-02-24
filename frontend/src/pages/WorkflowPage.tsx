@@ -7,6 +7,7 @@ import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import MarkdownViewer from '../components/MarkdownViewer';
+import { copyRichText, extractTitle, downloadAsWord } from '../utils/clipboard';
 
 const TEMPLATES = [
   { id: 'simple_review', label: '간단 검토' },
@@ -275,11 +276,12 @@ export default function WorkflowPage() {
 
   const downloadMarkdown = () => {
     const text = result || analysisResult;
+    const title = extractTitle(text) || `${currentProject}_${activePage}`;
     const blob = new Blob([text], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentProject}_${activePage}.md`;
+    a.download = `${title}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -362,6 +364,9 @@ export default function WorkflowPage() {
             <div className="flex gap-2 mt-4">
               <button onClick={() => setStep(3)} className="px-4 py-2 bg-[#2383E2] text-white text-sm rounded-lg hover:bg-[#1b6ec2]">
                 자료 Q&A →
+              </button>
+              <button onClick={() => downloadAsWord(analysisResult)} className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
+                📄 Word 저장
               </button>
               <button onClick={downloadMarkdown} className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
                 📥 MD 저장
@@ -479,8 +484,9 @@ export default function WorkflowPage() {
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm font-semibold text-[#37352F]">📄 최종 결과</div>
             <div className="flex gap-2">
+              <button onClick={() => downloadAsWord(result)} className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">📄 Word 저장</button>
               <button onClick={downloadMarkdown} className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">📥 MD 저장</button>
-              <button onClick={() => navigator.clipboard.writeText(result)} className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">복사</button>
+              <button onClick={() => copyRichText(result)} className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">복사</button>
             </div>
           </div>
           <div className="max-h-[60vh] overflow-y-auto">

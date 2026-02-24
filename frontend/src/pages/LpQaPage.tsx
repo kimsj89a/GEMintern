@@ -3,6 +3,7 @@ import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import FolderTree from '../components/FolderTree';
 import MarkdownViewer from '../components/MarkdownViewer';
+import { copyRichText, downloadAsWord } from '../utils/clipboard';
 
 interface QaItem {
   question: string;
@@ -110,7 +111,7 @@ export default function LpQaPage() {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const copyToClipboard = (text: string, idx: number) => {
-    navigator.clipboard.writeText(text);
+    copyRichText(text);
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 1500);
   };
@@ -135,6 +136,15 @@ export default function LpQaPage() {
     const a = document.createElement('a');
     a.href = url; a.download = 'lp_qa_all.md'; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportAllWord = () => {
+    const done = qaItems.filter((it) => it.status === 'done' || it.status === 'error');
+    if (done.length === 0) return;
+    const text = '# LP Q&A 답변 모음\n\n' + qaItems.map((it, i) =>
+      `## Q${i + 1}. ${it.question}\n\n${it.answer}`
+    ).join('\n\n---\n\n');
+    downloadAsWord(text, 'LP_QA_All.docx');
   };
 
   if (!currentProject) {
@@ -246,7 +256,13 @@ export default function LpQaPage() {
             <div className="space-y-3">
               {/* Export all button */}
               {qaItems.some((it) => it.status === 'done') && (
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={exportAllWord}
+                    className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
+                  >
+                    📄 전체 Word 저장
+                  </button>
                   <button
                     onClick={exportAll}
                     className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"

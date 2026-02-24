@@ -3,6 +3,7 @@ from google.genai import types
 import utils
 import core_rfi
 import core_chained
+import core_im
 import core_rag
 import prompts
 
@@ -77,7 +78,8 @@ def _get_system_prompt(template_opt):
     prompt_map = {
         'simple_review': 'simple_review_system',
         'investment': 'investment_system',
-        'im': 'im_system',
+        'im': 'im_full_system',
+        'im_full': 'im_full_system',
         'management': 'management_system',
         'presentation': 'ppt_system',
         'paper_review': 'paper_review_system',
@@ -94,13 +96,22 @@ def _get_system_prompt(template_opt):
 def generate_report_stream(api_key, model_name, inputs, thinking_level, file_context):
     """Single-pass generation mode for all templates."""
     client = get_client(api_key)
-    template_opt = inputs['template_option']
-    structure_text = inputs['structure_text']
+    template_opt = inputs.get('template_option', 'free_summary')
+    structure_text = inputs.get('structure_text', get_default_structure(template_opt))
 
     # [RFI Mode] - 별도 처리
     if template_opt == 'rfi':
         stream = core_rfi.generate_rfi_stream(api_key, model_name, inputs, thinking_level, file_context)
         for chunk in stream:
+            yield chunk
+        return
+
+    # [IM Full Mode] - IM chained 생성
+    if template_opt == 'im_full':
+        for chunk in core_im.generate_im_chained_stream(
+            api_key, model_name, inputs, thinking_level, file_context,
+            investment_type=inputs.get('investment_type', 'Growth')
+        ):
             yield chunk
         return
 
@@ -122,7 +133,7 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
 {structure_text}
 
 [User Context]
-{inputs['context_text']}
+{inputs.get('context_text', '')}
 
 [Source Data]
 {file_context}

@@ -8,8 +8,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 import utils
 import utils_ppt
+import core_im_ppt
 import core_logic
 import core_chained
+import core_im
 import core_rag
 
 
@@ -120,14 +122,15 @@ UTILITY_CONFIGS = {
     "📑 IM 작성": {
         "key_prefix": "im",
         "title": "📑 IM 작성 (Information Memorandum)",
-        "subtitle": "잠재 투자자를 위한 투자제안서(IM)를 작성합니다.",
-        "default_template": "im",
+        "subtitle": "잠재 투자자를 위한 투자제안서(IM)를 PPT 형식으로 자동 생성합니다.",
+        "default_template": "im_full",
         "template_options": {
-            "im": "1. IM (투자제안서)",
-            "free_summary": "2. 자유 구조화 (요약)",
+            "im_full": "1. IM 전체 (PPT 자동 생성)",
+            "im": "2. IM 약식 (마크다운)",
+            "free_summary": "3. 자유 구조화 (요약)",
         },
         "show_gen_mode": False,
-        "page_type": "standard",
+        "page_type": "im_workflow",
     },
     "🖥️ PPT 생성": {
         "key_prefix": "ppt",
@@ -183,6 +186,22 @@ def render_standard_workflow(settings, selected_page):
         return
 
     prefix = config["key_prefix"]
+    page_type = config.get("page_type", "standard")
+
+    if page_type == "im_workflow":
+        _init_im_workflow_state(prefix, config)
+        _render_im_step_indicator(prefix)
+        current_step = st.session_state[f"{prefix}_current_step"]
+        if current_step == 1:
+            _render_im_step1_input(prefix, settings, config)
+        elif current_step == 2:
+            _render_im_step2_generate(prefix, settings, config)
+        elif current_step == 3:
+            _render_step_refine(prefix, settings, config, step_number=3, total_steps=4)
+        elif current_step == 4:
+            _render_im_step4_output(prefix, settings, config)
+        return
+
     _init_workflow_state(prefix, config)
     _render_step_indicator(prefix)
 
@@ -2023,6 +2042,403 @@ def _render_step_output(prefix, settings, config, step_number=4, total_steps=4):
     with c1:
         if st.button("<<< 수정하러 돌아가기", key=f"{prefix}_so_to_refine"):
             st.session_state[f"{prefix}_current_step"] = step_number - 1
+            st.rerun()
+    with c3:
+        if st.button("🔄 처음부터 다시 시작", key=f"{prefix}_so_restart"):
+            _reset_workflow(prefix)
+            st.rerun()
+
+
+# ========================================
+# IM Workflow (4-step: 입력 → 생성 → 수정 → PPT)
+# ========================================
+
+def _init_im_workflow_state(prefix, config):
+    """Initialize IM workflow session state."""
+    defaults = {
+        f"{prefix}_current_step": 1,
+        f"{prefix}_inputs": {},
+        f"{prefix}_generated_text": "",
+        f"{prefix}_file_context": "",
+        f"{prefix}_chat_history": [],
+        f"{prefix}_generation_complete": False,
+        f"{prefix}_ocr_text": "",
+        f"{prefix}_active_mode": config.get("default_template", "im_full"),
+        f"{prefix}_investment_type": "Growth",
+        f"{prefix}_deal_terms": {},
+    }
+    for key, default in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+
+def _render_im_step_indicator(prefix):
+    """IM 워크플로우 4단계 인디케이터."""
+    current = st.session_state[f"{prefix}_current_step"]
+    steps = {
+        1: ("📁", "데이터 입력"),
+        2: ("🤖", "IM 생성"),
+        3: ("💬", "수정/보완"),
+        4: ("📊", "PPT 생성"),
+    }
+    cols = st.columns(4)
+    for i, col in enumerate(cols, 1):
+        icon, label = steps[i]
+        with col:
+            _render_step_box(i, current, icon, label, prefix)
+    st.markdown("---")
+
+
+def _render_im_step1_input(prefix, settings, config):
+    """IM Step 1: 데이터 입력 + Deal Terms."""
+    st.markdown(f"### {config['title']}")
+    st.caption(config["subtitle"])
+
+    current_project = st.session_state.get("current_project")
+    has_rag = current_project and core_rag.is_rag_available() and core_rag.is_indexed(current_project)
+
+    if has_rag:
+        rag_count = core_rag.get_indexed_count(current_project)
+        st.info(
+            f"프로젝트 **{current_project}** (RAG {rag_count}건) 기반으로 IM을 생성합니다."
+        )
+
+    col_left, col_right = st.columns([1, 1], gap="medium")
+
+    with col_left:
+        # 투자 유형 선택
+        st.markdown("#### 📋 투자 유형")
+        investment_type = st.selectbox(
+            "Investment Type",
+            ["Growth", "Buyout", "Pre-IPO"],
+            key=f"{prefix}_s1_inv_type",
+            label_visibility="collapsed",
+            help="투자 유형에 따라 IM의 강조점과 분석 프레임워크가 달라집니다.",
+        )
+
+        # 파일 업로드
+        st.markdown("#### 📁 파일 업로드" + (" (선택)" if has_rag else ""))
+        uploaded_files = st.file_uploader(
+            "대상회사 IR, 감사보고서, 산업보고서 등",
+            accept_multiple_files=True,
+            key=f"{prefix}_s1_files",
+        )
+
+        selected_project, proj_doc_count = _render_project_doc_selector(prefix, "s1")
+
+        # 맥락
+        st.markdown("#### 💬 맥락 / 요청사항")
+        context_text = st.text_area(
+            "Context",
+            height=80,
+            placeholder="예: 기업명, 투자 배경, 중점 분석 사항 등",
+            key=f"{prefix}_s1_context",
+            label_visibility="collapsed",
+        )
+
+    with col_right:
+        # Deal Terms 폼
+        st.markdown("#### 📝 Deal Terms")
+        deal_project_name = st.text_input(
+            "Project Name", placeholder="예: Project Redvelvet",
+            key=f"{prefix}_s1_dt_project",
+        )
+        deal_gp_name = st.text_input(
+            "GP명", placeholder="예: OO자산운용",
+            key=f"{prefix}_s1_dt_gp",
+        )
+        deal_target = st.text_input(
+            "대상회사", placeholder="예: (주)OO테크",
+            key=f"{prefix}_s1_dt_target",
+        )
+
+        dt_col1, dt_col2 = st.columns(2)
+        with dt_col1:
+            deal_amount = st.text_input(
+                "투자규모", placeholder="예: 500억원",
+                key=f"{prefix}_s1_dt_amount",
+            )
+            deal_vehicle = st.text_input(
+                "투자형태", placeholder="예: RCPS",
+                key=f"{prefix}_s1_dt_vehicle",
+            )
+        with dt_col2:
+            deal_valuation = st.text_input(
+                "Valuation", placeholder="예: Pre 3,000억원",
+                key=f"{prefix}_s1_dt_val",
+            )
+            deal_equity = st.text_input(
+                "지분율", placeholder="예: 15%",
+                key=f"{prefix}_s1_dt_equity",
+            )
+
+        # 템플릿 선택
+        template_options = config["template_options"]
+        st.markdown("#### 📑 생성 모드")
+        template_option = st.selectbox(
+            "Template",
+            list(template_options.keys()),
+            format_func=lambda x: template_options[x],
+            key=f"{prefix}_s1_template",
+            label_visibility="collapsed",
+        )
+
+    # Navigation
+    st.markdown("")
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        if st.button(
+            "다음: IM 생성 >>>",
+            type="primary",
+            use_container_width=True,
+            key=f"{prefix}_s1_next",
+        ):
+            if not uploaded_files and not selected_project and not has_rag:
+                st.error("파일을 업로드하거나 프로젝트를 선택해주세요.")
+            elif not settings.get("api_key"):
+                st.error("설정에서 API Key를 먼저 입력해주세요.")
+            else:
+                st.session_state[f"{prefix}_investment_type"] = investment_type
+                st.session_state[f"{prefix}_deal_terms"] = {
+                    "project_name": deal_project_name,
+                    "gp_name": deal_gp_name,
+                    "target_company": deal_target,
+                    "investment_amount": deal_amount,
+                    "valuation": deal_valuation,
+                    "investment_vehicle": deal_vehicle,
+                    "equity_stake": deal_equity,
+                }
+                st.session_state[f"{prefix}_inputs"] = {
+                    "template_option": template_option,
+                    "structure_text": core_logic.get_default_structure(template_option),
+                    "uploaded_files": uploaded_files,
+                    "context_text": context_text,
+                    "selected_saved_files": [],
+                    "generation_mode": "chained" if template_option == "im_full" else "single",
+                    "generate_btn": True,
+                    "investment_type": investment_type,
+                    "project_name": deal_project_name,
+                    "gp_name": deal_gp_name,
+                    "target_company": deal_target,
+                    "investment_amount": deal_amount,
+                    "valuation": deal_valuation,
+                    "investment_vehicle": deal_vehicle,
+                    "equity_stake": deal_equity,
+                }
+                st.session_state[f"{prefix}_active_mode"] = template_option
+                _parse_and_cache_files(prefix, settings, uploaded_files, [], template_option,
+                                       project_name=selected_project)
+                st.session_state[f"{prefix}_current_step"] = 2
+                st.session_state[f"{prefix}_generation_complete"] = False
+                st.rerun()
+
+
+def _render_im_step2_generate(prefix, settings, config):
+    """IM Step 2: 5파트 순차 스트리밍 생성."""
+    st.markdown("### 🤖 IM 생성")
+
+    inputs = st.session_state[f"{prefix}_inputs"]
+    file_context = st.session_state[f"{prefix}_file_context"]
+    template_opt = inputs.get("template_option", "im_full")
+    investment_type = inputs.get("investment_type", "Growth")
+
+    # If already generated, show result
+    if st.session_state[f"{prefix}_generation_complete"]:
+        st.caption(f"투자유형: **{investment_type}** | 모드: {template_opt}")
+        result_container = st.container(height=500, border=True)
+        with result_container:
+            st.markdown(st.session_state[f"{prefix}_generated_text"])
+        _render_result_actions(prefix, "im_result", st.session_state[f"{prefix}_generated_text"])
+
+        st.markdown("")
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c1:
+            if st.button("<<< 이전 단계", key=f"{prefix}_sg_prev"):
+                st.session_state[f"{prefix}_current_step"] = 1
+                st.rerun()
+        with c2:
+            if st.button("🔄 다시 생성", key=f"{prefix}_sg_regen"):
+                st.session_state[f"{prefix}_generation_complete"] = False
+                st.rerun()
+        with c3:
+            sub1, sub2 = st.columns(2)
+            with sub1:
+                if st.button("💬 수정하러 가기", key=f"{prefix}_sg_to_refine", type="primary"):
+                    st.session_state[f"{prefix}_current_step"] = 3
+                    st.rerun()
+            with sub2:
+                if st.button("📊 PPT 생성", key=f"{prefix}_sg_to_ppt"):
+                    st.session_state[f"{prefix}_current_step"] = 4
+                    st.rerun()
+        return
+
+    # --- Run generation ---
+    status_placeholder = st.empty()
+    result_container = st.container(height=500, border=True)
+
+    try:
+        inputs["use_diagram"] = settings.get("use_diagram", False)
+        current_project = st.session_state.get("current_project")
+        has_rag = current_project and core_rag.is_rag_available() and core_rag.is_indexed(current_project)
+
+        with status_placeholder.status("🤖 IM 생성을 시작합니다...", expanded=True) as status:
+            # RAG context enrichment
+            if has_rag:
+                st.write(f"🔍 프로젝트 '{current_project}' RAG 검색으로 정보 보강 중...")
+                try:
+                    rag_context = core_logic.get_rag_enriched_context(
+                        settings["api_key"],
+                        inputs.get("structure_text", ""),
+                        inputs.get("context_text", ""),
+                        current_project,
+                        template_opt,
+                    )
+                    if rag_context:
+                        file_context += rag_context
+                        st.write("RAG 검색 결과가 컨텍스트에 추가되었습니다.")
+                except Exception as e:
+                    st.write(f"⚠️ RAG 검색 오류: {e}")
+
+            st.write(f"🤖 투자유형 [{investment_type}] / 모드 [{template_opt}] 생성 중...")
+
+            if template_opt == "im_full":
+                part_count = len(core_im.IM_CHAINED_PARTS)
+                st.write(f"🔗 {part_count}단계 분할 생성 모드 (IM)")
+                stream = core_im.generate_im_chained_stream(
+                    settings["api_key"], settings["model_name"],
+                    inputs, settings["thinking_level"], file_context,
+                    investment_type=investment_type,
+                )
+            elif template_opt == "im" and core_chained.is_chained_supported("investment"):
+                st.write("📝 IM 약식 생성 중...")
+                stream = core_logic.generate_report_stream(
+                    settings["api_key"], settings["model_name"],
+                    inputs, settings["thinking_level"], file_context,
+                )
+            else:
+                stream = core_logic.generate_report_stream(
+                    settings["api_key"], settings["model_name"],
+                    inputs, settings["thinking_level"], file_context,
+                )
+
+            full_response = ""
+            with result_container:
+                response_placeholder = st.empty()
+                for chunk in stream:
+                    if chunk.text:
+                        full_response += chunk.text
+                        response_placeholder.markdown(full_response + "▌")
+                response_placeholder.markdown(full_response)
+
+            status.update(label="✅ IM 작성 완료!", state="complete", expanded=False)
+
+        st.session_state[f"{prefix}_generated_text"] = _strip_preamble(full_response)
+        st.session_state[f"{prefix}_generation_complete"] = True
+        st.rerun()
+
+    except Exception as e:
+        _render_error_with_retry(
+            "IM 생성 중 문제가 발생했습니다.",
+            exception=e,
+        )
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c1:
+            if st.button("<<< 이전 단계", key=f"{prefix}_sg_prev_err"):
+                st.session_state[f"{prefix}_current_step"] = 1
+                st.rerun()
+
+
+def _render_im_step4_output(prefix, settings, config):
+    """IM Step 4: PPT 생성 + 다운로드."""
+    st.markdown("### 📊 IM PPT 생성")
+
+    current_text = st.session_state[f"{prefix}_generated_text"]
+    deal_terms = st.session_state.get(f"{prefix}_deal_terms", {})
+    inputs = st.session_state.get(f"{prefix}_inputs", {})
+
+    # Copy / Edit buttons
+    c_head1, c_head2, c_head3 = st.columns([4, 1, 1])
+    with c_head2:
+        is_editing = st.session_state.get(f"{prefix}_so_editing", False)
+        edit_label = "✅ 완료" if is_editing else "✏️ 편집"
+        if st.button(edit_label, key=f"{prefix}_so_edit_toggle", use_container_width=True):
+            st.session_state[f"{prefix}_so_editing"] = not is_editing
+            st.rerun()
+    with c_head3:
+        if st.button("📋 복사", key=f"{prefix}_so_copy", use_container_width=True):
+            st.session_state[f"{prefix}_so_show_copy"] = True
+            st.toast("아래 코드를 클릭하여 복사하세요.", icon="📋")
+
+    # Result display
+    result_container = st.container(height=400, border=True)
+    with result_container:
+        if st.session_state.get(f"{prefix}_so_show_copy"):
+            st.code(current_text, language="markdown")
+            st.session_state[f"{prefix}_so_show_copy"] = False
+        elif st.session_state.get(f"{prefix}_so_editing"):
+            new_text = st.text_area(
+                "편집", value=current_text, height=350,
+                label_visibility="collapsed", key=f"{prefix}_so_edit_area",
+            )
+            st.session_state[f"{prefix}_generated_text"] = new_text
+        else:
+            st.markdown(current_text)
+
+    # Downloads
+    st.markdown("---")
+    st.markdown("#### 📥 다운로드")
+
+    project_name = deal_terms.get("project_name", inputs.get("project_name", ""))
+    gp_name = deal_terms.get("gp_name", inputs.get("gp_name", ""))
+    fname_base = project_name if project_name else "IM_Report"
+
+    col_d1, col_d2, col_d3 = st.columns(3)
+
+    with col_d1:
+        try:
+            ppt_bytes = core_im_ppt.create_im_ppt(
+                current_text,
+                project_name=project_name,
+                gp_name=gp_name,
+            )
+            st.download_button(
+                "📊 IM PPT 다운로드 (16:9)",
+                ppt_bytes,
+                f"{fname_base}_IM.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+                type="primary",
+                key=f"{prefix}_so_dl_im_ppt",
+            )
+        except Exception as e:
+            st.error(f"PPT 생성 오류: {e}")
+
+    with col_d2:
+        st.download_button(
+            "📄 Word 다운로드",
+            utils.create_docx(current_text),
+            f"{fname_base}_IM.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
+            key=f"{prefix}_so_dl_word",
+        )
+
+    with col_d3:
+        st.download_button(
+            "📊 일반 PPT 다운로드 (4:3)",
+            utils_ppt.create_ppt(current_text),
+            f"{fname_base}_IM_43.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True,
+            key=f"{prefix}_so_dl_ppt",
+        )
+
+    # Navigation
+    st.markdown("---")
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c1:
+        if st.button("<<< 수정하러 돌아가기", key=f"{prefix}_so_to_refine"):
+            st.session_state[f"{prefix}_current_step"] = 3
             st.rerun()
     with c3:
         if st.button("🔄 처음부터 다시 시작", key=f"{prefix}_so_restart"):

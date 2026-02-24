@@ -20,6 +20,8 @@ from workers import GenerateWorker, RefineWorker, FileParseWorker, AnalysisWorke
 import core_logic
 import core_rag
 import core_chained
+import core_im
+import core_im_ppt
 
 # ========================================
 # Phase/Utility configurations
@@ -62,18 +64,19 @@ CONFIGS = {
     "im": {
         "key_prefix": "im",
         "title": "📑 IM 작성 (Information Memorandum)",
-        "subtitle": "잠재 투자자를 위한 투자제안서(IM)를 작성합니다.",
-        "page_type": "standard",
+        "subtitle": "잠재 투자자를 위한 투자제안서(IM)를 PPT 형식으로 자동 생성합니다.",
+        "page_type": "im_workflow",
         "steps": {
-            1: ("📁", "데이터 업로드"),
-            2: ("🤖", "보고서 생성"),
+            1: ("📁", "데이터 입력"),
+            2: ("🤖", "IM 생성"),
             3: ("💬", "수정/보완"),
-            4: ("📄", "최종 결과"),
+            4: ("📊", "PPT 생성"),
         },
-        "default_template": "im",
+        "default_template": "im_full",
         "template_options": {
-            "im": "1. IM (투자제안서)",
-            "free_summary": "2. 자유 구조화 (요약)",
+            "im_full": "1. IM 전체 (PPT 자동 생성)",
+            "im": "2. IM 약식 (마크다운)",
+            "free_summary": "3. 자유 구조화 (요약)",
         },
     },
 }
@@ -128,6 +131,8 @@ class WorkflowPage(QWidget):
             self._build_collection_ui(layout)
         elif page_type == "analysis":
             self._build_analysis_ui(layout)
+        elif page_type == "im_workflow":
+            self._build_im_workflow_ui(layout)
         else:
             self._build_standard_ui(layout)
 
@@ -1186,15 +1191,38 @@ class WorkflowPage(QWidget):
         chat_history.append({"role": "assistant", "content": "수정 사항을 반영했습니다."})
         AppState.set(f"{self.prefix}_chat_history", chat_history)
 
+    def _extract_title_from_markdown(self, text):
+        """마크다운 텍스트에서 첫 번째 헤딩을 추출하여 파일명으로 사용."""
+        import re
+        for line in text.split('\n'):
+            line = line.strip()
+            if line.startswith('#'):
+                title = line.lstrip('#').strip()
+                # 파일명에 사용할 수 없는 문자 제거
+                title = re.sub(r'[\\/*?:"<>|]', '', title).strip()
+                if title:
+                    # 너무 길면 50자로 자르기
+                    return title[:50].rstrip()
+        # 헤딩이 없으면 첫 번째 비어있지 않은 줄 사용
+        for line in text.split('\n'):
+            line = line.strip()
+            if line:
+                title = re.sub(r'[\\/*?:"<>|]', '', line).strip()
+                if title:
+                    return title[:50].rstrip()
+        return "report"
+
     def _save_file(self, fmt):
         text = AppState.get(f"{self.prefix}_generated_text", "")
         if not text:
             QMessageBox.warning(self, "경고", "저장할 내용이 없습니다.")
             return
 
+        default_name = self._extract_title_from_markdown(text)
+
         if fmt == "docx":
             path, _ = QFileDialog.getSaveFileName(
-                self, "Word 저장", "report.docx",
+                self, "Word 저장", f"{default_name}.docx",
                 "Word Documents (*.docx)"
             )
             if path:
@@ -1204,7 +1232,7 @@ class WorkflowPage(QWidget):
                 QMessageBox.information(self, "저장 완료", f"파일이 저장되었습니다:\n{path}")
         elif fmt == "pptx":
             path, _ = QFileDialog.getSaveFileName(
-                self, "PPT 저장", "report.pptx",
+                self, "PPT 저장", f"{default_name}.pptx",
                 "PowerPoint (*.pptx)"
             )
             if path:
@@ -1216,9 +1244,24 @@ class WorkflowPage(QWidget):
 
     def _copy_to_clipboard(self):
         from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import QMimeData
         text = AppState.get(f"{self.prefix}_generated_text", "")
-        QApplication.clipboard().setText(text)
-        QMessageBox.information(self, "복사 완료", "클립보드에 복사되었습니다.")
+        # HTML도 함께 설정하여 Word 붙여넣기 시 서식 유지
+        viewer = MarkdownViewer()
+        html = viewer._md_to_html(text)
+        styled_html = f"""<html><body style="font-family: -apple-system, Malgun Gothic, sans-serif; font-size: 13px; line-height: 1.6;">
+        <style>
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #dee2e6; padding: 6px 10px; text-align: left; }}
+            th {{ background-color: #f0f2f6; font-weight: bold; }}
+            blockquote {{ border-left: 4px solid #0068c9; padding-left: 12px; color: #555; }}
+        </style>
+        {html}</body></html>"""
+        mime = QMimeData()
+        mime.setText(text)
+        mime.setHtml(styled_html)
+        QApplication.clipboard().setMimeData(mime)
+        QMessageBox.information(self, "복사 완료", "클립보드에 복사되었습니다.\n(Word에 붙여넣기 시 서식이 유지됩니다)")
 
     def _reset_workflow(self):
         AppState.clear_prefix(f"{self.prefix}_")
@@ -1318,6 +1361,293 @@ class WorkflowPage(QWidget):
             )
             if hasattr(self, 'collect_doc_list'):
                 self.collect_doc_list.clear()
+
+    # ========================================
+    # IM Workflow (im_workflow page_type)
+    # ========================================
+
+    def _build_im_workflow_ui(self, parent_layout):
+        """IM 전용 4-step workflow: 데이터 입력 → IM 생성 → 수정/보완 → PPT 생성."""
+        self.step_indicator = StepIndicator(self.config.get("steps", {}))
+        self.step_indicator.step_clicked.connect(self._go_to_step)
+        parent_layout.addWidget(self.step_indicator)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color: #dee2e6;")
+        parent_layout.addWidget(sep)
+
+        from PyQt6.QtWidgets import QStackedWidget
+        self.step_stack = QStackedWidget()
+
+        # Step 1: IM-specific data input (deal terms + files)
+        self.step_stack.addWidget(self._build_im_step_upload())
+        # Step 2: Generate (reuse standard)
+        self.step_stack.addWidget(self._build_step_generate())
+        # Step 3: Refine (reuse standard)
+        self.step_stack.addWidget(self._build_step_refine())
+        # Step 4: IM-specific PPT output
+        self.step_stack.addWidget(self._build_im_step_output())
+
+        parent_layout.addWidget(self.step_stack)
+
+    def _build_im_step_upload(self):
+        """IM Step 1: 투자 유형 + Deal Terms + 파일 업로드."""
+        widget = QWidget()
+        main_layout = QHBoxLayout(widget)
+
+        # Left: Deal Terms + Files
+        left = QVBoxLayout()
+
+        # Investment type selector
+        type_group = QGroupBox("📊 투자 유형")
+        type_layout = QVBoxLayout(type_group)
+        self.im_type_combo = QComboBox()
+        self.im_type_combo.addItems(["Growth", "Buyout", "Pre-IPO"])
+        type_layout.addWidget(self.im_type_combo)
+        left.addWidget(type_group)
+
+        # Deal Terms form
+        deal_group = QGroupBox("📋 Deal Terms")
+        deal_layout = QFormLayout(deal_group)
+
+        self.im_project_name = QPlainTextEdit()
+        self.im_project_name.setMaximumHeight(30)
+        self.im_project_name.setPlaceholderText("예: Project Alpha")
+        deal_layout.addRow("프로젝트명:", self.im_project_name)
+
+        self.im_gp_name = QPlainTextEdit()
+        self.im_gp_name.setMaximumHeight(30)
+        self.im_gp_name.setPlaceholderText("예: ABC캐피탈")
+        deal_layout.addRow("GP명:", self.im_gp_name)
+
+        self.im_target = QPlainTextEdit()
+        self.im_target.setMaximumHeight(30)
+        self.im_target.setPlaceholderText("예: (주)테크코리아")
+        deal_layout.addRow("대상회사:", self.im_target)
+
+        self.im_amount = QPlainTextEdit()
+        self.im_amount.setMaximumHeight(30)
+        self.im_amount.setPlaceholderText("예: 100억원")
+        deal_layout.addRow("투자규모:", self.im_amount)
+
+        self.im_valuation = QPlainTextEdit()
+        self.im_valuation.setMaximumHeight(30)
+        self.im_valuation.setPlaceholderText("예: Pre 500억원")
+        deal_layout.addRow("Valuation:", self.im_valuation)
+
+        self.im_vehicle = QPlainTextEdit()
+        self.im_vehicle.setMaximumHeight(30)
+        self.im_vehicle.setPlaceholderText("예: 신주인수, CB, 구주매입")
+        deal_layout.addRow("투자형태:", self.im_vehicle)
+
+        self.im_equity = QPlainTextEdit()
+        self.im_equity.setMaximumHeight(30)
+        self.im_equity.setPlaceholderText("예: 20%")
+        deal_layout.addRow("지분율:", self.im_equity)
+
+        left.addWidget(deal_group)
+
+        # Project document status
+        self.upload_project_status = StatusBox("", "info")
+        left.addWidget(self.upload_project_status)
+        self._update_project_status()
+
+        # Document selection widget
+        self.upload_doc_list = DocumentListWidget()
+        self.upload_doc_list.selection_changed.connect(self._on_upload_doc_selection_changed)
+        left.addWidget(self.upload_doc_list)
+
+        main_layout.addLayout(left, 3)
+
+        # Right: File upload + Template + Next
+        right = QVBoxLayout()
+
+        self.upload_files = FilePicker(
+            "📁 추가 파일 업로드",
+            file_filter="Documents (*.pdf *.docx *.pptx *.xlsx *.txt);;All (*)"
+        )
+        right.addWidget(self.upload_files)
+
+        right.addWidget(QLabel("💬 추가 맥락/지시사항"))
+        self.upload_context = QTextEdit()
+        self.upload_context.setPlaceholderText("예: 특별히 강조할 부분, 참고할 사항 등")
+        self.upload_context.setMaximumHeight(100)
+        self.upload_context.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.upload_context.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right.addWidget(self.upload_context)
+
+        right.addWidget(QLabel("📝 템플릿 선택"))
+        self.upload_template = QComboBox()
+        for k, v in self.config.get("template_options", {}).items():
+            self.upload_template.addItem(v, k)
+        right.addWidget(self.upload_template)
+
+        right.addStretch()
+
+        btn_next = QPushButton("다음: IM 생성 >>>")
+        btn_next.setProperty("cssClass", "primary")
+        btn_next.setStyleSheet("""
+            QPushButton { background: #0068c9; color: white; border: none;
+                         padding: 10px; border-radius: 6px; font-weight: bold; font-size: 14px; }
+            QPushButton:hover { background: #004085; }
+        """)
+        btn_next.clicked.connect(self._on_im_upload_next)
+        right.addWidget(btn_next)
+
+        main_layout.addLayout(right, 2)
+        return widget
+
+    def _build_im_step_output(self):
+        """IM Step 4: IM PPT (16:9) + Word + 표준 PPT 다운로드."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        layout.addWidget(QLabel("📊 IM 최종 결과 및 PPT 생성"))
+
+        self.output_viewer = MarkdownViewer()
+        self.output_viewer.setMinimumHeight(500)
+        layout.addWidget(self.output_viewer)
+
+        btn_row = QHBoxLayout()
+
+        btn_im_ppt = QPushButton("📊 IM PPT 다운로드 (16:9)")
+        btn_im_ppt.setStyleSheet("""
+            QPushButton { background: #198754; color: white; border: none;
+                         padding: 10px; border-radius: 6px; font-weight: bold; font-size: 13px; }
+            QPushButton:hover { background: #157347; }
+        """)
+        btn_im_ppt.clicked.connect(self._on_im_save_ppt)
+        btn_row.addWidget(btn_im_ppt)
+
+        btn_word = QPushButton("📄 Word 다운로드")
+        btn_word.clicked.connect(lambda: self._save_file("docx"))
+        btn_row.addWidget(btn_word)
+
+        btn_ppt = QPushButton("📊 표준 PPT (4:3)")
+        btn_ppt.clicked.connect(lambda: self._save_file("pptx"))
+        btn_row.addWidget(btn_ppt)
+
+        btn_copy = QPushButton("📋 클립보드 복사")
+        btn_copy.clicked.connect(self._copy_to_clipboard)
+        btn_row.addWidget(btn_copy)
+        layout.addLayout(btn_row)
+
+        nav = QHBoxLayout()
+        btn_prev = QPushButton("<<< 수정하러 돌아가기")
+        btn_prev.clicked.connect(lambda: self._go_to_step(3))
+        nav.addWidget(btn_prev)
+        nav.addStretch()
+
+        btn_restart = QPushButton("🔄 처음부터 다시")
+        btn_restart.clicked.connect(self._reset_workflow)
+        nav.addWidget(btn_restart)
+        layout.addLayout(nav)
+
+        return widget
+
+    def _on_im_upload_next(self):
+        """IM Step 1 → Step 2: Deal Terms 수집 후 파일 파싱 → 생성."""
+        settings = AppState.get("latest_settings", {})
+        if not settings.get("api_key"):
+            QMessageBox.warning(self, "경고", "설정에서 API Key를 먼저 입력해주세요.")
+            return
+
+        file_paths = self.upload_files.get_file_paths()
+        project = AppState.get("current_project", "")
+
+        if not file_paths and not project:
+            QMessageBox.warning(self, "경고", "파일을 업로드하거나 프로젝트를 선택해주세요.")
+            return
+
+        template_key = self.upload_template.currentData()
+        investment_type = self.im_type_combo.currentText()
+
+        # Collect deal terms
+        deal_terms_text = ""
+        deal_fields = [
+            ("프로젝트명", self.im_project_name.toPlainText().strip()),
+            ("GP명", self.im_gp_name.toPlainText().strip()),
+            ("대상회사", self.im_target.toPlainText().strip()),
+            ("투자규모", self.im_amount.toPlainText().strip()),
+            ("Valuation", self.im_valuation.toPlainText().strip()),
+            ("투자형태", self.im_vehicle.toPlainText().strip()),
+            ("지분율", self.im_equity.toPlainText().strip()),
+        ]
+        non_empty = [(k, v) for k, v in deal_fields if v]
+        if non_empty:
+            deal_terms_text = "\n[Deal Terms]\n" + "\n".join(
+                f"- {k}: {v}" for k, v in non_empty
+            )
+
+        context_text = self.upload_context.toPlainText().strip()
+        if deal_terms_text:
+            context_text = deal_terms_text + "\n\n" + context_text
+
+        # IM uses chained mode for im_full
+        gen_mode = "im_chained" if template_key == "im_full" else "single"
+
+        inputs = {
+            "template_option": template_key,
+            "structure_text": core_logic.get_default_structure(template_key),
+            "uploaded_files": file_paths,
+            "context_text": context_text,
+            "selected_saved_files": [],
+            "generation_mode": gen_mode,
+            "generate_btn": True,
+            "use_diagram": settings.get("use_diagram", False),
+            "investment_type": investment_type,
+            "project_name": self.im_project_name.toPlainText().strip(),
+            "gp_name": self.im_gp_name.toPlainText().strip(),
+        }
+        AppState.set(f"{self.prefix}_inputs", inputs)
+        AppState.set(f"{self.prefix}_active_mode", template_key)
+
+        # Get selected documents
+        selected_docs = AppState.get(f"{self.prefix}_selected_docs", None)
+
+        # Parse files then go to generate step
+        self._worker = FileParseWorker(
+            file_paths, settings["api_key"],
+            docai_config=settings.get("docai_config"),
+            template_option=template_key,
+            project_name=project,
+            selected_docs=selected_docs
+        )
+        self._worker.finished.connect(self._on_upload_files_parsed)
+        self._worker.error.connect(lambda e: QMessageBox.critical(self, "오류", e))
+        self._worker.start()
+
+    def _on_im_save_ppt(self):
+        """Save IM PPT (16:9 format) using core_im_ppt."""
+        text = AppState.get(f"{self.prefix}_generated_text", "")
+        if not text:
+            QMessageBox.warning(self, "경고", "저장할 내용이 없습니다.")
+            return
+
+        inputs = AppState.get(f"{self.prefix}_inputs", {})
+        project_name = inputs.get("project_name", "")
+        gp_name = inputs.get("gp_name", "")
+
+        import datetime
+        date_str = datetime.date.today().strftime("%Y년 %m월")
+
+        default_name = self._extract_title_from_markdown(text)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "IM PPT 저장 (16:9)", f"{default_name}_IM.pptx",
+            "PowerPoint (*.pptx)"
+        )
+        if path:
+            try:
+                data = core_im_ppt.create_im_ppt(
+                    text, project_name=project_name,
+                    gp_name=gp_name, date_str=date_str
+                )
+                with open(path, 'wb') as f:
+                    f.write(data)
+                QMessageBox.information(self, "저장 완료", f"IM PPT가 저장되었습니다:\n{path}")
+            except Exception as e:
+                QMessageBox.critical(self, "PPT 생성 오류", f"PPT 생성 중 오류 발생:\n{e}")
 
     def refresh(self):
         """Refresh page state."""

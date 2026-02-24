@@ -99,7 +99,7 @@ def generate_chained_stream(api_key, model_name, inputs, thinking_level, file_co
 {part_prompt}
 
 [맥락]
-{inputs['context_text']}
+{inputs.get('context_text', '')}
 
 [분석 데이터]
 {file_context[:45000]}

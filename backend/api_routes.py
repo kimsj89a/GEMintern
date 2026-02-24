@@ -6,6 +6,7 @@ from typing import List
 
 from fastapi import APIRouter, UploadFile, File
 
+from pydantic import BaseModel
 from backend.api_models import (
     ProjectCreate, FolderCreate, DocMoveRequest,
     GenerateRequest, QaRequest, SyncRequest, AnalysisRequest,
@@ -329,10 +330,25 @@ def start_generate(req: GenerateRequest):
     settings = _load_settings()
     api_key = settings.get("api_key", "")
     model = settings.get("model_name", "gemini-3.1-pro-preview")
+
+    # Load project documents if not already provided
+    file_context = req.file_context
+    selected_docs = req.inputs.get("selected_docs", [])
+    print(f"[generate] project={req.project_name}, template={req.template_option}, "
+          f"file_context_len={len(file_context)}, selected_docs={selected_docs}")
+
+    if req.project_name and not file_context.strip():
+        file_context = _load_context_with_budget(req.project_name, selected_docs if selected_docs else None)
+        print(f"[generate] loaded docs: {len(file_context)} chars")
+
+    # Pass template_option into inputs for core_logic
+    inputs = dict(req.inputs)
+    inputs.setdefault("template_option", req.template_option)
+
     task_id = create_task()
     run_generate_task(
         task_id, api_key, model,
-        req.inputs, req.thinking_level, req.file_context,
+        inputs, req.thinking_level, file_context,
         mode=req.mode
     )
     return {"task_id": task_id}
@@ -444,6 +460,97 @@ def vector_stats(name: str):
         return {"total_chunks": 0, "documents": 0, "indexed": False, "error": str(e)}
 
 
+@router.get("/projects/{name}/sync-status")
+def doc_sync_status(name: str):
+    """파일 목록과 RAG DB 동기화 상태 비교."""
+    import core_rag
+    try:
+        # RAG storage에 저장된 문서 목록 (indexed .md files)
+        indexed_names = set(core_rag.get_indexed_doc_names(name))
+
+        # 실제 docs 디렉토리의 .md 파일
+        docs_dir = core_rag._get_project_docs_dir(name)
+        disk_files = {}
+        if os.path.isdir(docs_dir):
+            for f in sorted(os.listdir(docs_dir)):
+                if f.endswith(".md"):
+                    fpath = os.path.join(docs_dir, f)
+                    stat = os.stat(fpath)
+                    doc_name = f[:-3]  # remove .md
+                    disk_files[doc_name] = {
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                    }
+
+        disk_names = set(disk_files.keys())
+
+        docs = []
+        for doc_name in sorted(disk_names | indexed_names):
+            on_disk = doc_name in disk_names
+            in_index = doc_name in indexed_names
+            info = disk_files.get(doc_name, {})
+            status = "synced" if on_disk and in_index else "disk_only" if on_disk else "index_only"
+            docs.append({
+                "name": doc_name,
+                "status": status,
+                "size": info.get("size", 0),
+                "modified": info.get("modified", 0),
+            })
+
+        return {
+            "total_disk": len(disk_names),
+            "total_indexed": len(indexed_names),
+            "synced": len(disk_names & indexed_names),
+            "disk_only": len(disk_names - indexed_names),
+            "index_only": len(indexed_names - disk_names),
+            "docs": docs,
+        }
+    except Exception as e:
+        return {"error": str(e), "docs": []}
+
+
+class SyncDocsRequest(BaseModel):
+    add: List[str] = []       # disk_only 파일을 인덱스에 추가
+    remove: List[str] = []    # index_only 항목을 인덱스에서 제거
+
+
+@router.post("/projects/{name}/sync-docs")
+def sync_selected_docs(name: str, req: SyncDocsRequest):
+    """선택한 파일들의 동기화 상태를 변경."""
+    import core_rag
+    try:
+        indexed = set(core_rag.get_indexed_doc_names(name))
+        folders = core_rag._load_folders(name)
+
+        # disk_only → 인덱스에 추가
+        for doc_name in req.add:
+            indexed.add(doc_name)
+            # 폴더 구조에도 추가 (어디에도 없으면 root에)
+            in_any = any(doc_name in docs for docs in folders.values())
+            if not in_any:
+                root = folders.setdefault(core_rag.ROOT_FOLDER, [])
+                root.append(doc_name)
+
+        # index_only → 인덱스에서 제거
+        for doc_name in req.remove:
+            indexed.discard(doc_name)
+            # 폴더 구조에서도 제거
+            for folder_docs in folders.values():
+                if doc_name in folder_docs:
+                    folder_docs.remove(doc_name)
+
+        core_rag._save_indexed_docs(name, list(indexed))
+        core_rag._save_folders(name, folders)
+
+        return {
+            "success": True,
+            "added": len(req.add),
+            "removed": len(req.remove),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ========================================
 # Cloud Sync
 # ========================================
@@ -518,3 +625,93 @@ def _get_sync_manager():
         from cloud_sync import CloudSyncManager
         return CloudSyncManager(gdrive_client=gdrive_client, gsheets_client=gsheets_client)
     return None
+
+
+# ========================================
+# OCR
+# ========================================
+
+@router.post("/ocr")
+async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini"):
+    """이미지/PDF에서 텍스트 추출 (Gemini Vision 또는 Document AI)."""
+    import fitz
+    settings = _load_settings()
+    api_key = settings.get("api_key", "")
+    results = []
+
+    for f in files:
+        data = await f.read()
+        ext = os.path.splitext(f.filename)[1].lower()
+        text = ""
+
+        try:
+            if ext == '.pdf':
+                doc = fitz.open(stream=data, filetype="pdf")
+                if engine == "gemini" and api_key:
+                    import ocr as ocr_module
+                    text = ocr_module.extract_pdf_with_gemini_ocr(doc, api_key)
+                elif engine == "docai":
+                    try:
+                        import utils_docai
+                        text = utils_docai.process_document(data)
+                    except Exception:
+                        text = ocr_module.extract_pdf_with_ocr(doc) if 'ocr_module' in dir() else ""
+                else:
+                    import ocr as ocr_module
+                    text = ocr_module.extract_pdf_with_ocr(doc)
+                doc.close()
+            elif ext in ('.png', '.jpg', '.jpeg', '.tiff', '.bmp'):
+                if engine == "gemini" and api_key:
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=api_key)
+                    mime_map = {'.png': 'image/png', '.jpg': 'image/jpeg',
+                                '.jpeg': 'image/jpeg', '.tiff': 'image/tiff', '.bmp': 'image/bmp'}
+                    mime = mime_map.get(ext, 'image/png')
+                    response = client.models.generate_content(
+                        model="gemini-3-pro-preview",
+                        contents=[
+                            types.Part.from_bytes(data=data, mime_type=mime),
+                            "이 이미지의 내용을 텍스트로 추출해줘. 표는 Markdown 표 문법으로 변환해줘. 서론 없이 결과만 출력해."
+                        ],
+                        config=types.GenerateContentConfig(temperature=0.0)
+                    )
+                    text = response.text.strip() if response.text else ""
+                elif engine == "docai":
+                    try:
+                        import utils_docai
+                        text = utils_docai.process_document(data)
+                    except Exception as e:
+                        text = f"Document AI 오류: {e}"
+                else:
+                    text = "API 키가 필요합니다."
+            else:
+                text = f"지원하지 않는 형식: {ext}"
+        except Exception as e:
+            text = f"처리 오류: {e}"
+
+        results.append({"filename": f.filename, "text": text})
+
+    return {"results": results}
+
+
+# ========================================
+# Markdown to Word
+# ========================================
+
+class MarkdownToDocxRequest(BaseModel):
+    markdown: str
+    filename: str = "output.docx"
+
+
+@router.post("/markdown-to-docx")
+def markdown_to_docx(req: MarkdownToDocxRequest):
+    """마크다운 텍스트를 Word 문서로 변환."""
+    from fastapi.responses import Response
+    import utils
+    docx_bytes = utils.create_docx(req.markdown)
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{req.filename}"'},
+    )

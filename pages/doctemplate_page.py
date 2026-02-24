@@ -176,8 +176,8 @@ class DocTemplatePage(QWidget):
             return
         path, _ = QFileDialog.getSaveFileName(self, "Word 저장", "document.docx", "Word (*.docx)")
         if path:
-            from utils_markdown import markdown_to_docx
-            data = markdown_to_docx(text)
+            import utils
+            data = utils.create_docx(text)
             with open(path, 'wb') as f:
                 f.write(data)
 
