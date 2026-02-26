@@ -236,12 +236,13 @@ def refine_report_with_context(api_key, model_name, current_text, chat_history,
 # ========================================
 
 def generate_material_summary(api_key, model_name, file_context):
-    """Phase 1: 수집 자료 요약 및 핵심 발견사항 추출"""
+    """Phase 1: 수집 자료 심층 분석 (출처 태깅, 교차 분석, 리스크 분류)"""
     client = get_client(api_key)
     system_prompt = prompts.LOGIC_PROMPTS.get('material_summary', '')
-    prompt = f"{system_prompt}\n\n[수집된 자료]\n{file_context}"
+    doc_count = file_context.count('===== 문서:')
+    prompt = f"[수집된 자료 ({doc_count}건)]\n{file_context}"
     config = types.GenerateContentConfig(
-        max_output_tokens=8192,
+        max_output_tokens=16384,
         temperature=0.3,
         system_instruction=system_prompt,
     )
