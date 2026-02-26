@@ -389,16 +389,32 @@ def get_indexed_count(project_name: str) -> int:
 
 def get_indexed_doc_names(project_name: str) -> List[str]:
     """Get names of stored documents in a project.
-    Falls back to reading actual .md files from disk if index is empty/missing.
+    Always syncs with actual .md files on disk to prevent ghost/orphan docs.
     """
-    names = _get_indexed_docs(project_name)
-    if names:
-        return names
-    # Fallback: read actual .md files from disk
+    indexed = set(_get_indexed_docs(project_name))
     docs_dir = _get_project_docs_dir(project_name)
-    if os.path.exists(docs_dir):
-        return [os.path.splitext(f)[0] for f in sorted(os.listdir(docs_dir)) if f.endswith(".md")]
-    return []
+    if not os.path.exists(docs_dir):
+        return list(indexed)
+
+    disk_stems = {os.path.splitext(f)[0] for f in os.listdir(docs_dir) if f.endswith(".md")}
+
+    # Auto-fix: if there's any mismatch, sync index to disk
+    if indexed != disk_stems:
+        _save_indexed_docs(project_name, sorted(disk_stems))
+        # Also fix folder structure: remove ghosts, add orphans to root
+        folders = _load_folders(project_name)
+        for folder_key in list(folders.keys()):
+            folders[folder_key] = [d for d in folders[folder_key] if d in disk_stems]
+        root = folders.setdefault(ROOT_FOLDER, [])
+        all_in_folders = set()
+        for doc_list in folders.values():
+            all_in_folders.update(doc_list)
+        for stem in sorted(disk_stems - all_in_folders):
+            root.append(stem)
+        _save_folders(project_name, folders)
+        return sorted(disk_stems)
+
+    return sorted(indexed)
 
 
 # ========================================

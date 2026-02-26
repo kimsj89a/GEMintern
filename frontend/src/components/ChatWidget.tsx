@@ -63,14 +63,14 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header with export-all */}
+      {/* Header */}
       {hasAssistantMessages && (
         <div className="flex justify-end mb-2">
           <button
             onClick={handleExportAll}
-            className="px-2 py-1 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
+            className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-colors"
           >
-            전체 내보내기 (.md)
+            전체 내보내기
           </button>
         </div>
       )}
@@ -78,31 +78,33 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-3">
         {messages.length === 0 && !streamingText && (
-          <div className="text-sm text-[#9B9A97] text-center py-8">
-            질문을 입력하세요.
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+            <svg className="w-8 h-8 mb-2 opacity-40" viewBox="0 0 24 24" fill="none"><path d="M12 21a9 9 0 1 0-7.5-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>
+            <span className="text-sm">{placeholder || '질문을 입력하세요.'}</span>
           </div>
         )}
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
             {msg.role === 'user' ? (
-              <div className="max-w-[80%] px-4 py-2 rounded-xl text-sm bg-[#2383E2] text-white whitespace-pre-wrap">
+              <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-br-md text-sm text-white whitespace-pre-wrap"
+                style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
                 {msg.content}
               </div>
             ) : (
               <div className="max-w-[85%]">
-                <div className="px-4 py-3 rounded-xl bg-[#F7F6F3]">
+                <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-slate-50 border border-slate-100">
                   <MarkdownViewer content={msg.content} />
                 </div>
-                <div className="flex gap-1 mt-1 ml-1">
+                <div className="flex gap-0.5 mt-1 ml-2">
                   <button
                     onClick={() => handleCopy(msg.content, i)}
-                    className="px-2 py-0.5 text-[10px] text-[#9B9A97] hover:text-[#37352F] hover:bg-[#F7F6F3] rounded transition-colors"
+                    className="px-2 py-0.5 text-[10px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors font-medium"
                   >
-                    {copiedIdx === i ? '복사됨' : '복사'}
+                    {copiedIdx === i ? '✓ 복사됨' : '복사'}
                   </button>
                   <button
                     onClick={() => handleExportSingle(msg.content, i)}
-                    className="px-2 py-0.5 text-[10px] text-[#9B9A97] hover:text-[#37352F] hover:bg-[#F7F6F3] rounded transition-colors"
+                    className="px-2 py-0.5 text-[10px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors font-medium"
                   >
                     내보내기
                   </button>
@@ -112,17 +114,22 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
           </div>
         ))}
         {streamingText && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] px-4 py-3 rounded-xl bg-[#F7F6F3]">
+          <div className="flex justify-start animate-fade-in">
+            <div className="max-w-[85%] px-4 py-3 rounded-2xl rounded-bl-md bg-slate-50 border border-slate-100">
               <MarkdownViewer content={streamingText} />
-              <span className="animate-pulse text-[#2383E2]">|</span>
+              <span className="inline-block w-0.5 h-4 bg-blue-400 animate-pulse ml-0.5 align-text-bottom" />
             </div>
           </div>
         )}
         {loading && !streamingText && (
-          <div className="flex justify-start">
-            <div className="px-4 py-2 rounded-xl text-sm bg-[#F7F6F3] text-[#9B9A97]">
-              답변 생성 중...
+          <div className="flex justify-start animate-fade-in">
+            <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-slate-50 border border-slate-100 flex items-center gap-2">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-xs text-slate-400">답변 생성 중</span>
             </div>
           </div>
         )}
@@ -137,12 +144,12 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
           placeholder={placeholder || '질문을 입력하세요...'}
           disabled={loading}
-          className="flex-1 px-4 py-2.5 border border-[#E9E9E7] rounded-xl text-sm focus:outline-none focus:border-[#2383E2] disabled:bg-[#F7F6F3]"
+          className="flex-1 px-4 py-2.5 text-sm input-ring disabled:bg-slate-50 disabled:text-slate-400"
         />
         {loading && onStop ? (
           <button
             onClick={onStop}
-            className="px-4 py-2.5 bg-[#EB5757] text-white text-sm rounded-xl hover:bg-[#d94848] transition-colors"
+            className="px-4 py-2.5 bg-red-500 text-white text-sm font-semibold rounded-[10px] hover:bg-red-600 transition-all active:scale-[0.97]"
           >
             중지
           </button>
@@ -150,7 +157,7 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
           <button
             onClick={handleSend}
             disabled={loading || !input.trim()}
-            className="px-4 py-2.5 bg-[#2383E2] text-white text-sm rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors"
+            className="px-4 py-2.5 text-sm font-semibold rounded-[10px] transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed btn-primary"
           >
             전송
           </button>

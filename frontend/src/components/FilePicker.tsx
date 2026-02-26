@@ -26,10 +26,10 @@ export default function FilePicker({ onFilesSelected, accept, multiple = true, l
 
   return (
     <div
-      className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+      className={`relative border-2 border-dashed rounded-xl p-5 text-center transition-all duration-200 cursor-pointer ${
         dragOver
-          ? 'border-[#2383E2] bg-blue-50'
-          : 'border-[#E9E9E7] hover:border-[#2383E2] hover:bg-[#FAFAF9]'
+          ? 'border-blue-400 bg-blue-50/50 scale-[1.01]'
+          : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/50'
       }`}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
@@ -45,12 +45,22 @@ export default function FilePicker({ onFilesSelected, accept, multiple = true, l
         className="hidden"
       />
       {loading ? (
-        <div className="text-sm text-[#787774]">업로드 중...</div>
+        <div className="flex items-center justify-center gap-2 py-1">
+          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-500">업로드 중...</span>
+        </div>
       ) : (
         <>
-          <div className="text-3xl mb-2">📎</div>
-          <div className="text-sm text-[#37352F] font-medium">파일을 드래그하거나 클릭하여 업로드</div>
-          <div className="text-xs text-[#9B9A97] mt-1">PDF, Word, Excel, TXT, MD 지원</div>
+          <div className="flex items-center justify-center gap-3">
+            <svg className="w-8 h-8 text-slate-300" viewBox="0 0 24 24" fill="none">
+              <path d="M12 16V4m0 0L8 8m4-4l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <div className="text-left">
+              <div className="text-sm text-slate-600 font-medium">파일을 드래그하거나 클릭</div>
+              <div className="text-xs text-slate-400 mt-0.5">PDF, Word, Excel, TXT, MD</div>
+            </div>
+          </div>
         </>
       )}
     </div>

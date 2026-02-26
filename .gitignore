@@ -5,12 +5,18 @@
 *.json
 !package.json
 !package-lock.json
+!tsconfig.json
+!tsconfig.node.json
+!tsconfig.app.json
 
 # Virtual environment
 .venv/
 venv/
 __pycache__/
 *.pyc
+
+# Node
+node_modules/
 
 # IDE
 .idea/
@@ -23,3 +29,7 @@ __pycache__/
 
 # Windows reserved device names
 nul
+
+# Build artifacts
+frontend/dist/
+backend/static/

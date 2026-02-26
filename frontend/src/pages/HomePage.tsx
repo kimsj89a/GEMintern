@@ -9,22 +9,21 @@ const WORKFLOW_CARDS = [
     icon: '📥',
     title: '사전 정보 수집',
     desc: '투자 대상 기업/자산의 기초 자료를 수집하고 분석합니다.',
-    color: 'border-l-blue-400',
+    gradient: 'from-blue-500 to-cyan-500',
   },
   {
     id: 'phase2',
     phase: 'Phase 2',
     icon: '📝',
-    title: '투심보고서 작성',
-    desc: '수집된 자료를 바탕으로 AI 투심보고서를 생성합니다.',
-    color: 'border-l-purple-400',
+    title: '문서 작성',
+    desc: '수집된 자료를 바탕으로 보고서 또는 PPT를 생성합니다.',
+    gradient: 'from-violet-500 to-blue-500',
   },
 ];
 
 const TOOL_BUTTONS = [
-  { id: 'im', icon: '📑', label: '문서작성' },
-  { id: 'ppt_tools', icon: '📢', label: 'PPT작성' },
-  { id: 'lp_qa', icon: '🙋‍♂️', label: 'LP Q&A 대응' },
+  { id: 'freedoc', icon: '📝', label: '자유양식 문서' },
+  { id: 'lp_qa', icon: '🙋', label: 'LP Q&A 대응' },
   { id: 'qa_session', icon: '💬', label: '자료기반 Q&A' },
 ];
 
@@ -46,58 +45,74 @@ export default function HomePage() {
   }, [currentProject]);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-[#37352F] mb-1">🏠 GEM Intern Dashboard</h1>
-      <p className="text-sm text-[#787774] mb-8">AI 기반 투자분석 데스크톱</p>
+    <div className="p-8 max-w-5xl mx-auto animate-fade-in-up">
+      {/* Hero */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Dashboard</h1>
+        <p className="text-sm text-slate-500">AI 기반 투자분석 데스크톱</p>
+      </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-[#F7F6F3] rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-[#2383E2]">{projectCount}</div>
-          <div className="text-xs text-[#787774]">프로젝트</div>
+      <div className="grid grid-cols-3 gap-4 mb-8 stagger-children">
+        <div className="glass-card p-5 text-center">
+          <div className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">{projectCount}</div>
+          <div className="text-xs text-slate-500 mt-1 font-medium">프로젝트</div>
         </div>
-        <div className="bg-[#F7F6F3] rounded-xl p-4 text-center">
-          <div className="text-2xl font-bold text-[#2383E2]">{docCount}</div>
-          <div className="text-xs text-[#787774]">현재 프로젝트 문서</div>
+        <div className="glass-card p-5 text-center">
+          <div className="text-3xl font-bold bg-gradient-to-r from-violet-500 to-blue-500 bg-clip-text text-transparent">{docCount}</div>
+          <div className="text-xs text-slate-500 mt-1 font-medium">현재 프로젝트 문서</div>
         </div>
-        <div className="bg-[#F7F6F3] rounded-xl p-4 text-center cursor-pointer hover:bg-[#EBEBEA] transition-colors"
+        <div className="glass-card p-5 text-center cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all"
              onClick={() => openTab('project')}>
-          <div className="text-2xl">📂</div>
-          <div className="text-xs text-[#787774]">프로젝트 관리</div>
+          <div className="text-3xl">📂</div>
+          <div className="text-xs text-slate-500 mt-1 font-medium">프로젝트 관리</div>
         </div>
       </div>
 
       {/* Workflow cards */}
-      <h2 className="text-sm font-semibold text-[#9B9A97] uppercase tracking-wider mb-3">Investment Workflow</h2>
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        {WORKFLOW_CARDS.map((card) => (
-          <div
-            key={card.id}
-            onClick={() => openTab(card.id)}
-            className={`bg-white border border-[#E9E9E7] ${card.color} border-l-4 rounded-xl p-5 cursor-pointer hover:shadow-md transition-shadow`}
-          >
-            <div className="text-xs font-semibold text-[#9B9A97] mb-1">{card.phase}</div>
-            <div className="text-lg font-semibold text-[#37352F] mb-1">
-              {card.icon} {card.title}
+      <div className="mb-8">
+        <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.12em] mb-3">Investment Workflow</h2>
+        <div className="grid grid-cols-2 gap-4 stagger-children">
+          {WORKFLOW_CARDS.map((card) => (
+            <div
+              key={card.id}
+              onClick={() => openTab(card.id)}
+              className="glass-card-elevated p-5 cursor-pointer group overflow-hidden relative"
+            >
+              {/* Gradient accent line */}
+              <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${card.gradient} opacity-80`} />
+
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">{card.phase}</div>
+              <div className="text-base font-bold text-slate-800 mb-1.5 flex items-center gap-2">
+                <span className="text-lg">{card.icon}</span>
+                <span>{card.title}</span>
+              </div>
+              <div className="text-sm text-slate-500 leading-relaxed">{card.desc}</div>
+
+              {/* Hover arrow */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-400 group-hover:translate-x-1 transition-all">
+                <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
             </div>
-            <div className="text-sm text-[#787774]">{card.desc}</div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      {/* Independent tools */}
-      <h2 className="text-sm font-semibold text-[#9B9A97] uppercase tracking-wider mb-3">Independent Tools</h2>
-      <div className="grid grid-cols-4 gap-3">
-        {TOOL_BUTTONS.map((tool) => (
-          <button
-            key={tool.id}
-            onClick={() => openTab(tool.id)}
-            className="bg-white border border-[#E9E9E7] rounded-xl p-4 text-center hover:shadow-md hover:border-[#2383E2] transition-all"
-          >
-            <div className="text-2xl mb-1">{tool.icon}</div>
-            <div className="text-sm text-[#37352F]">{tool.label}</div>
-          </button>
-        ))}
+      {/* Tools */}
+      <div>
+        <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.12em] mb-3">Independent Tools</h2>
+        <div className="grid grid-cols-3 gap-3 stagger-children">
+          {TOOL_BUTTONS.map((tool) => (
+            <button
+              key={tool.id}
+              onClick={() => openTab(tool.id)}
+              className="glass-card p-4 text-center hover:shadow-lg hover:-translate-y-0.5 transition-all group"
+            >
+              <div className="text-2xl mb-1.5 group-hover:scale-110 transition-transform">{tool.icon}</div>
+              <div className="text-sm text-slate-700 font-medium">{tool.label}</div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

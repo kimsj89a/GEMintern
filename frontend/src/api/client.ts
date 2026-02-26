@@ -81,6 +81,16 @@ export const api = {
       method: 'POST', body: JSON.stringify({ add, remove }),
     }),
 
+  // Free-form Document
+  freedocUpload: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const res = await fetch(`${BASE}/freedoc/upload`, { method: 'POST', body: formData });
+    return res.json();
+  },
+  freedocGenerate: (data: { instruction: string; file_text?: string; paste_text?: string }) =>
+    request<{ task_id: string }>('/freedoc/generate', { method: 'POST', body: JSON.stringify(data) }),
+
   // Sync
   syncPush: (project: string) =>
     request<any>('/sync/push', { method: 'POST', body: JSON.stringify({ project_name: project }) }),

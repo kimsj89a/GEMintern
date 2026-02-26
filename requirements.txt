@@ -1,17 +1,44 @@
-streamlit
+# GEM Intern v7.0 - Web Stack (FastAPI + React)
+
+# Web Framework
+fastapi
+uvicorn[standard]
+websockets
+python-multipart
+
+# AI / LLM
 google-genai
-google-cloud-documentai
-markitdown
+openai
+
+# Document Processing
 python-docx
 python-pptx
-pandas
-openpyxl
+markitdown
 pypdf
 PyMuPDF
+
+# Data
+pandas
+openpyxl
 XlsxWriter
-python-dotenv
 python-calamine
 tabulate
-openai
+
+# Google Cloud (OCR)
+google-cloud-documentai
+
+# Microsoft OneDrive
 msal
+
+# Google Sheets
+gspread
+
+# Vector DB (RAG)
+chromadb
+
+# Utilities
+python-dotenv
 requests
+beautifulsoup4
+lxml
+Pillow

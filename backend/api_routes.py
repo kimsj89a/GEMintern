@@ -331,19 +331,23 @@ def start_generate(req: GenerateRequest):
     api_key = settings.get("api_key", "")
     model = settings.get("model_name", "gemini-3.1-pro-preview")
 
-    # Load project documents if not already provided
-    file_context = req.file_context
+    user_context = req.file_context.strip()  # 유저가 입력한 추가 컨텍스트
     selected_docs = req.inputs.get("selected_docs", [])
     print(f"[generate] project={req.project_name}, template={req.template_option}, "
-          f"file_context_len={len(file_context)}, selected_docs={selected_docs}")
+          f"user_context_len={len(user_context)}, selected_docs={selected_docs}")
 
-    if req.project_name and not file_context.strip():
-        file_context = _load_context_with_budget(req.project_name, selected_docs if selected_docs else None)
+    # 항상 프로젝트 문서를 로드 (유저 컨텍스트 유무와 무관)
+    file_context = ""
+    if req.project_name:
+        file_context = _load_context_with_budget(
+            req.project_name, selected_docs if selected_docs else None
+        )
         print(f"[generate] loaded docs: {len(file_context)} chars")
 
-    # Pass template_option into inputs for core_logic
+    # Pass template_option and user context into inputs for core_logic
     inputs = dict(req.inputs)
     inputs.setdefault("template_option", req.template_option)
+    inputs["context_text"] = user_context  # 유저 컨텍스트를 프롬프트에 전달
 
     task_id = create_task()
     run_generate_task(
@@ -699,9 +703,100 @@ async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini")
 # Markdown to Word
 # ========================================
 
+class FreeDocRequest(BaseModel):
+    instruction: str
+    file_text: str = ""
+    paste_text: str = ""
+
+
 class MarkdownToDocxRequest(BaseModel):
     markdown: str
     filename: str = "output.docx"
+
+
+# ========================================
+# Free-form Document Writing
+# ========================================
+
+@router.post("/freedoc/upload")
+async def freedoc_upload(files: List[UploadFile] = File(...)):
+    """자유양식 문서작성: 파일 업로드 → 파싱된 텍스트 반환."""
+    settings = _load_settings()
+    api_key = settings.get("api_key", "")
+    parsed_parts = []
+    for f in files:
+        content_bytes = await f.read()
+        parsed = _parse_file_bytes(f.filename, content_bytes, api_key)
+        if parsed:
+            parsed_parts.append(f"--- [{f.filename}] ---\n{parsed}")
+    return {"file_text": "\n\n".join(parsed_parts), "count": len(parsed_parts)}
+
+
+@router.post("/freedoc/generate")
+def freedoc_generate(req: FreeDocRequest):
+    """자유양식 문서작성: 파싱된 텍스트 + 지시사항 → AI 문서 생성 (task)."""
+    settings = _load_settings()
+    api_key = settings.get("api_key", "")
+    model = settings.get("model_name", "gemini-3.1-pro-preview")
+
+    combined = req.file_text
+    if req.paste_text.strip():
+        combined += f"\n\n--- [직접 입력 텍스트] ---\n{req.paste_text.strip()}"
+
+    if not combined.strip():
+        return {"error": "자료가 비어있습니다."}
+
+    task_id = create_task()
+
+    def _run():
+        task = get_task(task_id)
+        task["status"] = "generating"
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=api_key)
+
+            system_prompt = (
+                "당신은 전문 문서 작성 AI입니다.\n"
+                "제공된 자료를 분석하여 사용자의 지시에 맞는 문서를 작성합니다.\n\n"
+                "[핵심 규칙]\n"
+                "1. 제공된 자료의 내용을 충실히 반영하세요. 자료에 없는 내용을 임의로 추가하지 마세요.\n"
+                "2. 서문, 인트로, 설명 문장 없이 바로 마크다운 본문(# 헤딩)으로 시작하세요.\n"
+                "3. 수치, 고유명사, 날짜 등 구체적 데이터는 절대 변경하지 마세요.\n"
+                "4. 논리적이고 체계적인 구조로 작성하세요.\n"
+                "5. 마크다운 형식으로 출력하세요.\n"
+                "6. 한국어로 작성하세요.\n"
+            )
+
+            prompt = (
+                f"[사용자 지시사항]\n{req.instruction}\n\n"
+                f"[제공된 자료]\n{_truncate_context(combined)}"
+            )
+
+            config = types.GenerateContentConfig(
+                max_output_tokens=65536,
+                temperature=0.4,
+                system_instruction=system_prompt,
+            )
+
+            stream = client.models.generate_content_stream(
+                model=model, contents=prompt, config=config
+            )
+            full_text = ""
+            for chunk in stream:
+                text = chunk.text or "" if hasattr(chunk, "text") else ""
+                if text:
+                    full_text += text
+                    task["chunks"].append(text)
+            task["result"] = full_text
+            task["status"] = "complete"
+        except Exception as e:
+            task["error"] = str(e)
+            task["status"] = "error"
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
 
 
 @router.post("/markdown-to-docx")

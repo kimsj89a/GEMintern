@@ -2,14 +2,18 @@
 
 ## Project Overview
 
-**GEM Intern v7.0**은 투자 분석 업무를 지원하는 AI 기반 Streamlit 웹 애플리케이션입니다.
+**GEM Intern v7.0**은 투자 분석 업무를 지원하는 AI 기반 웹 애플리케이션입니다.
 Google Gemini API를 활용하여 투자심의보고서 작성, 문서 분석, PPT 생성 등 PE/VC 투자 프로세스 전반을 자동화합니다.
+
+**아키텍처**: FastAPI 백엔드 + React (Vite) 프론트엔드, localhost 전용.
 
 ## Technical Stack
 
 ### Core Technologies
-- **Framework**: Streamlit (Python web app framework)
-- **AI/ML**: Google Gemini API (gemini-2.0-flash-thinking-exp-1219)
+- **Backend**: FastAPI (Python) + Uvicorn
+- **Frontend**: React + TypeScript + Vite
+- **State Management**: Zustand (프론트엔드)
+- **AI/ML**: Google Gemini API
 - **Document Processing**:
   - Google Cloud Document AI
   - MarkItDown (문서 변환)
@@ -25,79 +29,88 @@ Google Gemini API를 활용하여 투자심의보고서 작성, 문서 분석, P
 ## Project Structure
 
 ```
-C:\Users\kimsj\GEMintern/
-├── app.py                      # Main Streamlit application entry point
-├── main_window.py              # Main window UI logic
-├── app_state.py                # Application state management
-├── styles.py                   # CSS styles and theming
-├── workers.py                  # Background worker threads
-├── requirements.txt            # Python dependencies
-├── .env                        # Environment variables (API keys, secrets)
+GEMintern/
+├── backend/                    # FastAPI 백엔드
+│   ├── main.py                 # 서버 엔트리포인트
+│   ├── api_routes.py           # REST API 라우트
+│   ├── api_models.py           # Pydantic 모델
+│   ├── api_ws.py               # WebSocket 엔드포인트
+│   └── static/                 # 빌드된 프론트엔드 (production)
+│
+├── frontend/                   # React + Vite 프론트엔드
+│   ├── src/
+│   │   ├── App.tsx             # 메인 앱 컴포넌트
+│   │   ├── main.tsx            # React 엔트리
+│   │   ├── pages/              # 페이지 컴포넌트
+│   │   ├── components/         # 재사용 UI 컴포넌트
+│   │   ├── stores/             # Zustand 스토어
+│   │   ├── api/                # API 클라이언트
+│   │   └── utils/              # 프론트엔드 유틸리티
+│   ├── package.json
+│   └── vite.config.ts
 │
 ├── Core Logic Modules (코어 비즈니스 로직)
 │   ├── core_logic.py           # Main business logic and file parsing
 │   ├── core_rag.py             # RAG (Retrieval-Augmented Generation) system
+│   ├── core_rag_vector.py      # Vector-based RAG
 │   ├── core_rfi.py             # RFI (Request for Information) processing
 │   ├── core_chained.py         # Chained prompting logic
+│   ├── core_im.py              # Investment Memorandum 생성
+│   ├── core_im_ppt.py          # IM PPT 생성
 │   ├── core_ppt_updater.py     # PPT update automation
-│   └── prompts.py              # AI prompt templates (67KB, extensive)
-│
-├── UI Modules (사용자 인터페이스)
-│   ├── ui_workflow.py          # Phase workflow UI (3-phase investment process)
-│   ├── ui_input.py             # Settings and input panels
-│   ├── ui_output.py            # Output display and download
-│   ├── ui_project.py           # Project management UI
-│   ├── ui_lp_qa.py             # LP Q&A response system
-│   ├── ui_ppt_tools.py         # PPT tools panel
-│   ├── ui_ppt_updater.py       # PPT updater UI
-│   ├── ui_audio.py             # Audio transcription panel
-│   ├── ui_crawler.py           # Web crawler panel
-│   ├── ui_ocr.py               # OCR panel
-│   ├── ui_markdown.py          # Markdown to Word converter
-│   ├── ui_doctemplate.py       # Document template panel
-│   └── ui_text_organizer.py    # Text organization tool
+│   ├── core_doc_updater.py     # Document update automation
+│   └── prompts.py              # AI prompt templates
 │
 ├── Utility Modules (유틸리티)
 │   ├── utils.py                # General utilities
 │   ├── utils_audio.py          # Audio processing utilities
 │   ├── utils_docai.py          # Document AI utilities
+│   ├── utils_doctemplate.py    # Document template utilities
+│   ├── utils_gdrive.py         # Google Drive integration
+│   ├── utils_gsheets.py        # Google Sheets integration
+│   ├── utils_markdown.py       # Markdown utilities
 │   ├── utils_onedrive.py       # OneDrive integration
 │   ├── utils_ppt.py            # PowerPoint utilities
 │   ├── ocr.py                  # OCR processing
-│   └── local_storage.py        # Local file storage
+│   ├── local_storage.py        # Local file storage
+│   └── cloud_sync.py           # Cloud sync utilities
 │
-├── pages/                      # Streamlit multi-page app pages
-│   ├── home_page.py
-│   ├── workflow_page.py
-│   ├── project_page.py
-│   ├── settings_page.py
-│   ├── lp_qa_page.py
-│   ├── ppt_tools_page.py
-│   ├── audio_page.py
-│   ├── crawler_page.py
-│   ├── ocr_page.py
-│   ├── markdown_page.py
-│   ├── doctemplate_page.py
-│   └── text_organizer_page.py
-│
-├── components/                 # Reusable UI components
-│   └── local_storage/          # Local storage component
-│
-├── widgets/                    # Custom Streamlit widgets
-├── scripts/                    # Utility scripts
+├── requirements.txt            # Python dependencies
+├── run_gemintern.bat           # Windows 실행 스크립트
+├── settings.json               # 앱 설정
+├── .env                        # Environment variables (API keys)
 ├── template/                   # Document templates
-├── .claude/                    # Claude Code configuration
-│   └── settings.local.json     # Local permissions
+├── scripts/                    # Utility scripts
+├── docs/                       # Documentation
+│   └── plans/                  # Design & implementation plans
 ├── .venv/                      # Python virtual environment
 └── .git/                       # Git repository
 ```
 
+## Running the Application
+
+```bash
+# 가상환경 활성화
+.venv\Scripts\activate  # Windows
+
+# 의존성 설치
+pip install -r requirements.txt
+
+# 웹 서버 실행 (기본 모드 — 브라우저 자동 오픈)
+python -m backend.main
+
+# 프론트엔드 개발 모드 (API 서버만 실행)
+python -m backend.main --dev
+# 별도 터미널에서: cd frontend && npm run dev
+```
+
+**접속**: http://localhost:8741
+
 ## Key Features & Workflows
 
 ### 1. Phase Workflow (3단계 투자 프로세스)
-- **Phase 1: 사전 정보 수집** - 자료 수집, 시장 조사, 초기 검토
-- **Phase 2: 투심보고서 작성** - IM 작성, Valuation, 투자심의
-- *(Phase 3/4: FDD/LDD - 현재 비활성화)*
+- **Phase 1: 사전 정보 수집** — 자료 수집, 시장 조사, 초기 검토
+- **Phase 2: 투심보고서 작성** — IM 작성, Valuation, 투자심의
 
 ### 2. Independent Tools
 - **IM 작성**: Investment Memorandum 자동 생성
@@ -114,7 +127,7 @@ C:\Users\kimsj\GEMintern/
 
 ### 4. Project Management & RAG
 - 프로젝트별 문서 저장소
-- RAG (Retrieval-Augmented Generation) 기반 문서 검색
+- RAG 기반 문서 검색
 - 프로젝트 컨텍스트 관리 (`core_rag.py`)
 
 ## Environment Variables (.env)
@@ -133,49 +146,35 @@ ONEDRIVE_CLIENT_ID=your_client_id
 ONEDRIVE_CLIENT_SECRET=your_client_secret
 ```
 
-## Running the Application
-
-```bash
-# Activate virtual environment
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # macOS/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run Streamlit app
-streamlit run app.py
-```
-
 ## Development Guidelines
 
 ### Code Organization
+- **Backend API**: `backend/api_routes.py`에 REST 엔드포인트 추가
 - **Core Logic**: Business logic은 `core_*.py` 모듈에 구현
-- **UI Components**: UI 로직은 `ui_*.py` 모듈에 분리
+- **Frontend Pages**: `frontend/src/pages/`에 React 페이지 추가
+- **Frontend Components**: `frontend/src/components/`에 재사용 컴포넌트
 - **Utilities**: 재사용 가능한 유틸리티는 `utils*.py`에 배치
 - **Prompts**: AI 프롬프트는 `prompts.py`에 중앙 관리
 
 ### Naming Conventions
-- **Modules**: `snake_case` (예: `core_logic.py`, `ui_workflow.py`)
-- **Functions**: `snake_case` (예: `parse_all_files()`, `render_dashboard()`)
-- **Classes**: `PascalCase` (필요시)
-- **Constants**: `UPPER_CASE` (예: `NAV_SECTIONS`, `PHASE_PAGES`)
+- **Python Modules**: `snake_case` (예: `core_logic.py`, `api_routes.py`)
+- **Python Functions**: `snake_case` (예: `parse_all_files()`)
+- **React Components**: `PascalCase` (예: `WorkflowPage.tsx`)
+- **TypeScript files**: `PascalCase` for pages/components, `camelCase` for utilities
+- **Constants**: `UPPER_CASE` (예: `DEFAULT_PORT`)
 
 ### State Management
-- Streamlit session state를 통한 상태 관리
-- 주요 상태 키:
-  - `app_started`: 앱 시작 여부
-  - `selected_page`: 현재 선택된 페이지
-  - `current_project`: 현재 프로젝트명
-  - `latest_settings`: 최신 설정값
-  - `p1_generated_text`, `p2_generated_text`: Phase별 생성 결과
+- **Frontend**: Zustand 스토어 (`frontend/src/stores/`)
+- **Backend**: 서버 상태는 FastAPI 의존성 주입 패턴 사용
 
-### UI/UX Patterns
-- **Design System**: Gemini-inspired color palette (CSS variables in `styles.py`)
-- **Navigation**: Sidebar navigation with grouped sections
-- **Breadcrumb**: 현재 위치 경로 표시
-- **Project Banner**: 활성 프로젝트 컨텍스트 표시
-- **Dashboard Cards**: Phase workflow 상태 시각화
+### Adding a New Feature
+1. Backend API 엔드포인트 추가: `backend/api_routes.py`
+2. Pydantic 모델 정의: `backend/api_models.py`
+3. Core logic 구현: `core_newfeature.py`
+4. Frontend 페이지 생성: `frontend/src/pages/NewFeaturePage.tsx`
+5. API 클라이언트 함수 추가: `frontend/src/api/`
+6. 라우터에 페이지 등록: `frontend/src/App.tsx`
+7. 프롬프트 추가 (AI 기능): `prompts.py`
 
 ## Working with AI (Gemini)
 
@@ -186,9 +185,7 @@ streamlit run app.py
 
 ### Prompt Engineering
 - `prompts.py`에 모든 프롬프트 템플릿 정의
-- 주요 프롬프트 카테고리:
-  - `LOGIC_PROMPTS`: 비즈니스 로직용 프롬프트
-  - 구조 추출, 문서 분석, 보고서 생성 등
+- 주요 프롬프트 카테고리: 구조 추출, 문서 분석, 보고서 생성 등
 
 ### RAG Implementation
 - `core_rag.py`: 문서 인덱싱 및 검색
@@ -204,111 +201,28 @@ streamlit run app.py
 - **Images**: PNG, JPG (OCR 지원)
 - **Audio**: MP3, WAV, M4A (전사 지원)
 
-### Processing Pipeline
-1. File upload via Streamlit `file_uploader`
-2. Parsing: `utils.parse_uploaded_file()` (with API key & DocAI config)
-3. Storage: `utils.save_to_local_storage()` or `core_rag.index_texts()`
-4. Retrieval: `core_rag.load_all_project_docs()`
-
 ## Testing & Debugging
 
-### Running Tests
 ```bash
 # Python syntax check
-python -m py_compile *.py
+python -m py_compile core_logic.py
 
-# Run specific module
-python -c "import core_logic; print('OK')"
+# Import test
+python -c "import core_logic, core_rag, utils; print('OK')"
+
+# Backend server test
+python -m backend.main --dev
 ```
-
-### Debugging Tips
-- Streamlit reruns the entire script on each interaction
-- Use `st.session_state` for persistent data
-- Check `st.write()` or `st.code()` for debugging output
-- Monitor API rate limits (Gemini API)
 
 ## Security Considerations
 
-### Secrets Management
 - Never commit `.env` file to Git
 - Store API keys in environment variables
-- Use `.gitignore` to exclude:
-  - `*.json` (service account credentials)
-  - `.env`
-  - `.venv/`
-  - `__pycache__/`
-
-### Permission Management
-- Claude Code permissions: `.claude/settings.local.json`
-- Allow minimal necessary bash commands
-- Restrict file access to project directory
-
-## Common Tasks
-
-### Adding a New Feature
-1. Create UI module: `ui_newfeature.py`
-2. Create core logic: `core_newfeature.py`
-3. Add prompts to `prompts.py`
-4. Update `app.py` navigation:
-   - Add to `NAV_SECTIONS`
-   - Add page routing in `main()`
-5. Test with sample data
-
-### Modifying Prompts
-1. Locate prompt in `prompts.py` (e.g., `LOGIC_PROMPTS['structure_extraction']`)
-2. Edit prompt text (consider thinking level, format, examples)
-3. Test with `core_logic.py` or relevant module
-4. Validate output quality
-
-### Managing Projects
-- Create project: `core_rag.create_project(name)`
-- List projects: `core_rag.list_projects()`
-- Add documents: `core_rag.index_texts(api_key, {filename: text}, project_name)`
-- Delete project: `core_rag.delete_project(project_name)`
-
-## Troubleshooting
-
-### Common Issues
-
-**Streamlit App Won't Start**
-- Check virtual environment activation
-- Verify all dependencies installed: `pip install -r requirements.txt`
-- Ensure port 8501 is available
-
-**Gemini API Errors**
-- Verify API key in `.env`
-- Check API quota/rate limits
-- Ensure model name is correct
-
-**File Parsing Fails**
-- Check file format support
-- Verify DocAI config (if using)
-- Inspect `utils.parse_uploaded_file()` error messages
-
-**Session State Lost**
-- Streamlit reruns entire script on interaction
-- Use `st.session_state` for persistence
-- Avoid relying on global variables
-
-## Future Enhancements
-
-- [ ] FDD (재무실사) Phase 3 활성화
-- [ ] LDD (법률실사) Phase 4 활성화
-- [ ] Multi-user support
-- [ ] Database integration (currently file-based)
-- [ ] Advanced analytics & dashboards
-- [ ] Export to multiple formats (PDF, Excel)
-
-## Contact & Support
-
-For project-specific questions, refer to:
-- Code comments in `app.py`, `core_logic.py`, `ui_workflow.py`
-- Prompt templates in `prompts.py`
-- Streamlit documentation: https://docs.streamlit.io/
+- `.gitignore` excludes: `*.json`, `.env`, `.venv/`, `__pycache__/`
 
 ---
 
-**Last Updated**: 2026-02-15
+**Last Updated**: 2026-02-26
 **Version**: 7.0
 **Maintained by**: kimsj
-**Project Path**: `C:\Users\kimsj\GEMintern`
+**Project Path**: `C:\Users\kimsj\GEMintern\GEMintern`
