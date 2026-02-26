@@ -5,7 +5,8 @@ import tempfile
 import pandas as pd
 import fitz  # PyMuPDF
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
+from docx.oxml.ns import qn
 from pptx import Presentation
 from openai import OpenAI
 import ocr
@@ -417,8 +418,8 @@ def create_docx(markdown_text):
                         for idx, text in enumerate(row_data):
                             if idx < len(row_cells): row_cells[idx].text = text.replace('**', '')
             indent_stack = [0]
-        elif re.match(r'^\s*([-*]|\d+\.)\s', raw_line):
-            match = re.match(r'^(\s*)([-*]|\d+\.)\s+(.*)', raw_line)
+        elif re.match(r'^\s*([-*•]|\d+\.)\s', raw_line):
+            match = re.match(r'^(\s*)([-*•]|\d+\.)\s+(.*)', raw_line)
             if match:
                 indent_str, marker, content = match.groups()
                 spaces = indent_str.replace('\t', '    ')  # 탭을 4칸으로
@@ -439,7 +440,7 @@ def create_docx(markdown_text):
                     level = len(indent_stack) - 1
 
                 if level > 8: level = 8
-                is_bullet = marker in ['-', '*']
+                is_bullet = marker in ['-', '*', '•']
                 add_list_paragraph(doc, content, level, is_bullet)
             i += 1
         else:
@@ -452,6 +453,45 @@ def create_docx(markdown_text):
                         run.bold = True
                     else: p.add_run(part)
             i += 1
+
+    # --- 후처리: 한글 폰트 + 단락 뒤 공백 제거 ---
+    font_name = '맑은 고딕'
+
+    # Normal 스타일
+    normal = doc.styles['Normal']
+    normal.font.name = font_name
+    normal.font.size = Pt(10)
+    normal.element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+    normal.paragraph_format.space_after = Pt(0)
+
+    # Heading 스타일 (제목 1~3)
+    heading_sizes = {1: Pt(16), 2: Pt(13), 3: Pt(11), 4: Pt(10.5), 5: Pt(10)}
+    for level, size in heading_sizes.items():
+        style_name = f'Heading {level}'
+        if style_name in doc.styles:
+            hs = doc.styles[style_name]
+            hs.font.name = font_name
+            hs.font.size = size
+            hs.element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+            hs.paragraph_format.space_after = Pt(0)
+
+    # 모든 run에 한글 폰트 적용
+    for paragraph in doc.paragraphs:
+        paragraph.paragraph_format.space_after = Pt(0)
+        for run in paragraph.runs:
+            run.font.name = font_name
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+
+    # 테이블 셀에도 적용
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    paragraph.paragraph_format.space_after = Pt(0)
+                    for run in paragraph.runs:
+                        run.font.name = font_name
+                        run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
