@@ -409,8 +409,9 @@ def create_docx(markdown_text):
                     for idx, text in enumerate(headers):
                         if idx < len(table.rows[0].cells):
                             cell = table.rows[0].cells[idx]
-                            cell.text = text
-                            cell.paragraphs[0].runs[0].bold = True
+                            cell.text = text.replace('**', '')
+                            if cell.paragraphs[0].runs:
+                                cell.paragraphs[0].runs[0].bold = True
                     for row_data in data_rows:
                         row_cells = table.add_row().cells
                         for idx, text in enumerate(row_data):

@@ -84,6 +84,7 @@ def _get_system_prompt(template_opt):
         'presentation': 'ppt_system',
         'paper_review': 'paper_review_system',
         'free_summary': 'free_summary_system',
+        'context_based': 'context_based_system',
         'custom': 'custom_system',
         'teaser': 'teaser_system',
         'term_sheet': 'term_sheet_system',
@@ -142,8 +143,8 @@ def generate_report_stream(api_key, model_name, inputs, thinking_level, file_con
     # 템플릿별 config 설정
     if template_opt == 'presentation' or template_opt == 'paper_review':
         temperature = 0.7
-    elif template_opt == 'custom':
-        temperature = 0.7  # 자유 구조화 모드 - 창의적 구조화를 위해 높은 temperature
+    elif template_opt in ('custom', 'context_based'):
+        temperature = 0.7  # 자유 구조화/컨텍스트 기반 모드 - 유연한 작성을 위해 높은 temperature
     else:
         temperature = 0.3
 
@@ -310,7 +311,7 @@ def generate_qa_answer(api_key, model_name, file_context, question, prev_qa_cont
 - 관련 데이터가 있으면 표로 정리하세요
 """
     config = types.GenerateContentConfig(
-        max_output_tokens=4096,
+        max_output_tokens=65536,
         temperature=0.2,
     )
     resp = client.models.generate_content(model=model_name, contents=prompt_text, config=config)
