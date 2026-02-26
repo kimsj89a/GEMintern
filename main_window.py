@@ -29,6 +29,7 @@ from pages.text_organizer_page import TextOrganizerPage
 from pages.ppt_tools_page import PptToolsPage
 from pages.lp_qa_page import LpQaPage
 from pages.qa_session_page import QaSessionPage
+from pages.doc_updater_page import DocUpdaterPage
 
 
 # Navigation structure
@@ -46,6 +47,7 @@ NAV_SECTIONS = {
         ("📢 발표자료 (PPT)", "ppt_tools"),
         ("🙋‍♂️ LP Q&A 대응", "lp_qa"),
         ("💬 자료기반 Q&A", "qa_session"),
+        ("📄 문서 업데이트", "doc_updater"),
     ],
     "Utilities": [
         ("🎤 오디오 전사", "audio"),
@@ -81,6 +83,7 @@ PAGE_FACTORIES = {
     "markdown": MarkdownPage,
     "doctemplate": DocTemplatePage,
     "text_organizer": TextOrganizerPage,
+    "doc_updater": DocUpdaterPage,
 }
 
 
