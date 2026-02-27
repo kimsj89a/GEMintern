@@ -14,6 +14,27 @@ import GenerationProgress from '../components/GenerationProgress';
 type WriteMode = 'report' | 'ppt';
 type Phase2View = 'choice' | 'templates' | 'generate' | 'refine' | 'result';
 
+/* ─── Section definitions for section-selectable templates ─── */
+interface TemplateSection {
+  id: string;
+  label: string;
+  structure: string;
+}
+
+const INVESTMENT_SECTIONS: TemplateSection[] = [
+  { id: 'inv1', label: '1. 투자내용', structure: `## 1. 투자내용\n### 1.1 투자개요\n### 1.2 투자 구조 및 재원\n### 1.3 주요 투자 조건 (Key Terms)\n### 1.4 예상사용계획\n### 1.5 투자 전/후 주주구성` },
+  { id: 'inv2', label: '2. 회사현황', structure: `## 2. 회사현황\n### 2.1 회사개요\n### 2.2 회사연혁\n### 2.3 조직현황\n### 2.4 주요 경영진 현황\n### 2.5 기존 투자이력\n### 2.6 차입금 주주 현황\n### 2.7 재무현황` },
+  { id: 'inv3', label: '3. 시장분석', structure: `## 3. 시장분석\n### 3.1 시장 현황 및 산업 매력도\n### 3.2 경쟁 환경 분석\n### 3.3 규제 및 정책 환경` },
+  { id: 'inv4', label: '4. 사업분석', structure: `## 4. 사업분석\n### 4.1 사업개요 (비즈니스 모델)\n### 4.2 주요 제품 및 서비스\n### 4.3 특별 기술력 검토\n### 4.4 경쟁력 대비 차별화\n### 4.5 재무실적과 향후 매출 추정` },
+  { id: 'inv5', label: '5. 투자 타당성 분석', structure: `## 5. 투자 타당성 분석\n### 5.1 Valuation 분석\n### 5.2 Value-up 방안\n### 5.3 Exit Scenario별 투자수익률` },
+  { id: 'inv6', label: '6. 리스크 분석', structure: `## 6. 리스크 분석\n### 6.1 산업/사업 리스크\n### 6.2 재무/법률 리스크\n### 6.3 Exit 리스크` },
+  { id: 'inv7', label: '7. 종합의견', structure: `## 7. 종합의견\n### 7.1 투자포인트\n### 7.2 투자우려요소\n### 7.3 종합의견` },
+];
+
+const TEMPLATE_SECTIONS: Record<string, TemplateSection[]> = {
+  investment: INVESTMENT_SECTIONS,
+};
+
 /* ─── Template definitions ─── */
 const REPORT_TEMPLATES = [
   { id: 'simple_review', label: '간단 검토', desc: '예비투자심의 Quick Memo', icon: '📋' },
@@ -312,6 +333,7 @@ export default function WorkflowPage() {
   const [phase2View, setPhase2View] = useState<Phase2View>('choice');
   const [writeMode, setWriteMode] = useState<WriteMode>('report');
   const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [docsCollapsed, setDocsCollapsed] = useState(true);
 
   const cancelAnalyzeRef = useRef(false);
@@ -409,13 +431,20 @@ export default function WorkflowPage() {
     setGenStartTime(Date.now());
     cancelGenerateRef.current = false;
     const mode = selectedTemplate === 'im' ? 'chained' : 'single';
+    // Build custom structure_text from selected sections
+    const sections = TEMPLATE_SECTIONS[selectedTemplate];
+    let structureText = '';
+    if (sections && selectedSections.length > 0 && selectedSections.length < sections.length) {
+      const filtered = sections.filter(s => selectedSections.includes(s.id));
+      structureText = `# 투자심사보고서: [대상기업명]\n\n` + filtered.map(s => s.structure).join('\n\n');
+    }
     try {
       const { task_id } = await api.startGenerate({
         project_name: currentProject,
         template_option: selectedTemplate,
         thinking_level: 'MEDIUM',
         file_context: context,
-        inputs: { selected_docs: selectedDocs },
+        inputs: { selected_docs: selectedDocs, ...(structureText ? { structure_text: structureText } : {}) },
         mode,
       });
       activeTaskRef.current = task_id;
@@ -643,7 +672,12 @@ export default function WorkflowPage() {
                   {currentTemplates.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => setSelectedTemplate(t.id)}
+                      onClick={() => {
+                        setSelectedTemplate(t.id);
+                        const sections = TEMPLATE_SECTIONS[t.id];
+                        if (sections) setSelectedSections(sections.map(s => s.id));
+                        else setSelectedSections([]);
+                      }}
                       className={`text-left p-3 rounded-xl border transition-all duration-200 group ${
                         selectedTemplate === t.id
                           ? 'border-blue-300 bg-blue-50/70 shadow-sm'
@@ -723,6 +757,54 @@ export default function WorkflowPage() {
                       <div className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">Template Preview</div>
                     </div>
                   </div>
+
+                  {/* Section selector for templates with selectable sections */}
+                  {TEMPLATE_SECTIONS[selectedTemplate] && (
+                    <div className="mb-4 p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">섹션 선택</span>
+                        <button
+                          onClick={() => {
+                            const all = TEMPLATE_SECTIONS[selectedTemplate].map(s => s.id);
+                            setSelectedSections(selectedSections.length === all.length ? [] : all);
+                          }}
+                          className="text-[11px] text-blue-500 hover:text-blue-700 font-medium"
+                        >
+                          {selectedSections.length === TEMPLATE_SECTIONS[selectedTemplate].length ? '전체 해제' : '전체 선택'}
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        {TEMPLATE_SECTIONS[selectedTemplate].map((sec) => (
+                          <label
+                            key={sec.id}
+                            className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-all ${
+                              selectedSections.includes(sec.id) ? 'bg-blue-50/80 border border-blue-200' : 'hover:bg-white border border-transparent'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedSections.includes(sec.id)}
+                              onChange={() => {
+                                setSelectedSections(prev =>
+                                  prev.includes(sec.id) ? prev.filter(id => id !== sec.id) : [...prev, sec.id]
+                                );
+                              }}
+                              className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-1"
+                            />
+                            <span className={`text-sm ${selectedSections.includes(sec.id) ? 'font-semibold text-blue-700' : 'text-slate-600'}`}>
+                              {sec.label}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      {selectedSections.length > 0 && selectedSections.length < TEMPLATE_SECTIONS[selectedTemplate].length && (
+                        <div className="mt-2 text-[11px] text-amber-600 bg-amber-50 px-2.5 py-1.5 rounded-md">
+                          {TEMPLATE_SECTIONS[selectedTemplate].length}개 중 {selectedSections.length}개 섹션 선택됨
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <MarkdownViewer content={TEMPLATE_PREVIEWS[selectedTemplate]} />
                 </div>
               ) : (
