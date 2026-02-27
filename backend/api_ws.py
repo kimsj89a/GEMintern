@@ -94,6 +94,18 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
 
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for streaming task results."""
+    # Authenticate via ?token= query parameter
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing token")
+        return
+    try:
+        from backend.auth import decode_token
+        decode_token(token)
+    except Exception:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
     await websocket.accept()
     subscribed_tasks: set = set()
 

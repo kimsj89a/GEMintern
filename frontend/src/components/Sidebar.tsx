@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { useAuthStore } from '../stores/authStore';
 import { api } from '../api/client';
 
 const NAV_SECTIONS = [
@@ -35,12 +36,14 @@ const NAV_SECTIONS = [
       { label: 'MD to Word', id: 'markdown', icon: '📝' },
       { label: '문서양식', id: 'doctemplate', icon: '📋' },
       { label: '문장 정리기', id: 'text_organizer', icon: '✏️' },
+      { label: '국민연금 사업장', id: 'nps', icon: '🏢' },
     ],
   },
 ];
 
 export default function Sidebar() {
   const { activePage, openTab, currentProject, setCurrentProject } = useAppStore();
+  const { user, logout } = useAuthStore();
   const [projects, setProjects] = useState<string[]>([]);
 
   useEffect(() => {
@@ -122,6 +125,15 @@ export default function Sidebar() {
 
       {/* Bottom */}
       <div className="border-t border-white/[0.06] p-3">
+        {user?.is_admin && (
+          <button
+            className="w-full text-left flex items-center gap-2.5 px-2.5 py-[7px] text-[13px] text-slate-500 hover:text-slate-300 hover:bg-white/[0.05] rounded-lg transition-all"
+            onClick={() => openTab('admin')}
+          >
+            <span className="text-sm">🛡️</span>
+            <span>관리자</span>
+          </button>
+        )}
         <button
           className="w-full text-left flex items-center gap-2.5 px-2.5 py-[7px] text-[13px] text-slate-500 hover:text-slate-300 hover:bg-white/[0.05] rounded-lg transition-all"
           onClick={() => openTab('settings')}
@@ -129,9 +141,14 @@ export default function Sidebar() {
           <span className="text-sm">⚙️</span>
           <span>설정</span>
         </button>
-        <div className="flex items-center gap-2 px-2.5 py-1.5 mt-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] text-slate-600">Local Mode</span>
+        <div className="flex items-center justify-between px-2.5 py-1.5 mt-1">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[11px] text-slate-400">{user?.username}</span>
+          </div>
+          <button onClick={logout} className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors">
+            로그아웃
+          </button>
         </div>
       </div>
     </aside>

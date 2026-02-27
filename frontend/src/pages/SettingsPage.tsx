@@ -15,9 +15,9 @@ const THINKING_LEVELS = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
 
 export default function SettingsPage() {
   const { setAppStarted, openTab } = useAppStore();
-  const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(MODELS[0]);
   const [thinking, setThinking] = useState('MEDIUM');
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [status, setStatus] = useState<{ type: string; msg: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,9 +28,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.getSettings().then((data) => {
-      if (data.api_key) setApiKey(data.api_key);
       if (data.model_name) setModel(data.model_name);
       if (data.thinking_level) setThinking(data.thinking_level);
+      setApiKeyConfigured(!!data.api_key_configured);
       const cs = data.cloud_sync || {};
       if (cs.gdrive_enabled) setGdriveEnabled(true);
       if (cs.gdrive_client_id) setGdriveClientId(cs.gdrive_client_id);
@@ -61,15 +61,10 @@ export default function SettingsPage() {
   };
 
   const handleApply = async () => {
-    if (!apiKey.trim()) {
-      setStatus({ type: 'error', msg: 'API Key를 입력해주세요.' });
-      return;
-    }
     setLoading(true);
     setStatus(null);
     try {
       await api.updateSettings({
-        api_key: apiKey,
         model_name: model,
         thinking_level: thinking,
         cloud_sync: {
@@ -112,14 +107,12 @@ export default function SettingsPage() {
       <div className="bg-white border border-[#E9E9E7] rounded-xl p-6 mb-4">
         <h2 className="text-sm font-semibold text-[#37352F] mb-4">Gemini API</h2>
 
-        <label className="block text-sm text-[#787774] mb-1">API Key</label>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder="Google AI Studio에서 발급받은 API Key"
-          className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm mb-4 focus:outline-none focus:border-[#2383E2]"
-        />
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg">
+          <div className={`w-2 h-2 rounded-full ${apiKeyConfigured ? 'bg-emerald-500' : 'bg-red-400'}`} />
+          <span className="text-sm text-[#787774]">
+            API Key: {apiKeyConfigured ? '서버 환경변수에서 설정됨' : '미설정 (GEMINI_API_KEY 환경변수 필요)'}
+          </span>
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>

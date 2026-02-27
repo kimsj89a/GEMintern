@@ -30,7 +30,10 @@ def get_sync_manager():
 
 
 # --- Constants ---
-RAG_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage")
+RAG_STORAGE_DIR = os.environ.get(
+    "RAG_STORAGE_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag_storage"),
+)
 PROJECTS_FILE = os.path.join(RAG_STORAGE_DIR, "_projects.json")
 DOCS_SUBDIR = "docs"  # 프로젝트 내 문서 저장 하위 폴더
 TRASH_SUBDIR = "_trash"  # 프로젝트 내 휴지통 하위 폴더

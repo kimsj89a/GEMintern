@@ -19,7 +19,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api_routes import router as api_router
+from backend.auth_routes import router as auth_router
 from backend.api_ws import websocket_endpoint
+from backend.database import init_db
 
 app = FastAPI(title="GEMintern API")
 
@@ -31,6 +33,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 
 @app.websocket("/ws/stream")
@@ -54,17 +62,20 @@ def main():
     parser.add_argument("--web", action="store_true", help="(deprecated, now default)")
     args = parser.parse_args()
 
-    port = args.port
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", args.port))
+    is_railway = os.environ.get("RAILWAY_ENVIRONMENT")
 
     if args.dev:
         print(f"GEMintern API server running on http://localhost:{port}")
         print("Frontend dev server: cd frontend && npm run dev")
-        uvicorn.run("backend.main:app", host="127.0.0.1", port=port, reload=False)
+        uvicorn.run("backend.main:app", host=host, port=port, reload=False)
     else:
-        print(f"GEMintern running at http://localhost:{port}")
+        print(f"GEMintern running at http://{host}:{port}")
         print("Press Ctrl+C to stop.")
-        webbrowser.open(f"http://localhost:{port}")
-        uvicorn.run("backend.main:app", host="127.0.0.1", port=port, reload=False)
+        if not is_railway:
+            webbrowser.open(f"http://localhost:{port}")
+        uvicorn.run("backend.main:app", host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import { useAuthStore } from '../stores/authStore';
+
 type WsMessage = {
   type: 'chunk' | 'complete' | 'error';
   task_id: string;
@@ -15,7 +17,8 @@ function getWs(): WebSocket {
   if (ws && ws.readyState === WebSocket.OPEN) return ws;
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${window.location.host}/ws/stream`);
+  const token = useAuthStore.getState().token || '';
+  ws = new WebSocket(`${protocol}//${window.location.host}/ws/stream?token=${encodeURIComponent(token)}`);
 
   ws.onmessage = (event) => {
     const msg: WsMessage = JSON.parse(event.data);

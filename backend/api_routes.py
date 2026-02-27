@@ -6,7 +6,7 @@ import uuid
 import tempfile
 from typing import List, Dict
 
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, Depends
 
 from pydantic import BaseModel
 from backend.api_models import (
@@ -14,8 +14,18 @@ from backend.api_models import (
     GenerateRequest, QaRequest, SyncRequest, AnalysisRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
+from backend.auth import get_current_user
+from backend.database import log_usage
 
 router = APIRouter()
+
+
+def _get_api_key() -> str:
+    """Return Gemini API key: env var first, then settings.json fallback."""
+    env_key = os.environ.get("GEMINI_API_KEY", "")
+    if env_key:
+        return env_key
+    return _load_settings().get("api_key", "")
 
 # Max context size (~200K tokens for Gemini)
 MAX_CONTEXT_CHARS = 800_000
@@ -122,31 +132,32 @@ def health_check():
 # ========================================
 
 @router.get("/settings")
-def get_settings():
+def get_settings(user: dict = Depends(get_current_user)):
     data = _load_settings()
     masked = {**data}
-    if masked.get("api_key"):
-        key = masked["api_key"]
-        masked["api_key_masked"] = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
+    # Never expose full API key — only show whether it's configured
+    masked.pop("api_key", None)
+    masked["api_key_configured"] = bool(_get_api_key())
     return masked
 
 
 @router.put("/settings")
-def update_settings(settings: dict):
+def update_settings(settings: dict, user: dict = Depends(get_current_user)):
     current = _load_settings()
+    settings.pop("api_key", None)  # API key managed via env var
     current.update(settings)
     _save_settings(current)
     return {"success": True}
 
 
 @router.post("/settings/apply")
-def apply_settings():
-    data = _load_settings()
-    if not data.get("api_key"):
-        return {"success": False, "error": "API Key가 설정되지 않았습니다."}
+def apply_settings(user: dict = Depends(get_current_user)):
+    api_key = _get_api_key()
+    if not api_key:
+        return {"success": False, "error": "API Key가 설정되지 않았습니다. (GEMINI_API_KEY 환경변수 확인)"}
     try:
         import core_logic
-        core_logic.get_client(data["api_key"])
+        core_logic.get_client(api_key)
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -157,19 +168,19 @@ def apply_settings():
 # ========================================
 
 @router.get("/projects")
-def list_projects():
+def list_projects(user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.list_projects()
 
 
 @router.post("/projects")
-def create_project(req: ProjectCreate):
+def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.create_project(req.name)
 
 
 @router.delete("/projects/{name}")
-def delete_project(name: str):
+def delete_project(name: str, user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.delete_project(name)
 
@@ -179,7 +190,7 @@ def delete_project(name: str):
 # ========================================
 
 @router.get("/projects/{name}/docs")
-def get_project_docs(name: str):
+def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     import core_rag
     tree = core_rag.get_folder_tree(name)
     doc_names = core_rag.get_indexed_doc_names(name) or []
@@ -187,34 +198,33 @@ def get_project_docs(name: str):
 
 
 @router.post("/projects/{name}/folders")
-def create_folder(name: str, req: FolderCreate):
+def create_folder(name: str, req: FolderCreate, user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.create_folder(name, req.name)
 
 
 @router.delete("/projects/{name}/folders/{folder}")
-def delete_folder(name: str, folder: str):
+def delete_folder(name: str, folder: str, user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.delete_folder(name, folder)
 
 
 @router.post("/projects/{name}/docs/{doc}/move")
-def move_doc(name: str, doc: str, req: DocMoveRequest):
+def move_doc(name: str, doc: str, req: DocMoveRequest, user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.move_doc_to_folder(name, doc, req.target_folder)
 
 
 @router.delete("/projects/{name}/docs/{doc}")
-def trash_doc(name: str, doc: str):
+def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):
     import core_rag
     return core_rag.trash_document(name, doc)
 
 
 @router.post("/projects/{name}/upload")
-async def upload_files(name: str, files: List[UploadFile] = File(...)):
+async def upload_files(name: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     import core_rag
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
+    api_key = _get_api_key()
     texts = {}
     parse_errors = []
     for f in files:
@@ -328,17 +338,15 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
 # ========================================
 
 @router.post("/generate")
-def start_generate(req: GenerateRequest):
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
-    model = settings.get("model_name", "gemini-3.1-pro-preview")
+def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user)):
+    api_key = _get_api_key()
+    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
 
-    user_context = req.file_context.strip()  # 유저가 입력한 추가 컨텍스트
+    user_context = req.file_context.strip()
     selected_docs = req.inputs.get("selected_docs", [])
     print(f"[generate] project={req.project_name}, template={req.template_option}, "
           f"user_context_len={len(user_context)}, selected_docs={selected_docs}")
 
-    # 항상 프로젝트 문서를 로드 (유저 컨텍스트 유무와 무관)
     file_context = ""
     if req.project_name:
         file_context = _load_context_with_budget(
@@ -346,10 +354,9 @@ def start_generate(req: GenerateRequest):
         )
         print(f"[generate] loaded docs: {len(file_context)} chars")
 
-    # Pass template_option and user context into inputs for core_logic
     inputs = dict(req.inputs)
     inputs.setdefault("template_option", req.template_option)
-    inputs["context_text"] = user_context  # 유저 컨텍스트를 프롬프트에 전달
+    inputs["context_text"] = user_context
 
     task_id = create_task()
     run_generate_task(
@@ -357,16 +364,15 @@ def start_generate(req: GenerateRequest):
         inputs, req.thinking_level, file_context,
         mode=req.mode
     )
+    log_usage(user["id"], "/generate", model)
     return {"task_id": task_id}
 
 
 @router.post("/qa")
-def start_qa(req: QaRequest):
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
-    model = settings.get("model_name", "gemini-3.1-pro-preview")
+def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
+    api_key = _get_api_key()
+    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
 
-    # Vector 검색으로 관련 청크만 추출 (fallback: 전체 로드)
     context = _get_vector_context(
         api_key, req.project_name, req.question, req.selected_docs
     )
@@ -375,21 +381,19 @@ def start_qa(req: QaRequest):
         task_id, "qa_answer", api_key, model,
         file_context=context, question=req.question
     )
+    log_usage(user["id"], "/qa", model)
     return {"task_id": task_id}
 
 
 @router.post("/analyze")
-def start_analysis(req: AnalysisRequest):
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
-    model = settings.get("model_name", "gemini-3.1-pro-preview")
+def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user)):
+    api_key = _get_api_key()
+    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
 
-    # If project_name is in kwargs, use vector search for context
     kwargs = dict(req.kwargs)
     if "project_name" in kwargs:
         pname = kwargs.pop("project_name")
         sel_docs = kwargs.pop("selected_docs", [])
-        # analysis의 경우 task_type을 query로 사용
         query = kwargs.get("question", req.task_type)
         kwargs["file_context"] = _get_vector_context(
             api_key, pname, query, sel_docs
@@ -397,11 +401,12 @@ def start_analysis(req: AnalysisRequest):
 
     task_id = create_task()
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
+    log_usage(user["id"], f"/analyze/{req.task_type}", model)
     return {"task_id": task_id}
 
 
 @router.get("/tasks/{task_id}")
-def get_task_status(task_id: str):
+def get_task_status(task_id: str, user: dict = Depends(get_current_user)):
     task = get_task(task_id)
     if not task:
         return {"error": "Task not found"}
@@ -418,14 +423,13 @@ def get_task_status(task_id: str):
 # ========================================
 
 @router.post("/projects/{name}/reindex")
-def reindex_project(name: str, force: bool = False):
+def reindex_project(name: str, force: bool = False, user: dict = Depends(get_current_user)):
     """프로젝트 문서를 벡터 DB에 증분 인덱싱 (서브프로세스에서 실행, segfault 격리).
 
     force=True면 전체 재인덱싱, 기본은 변경분만 처리.
     """
     import subprocess, sys, json as _json
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
+    api_key = _get_api_key()
     if not api_key:
         return {"success": False, "error": "API Key가 설정되지 않았습니다."}
     try:
@@ -450,7 +454,7 @@ print(json.dumps(result, ensure_ascii=False))
 
 
 @router.get("/projects/{name}/vector-stats")
-def vector_stats(name: str):
+def vector_stats(name: str, user: dict = Depends(get_current_user)):
     """프로젝트 벡터 인덱스 통계 (파일시스템 기반, ChromaDB 직접 열지 않음)."""
     try:
         local_data = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "GEMintern")
@@ -467,7 +471,7 @@ def vector_stats(name: str):
 
 
 @router.get("/projects/{name}/sync-status")
-def doc_sync_status(name: str):
+def doc_sync_status(name: str, user: dict = Depends(get_current_user)):
     """파일 목록과 RAG DB 동기화 상태 비교."""
     import core_rag
     try:
@@ -521,7 +525,7 @@ class SyncDocsRequest(BaseModel):
 
 
 @router.post("/projects/{name}/sync-docs")
-def sync_selected_docs(name: str, req: SyncDocsRequest):
+def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get_current_user)):
     """선택한 파일들의 동기화 상태를 변경."""
     import core_rag
     try:
@@ -562,7 +566,7 @@ def sync_selected_docs(name: str, req: SyncDocsRequest):
 # ========================================
 
 @router.get("/sync/status")
-def sync_status():
+def sync_status(user: dict = Depends(get_current_user)):
     settings = _load_settings()
     cs = settings.get("cloud_sync", {})
     services = []
@@ -576,7 +580,7 @@ def sync_status():
 
 
 @router.post("/sync/push")
-def sync_push(req: SyncRequest):
+def sync_push(req: SyncRequest, user: dict = Depends(get_current_user)):
     from cloud_sync import CloudSyncManager
     mgr = _get_sync_manager()
     if not mgr:
@@ -585,7 +589,7 @@ def sync_push(req: SyncRequest):
 
 
 @router.post("/sync/pull")
-def sync_pull(req: SyncRequest):
+def sync_pull(req: SyncRequest, user: dict = Depends(get_current_user)):
     mgr = _get_sync_manager()
     if not mgr:
         return {"success": False, "error": "클라우드 미연결"}
@@ -593,7 +597,7 @@ def sync_pull(req: SyncRequest):
 
 
 @router.post("/sync/full")
-def sync_full(req: SyncRequest):
+def sync_full(req: SyncRequest, user: dict = Depends(get_current_user)):
     mgr = _get_sync_manager()
     if not mgr:
         return {"success": False, "error": "클라우드 미연결"}
@@ -638,11 +642,11 @@ def _get_sync_manager():
 # ========================================
 
 @router.post("/ocr")
-async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini"):
+async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini", user: dict = Depends(get_current_user)):
     """이미지/PDF에서 텍스트 추출 (Gemini Vision 또는 Document AI)."""
     import fitz
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
+    api_key = _get_api_key()
+    log_usage(user["id"], "/ocr")
     results = []
 
     for f in files:
@@ -721,10 +725,9 @@ class MarkdownToDocxRequest(BaseModel):
 # ========================================
 
 @router.post("/freedoc/upload")
-async def freedoc_upload(files: List[UploadFile] = File(...)):
+async def freedoc_upload(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     """자유양식 문서작성: 파일 업로드 → 파싱된 텍스트 반환."""
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
+    api_key = _get_api_key()
     parsed_parts = []
     for f in files:
         content_bytes = await f.read()
@@ -735,11 +738,11 @@ async def freedoc_upload(files: List[UploadFile] = File(...)):
 
 
 @router.post("/freedoc/generate")
-def freedoc_generate(req: FreeDocRequest):
+def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)):
     """자유양식 문서작성: 파싱된 텍스트 + 지시사항 → AI 문서 생성 (task)."""
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
-    model = settings.get("model_name", "gemini-3.1-pro-preview")
+    api_key = _get_api_key()
+    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    log_usage(user["id"], "/freedoc/generate", model)
 
     combined = req.file_text
     if req.paste_text.strip():
@@ -802,7 +805,7 @@ def freedoc_generate(req: FreeDocRequest):
 
 
 @router.post("/markdown-to-docx")
-def markdown_to_docx(req: MarkdownToDocxRequest):
+def markdown_to_docx(req: MarkdownToDocxRequest, user: dict = Depends(get_current_user)):
     """마크다운 텍스트를 Word 문서로 변환."""
     from fastapi.responses import Response
     import utils
@@ -829,7 +832,7 @@ class DocUpdaterRunRequest(BaseModel):
 
 
 @router.post("/doc-updater/upload-original")
-async def doc_updater_upload_original(file: UploadFile = File(...)):
+async def doc_updater_upload_original(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     """원본 문서 업로드 → 인덱싱 프리뷰 반환."""
     import core_doc_updater
 
@@ -859,7 +862,7 @@ async def doc_updater_upload_original(file: UploadFile = File(...)):
 
 @router.post("/doc-updater/{session_id}/supplementary")
 async def doc_updater_upload_supplementary(
-    session_id: str, files: List[UploadFile] = File(...)
+    session_id: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)
 ):
     """추가 자료 파일 업로드."""
     temp_dir = _doc_updater_sessions.get(session_id)
@@ -881,15 +884,15 @@ async def doc_updater_upload_supplementary(
 
 
 @router.post("/doc-updater/run")
-def doc_updater_run(req: DocUpdaterRunRequest):
+def doc_updater_run(req: DocUpdaterRunRequest, user: dict = Depends(get_current_user)):
     """문서 업데이트 실행 (백그라운드)."""
     temp_dir = _doc_updater_sessions.get(req.session_id)
     if not temp_dir:
         return {"error": "세션이 없습니다."}
 
-    settings = _load_settings()
-    api_key = settings.get("api_key", "")
-    model = settings.get("model_name", "gemini-3.1-pro-preview")
+    api_key = _get_api_key()
+    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    log_usage(user["id"], "/doc-updater/run", model)
 
     # Find original file
     original_files = [
@@ -937,7 +940,7 @@ def doc_updater_run(req: DocUpdaterRunRequest):
 
 
 @router.get("/doc-updater/download")
-def doc_updater_download(path: str):
+def doc_updater_download(path: str, user: dict = Depends(get_current_user)):
     """업데이트된 문서 다운로드."""
     from fastapi.responses import FileResponse
     if not os.path.exists(path):
@@ -947,3 +950,115 @@ def doc_updater_download(path: str):
         filename=os.path.basename(path),
         media_type="application/octet-stream",
     )
+
+
+# ──────────────────────────────────────────
+# NPS (국민연금 가입 사업장 조회)
+# ──────────────────────────────────────────
+
+import sys as _sys
+_nps_path = os.path.join(os.path.expanduser("~"), "nps_query")
+if _nps_path not in _sys.path:
+    _sys.path.insert(0, _nps_path)
+
+try:
+    from nps_query import NpsQuery, ENDPOINTS as NPS_ENDPOINTS
+    _NPS_KEY = "SEtf7JkRv42rZno75HZqEZwMESrUT5LGXWyqJulYgDT3soMupX4WBEf3FayvqhHJqHKz0KO36R63obsB6xlHqg=="
+    _nps = NpsQuery(_NPS_KEY)
+    _NPS_AVAILABLE = True
+except ImportError:
+    _NPS_AVAILABLE = False
+    _nps = None
+
+# 캐시
+import time as _time
+from threading import Lock as _Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+_nps_cache: dict = {}
+_nps_cache_lock = _Lock()
+_NPS_CACHE_TTL = 300
+
+
+def _nps_cache_get(key: str):
+    with _nps_cache_lock:
+        entry = _nps_cache.get(key)
+        if entry and _time.time() - entry["t"] < _NPS_CACHE_TTL:
+            return entry["v"]
+        _nps_cache.pop(key, None)
+        return None
+
+
+def _nps_cache_set(key: str, value):
+    with _nps_cache_lock:
+        _nps_cache[key] = {"v": value, "t": _time.time()}
+        if len(_nps_cache) > 500:
+            oldest = min(_nps_cache, key=lambda k: _nps_cache[k]["t"])
+            del _nps_cache[oldest]
+
+
+def _nps_fetch_one(uddi: str, name, page: int, per_page: int):
+    cache_key = f"{uddi}|{name}|{page}|{per_page}"
+    cached = _nps_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    resp = _nps._call_api(uddi, name=name, page=page, per_page=per_page)
+    _nps_cache_set(cache_key, resp)
+    return resp
+
+
+@router.get("/nps/periods")
+def nps_periods(user: dict = Depends(get_current_user)):
+    if not _NPS_AVAILABLE:
+        return {"periods": [], "error": "NPS module not available"}
+    return {"periods": NpsQuery.available_periods()}
+
+
+@router.get("/nps/search")
+def nps_search(name: str = "", year: int = None, month: int = None,
+               page: int = 1, perPage: int = 50, user: dict = Depends(get_current_user)):
+    if not _NPS_AVAILABLE:
+        return {"error": "NPS module not available", "data": [], "total": 0}
+    if not name and year is None:
+        return {"error": "사업장명 또는 연도를 입력하세요", "data": [], "total": 0}
+
+    endpoints = _nps._get_endpoints(year, month)
+    if not endpoints:
+        return {"data": [], "total": 0, "page": page, "perPage": perPage}
+
+    name_param = name if name else None
+
+    if len(endpoints) == 1:
+        ym, uddi = endpoints[0]
+        try:
+            resp = _nps_fetch_one(uddi, name_param, page, perPage)
+            return {
+                "data": resp.get("data", []),
+                "total": resp.get("matchCount", 0),
+                "page": page,
+                "perPage": perPage,
+            }
+        except Exception as e:
+            return {"error": str(e), "data": [], "total": 0}
+    else:
+        all_data = []
+        total = 0
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            futures = {
+                pool.submit(_nps_fetch_one, uddi, name_param, 1, perPage): ym
+                for ym, uddi in endpoints
+            }
+            for fut in as_completed(futures):
+                try:
+                    resp = fut.result()
+                    all_data.extend(resp.get("data", []))
+                    total += resp.get("matchCount", 0)
+                except:
+                    pass
+        all_data.sort(key=lambda r: r.get("자료생성년월", ""))
+        return {
+            "data": all_data,
+            "total": total,
+            "page": 1,
+            "perPage": len(all_data),
+        }

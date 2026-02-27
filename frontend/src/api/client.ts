@@ -1,12 +1,40 @@
+import { useAuthStore } from '../stores/authStore';
+
 const BASE = '/api';
 
+function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().token;
+  if (token) return { Authorization: `Bearer ${token}` };
+  return {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...getAuthHeaders(),
+  };
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: { ...headers, ...(options?.headers as Record<string, string>) },
   });
+  if (res.status === 401) {
+    useAuthStore.getState().logout();
+    throw new Error('Unauthorized');
+  }
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
+}
+
+async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { ...getAuthHeaders(), ...(init?.headers as Record<string, string>) },
+  });
+  if (res.status === 401) {
+    useAuthStore.getState().logout();
+    throw new Error('Unauthorized');
+  }
+  return res;
 }
 
 export const api = {
@@ -53,7 +81,7 @@ export const api = {
   uploadFiles: async (project: string, files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));
-    const res = await fetch(`${BASE}/projects/${encodeURIComponent(project)}/upload`, {
+    const res = await fetchWithAuth(`${BASE}/projects/${encodeURIComponent(project)}/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -85,7 +113,7 @@ export const api = {
   freedocUpload: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));
-    const res = await fetch(`${BASE}/freedoc/upload`, { method: 'POST', body: formData });
+    const res = await fetchWithAuth(`${BASE}/freedoc/upload`, { method: 'POST', body: formData });
     return res.json();
   },
   freedocGenerate: (data: { instruction: string; file_text?: string; paste_text?: string }) =>
@@ -102,7 +130,7 @@ export const api = {
   docUpdaterUploadOriginal: async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(`${BASE}/doc-updater/upload-original`, {
+    const res = await fetchWithAuth(`${BASE}/doc-updater/upload-original`, {
       method: 'POST', body: formData,
     });
     return res.json();
@@ -110,7 +138,7 @@ export const api = {
   docUpdaterUploadSupplementary: async (sessionId: string, files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));
-    const res = await fetch(`${BASE}/doc-updater/${sessionId}/supplementary`, {
+    const res = await fetchWithAuth(`${BASE}/doc-updater/${sessionId}/supplementary`, {
       method: 'POST', body: formData,
     });
     return res.json();
@@ -123,7 +151,7 @@ export const api = {
       method: 'POST', body: JSON.stringify(data),
     }),
   docUpdaterDownload: async (path: string, filename: string) => {
-    const res = await fetch(
+    const res = await fetchWithAuth(
       `${BASE}/doc-updater/download?path=${encodeURIComponent(path)}`
     );
     const blob = await res.blob();
@@ -134,4 +162,28 @@ export const api = {
     a.click();
     URL.revokeObjectURL(url);
   },
+
+  // Auth (no auth header needed for login/register)
+  login: (username: string, password: string) =>
+    request<{ token: string; user: any }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  register: (username: string, password: string, invite_code: string) =>
+    request<{ token: string; user: any }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, invite_code }),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  getMe: () => request<any>('/auth/me'),
+
+  // Admin
+  createInviteCodes: (count: number) =>
+    request<{ codes: string[] }>('/auth/invite-codes', {
+      method: 'POST',
+      body: JSON.stringify({ count }),
+    }),
+  listInviteCodes: () => request<any[]>('/auth/invite-codes'),
+  getUsageStats: () => request<any[]>('/auth/usage'),
 };
