@@ -2,7 +2,9 @@
 import io
 import json
 import os
-from typing import List
+import uuid
+import tempfile
+from typing import List, Dict
 
 from fastapi import APIRouter, UploadFile, File
 
@@ -809,4 +811,139 @@ def markdown_to_docx(req: MarkdownToDocxRequest):
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{req.filename}"'},
+    )
+
+
+# ========================================
+# Document Updater
+# ========================================
+
+_doc_updater_sessions: Dict[str, str] = {}  # session_id -> temp_dir
+
+
+class DocUpdaterRunRequest(BaseModel):
+    session_id: str
+    supplementary_text: str = ""
+    instruction: str
+    mode: str = "full"
+
+
+@router.post("/doc-updater/upload-original")
+async def doc_updater_upload_original(file: UploadFile = File(...)):
+    """원본 문서 업로드 → 인덱싱 프리뷰 반환."""
+    import core_doc_updater
+
+    session_id = str(uuid.uuid4())[:8]
+    temp_dir = tempfile.mkdtemp(prefix="gemintern_docupd_")
+    _doc_updater_sessions[session_id] = temp_dir
+
+    file_path = os.path.join(temp_dir, file.filename)
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    try:
+        doc_type, indexed = core_doc_updater.index_document(file_path)
+        preview = core_doc_updater.format_document_map(indexed)
+    except Exception as e:
+        return {"error": f"문서 인덱싱 오류: {e}"}
+
+    return {
+        "session_id": session_id,
+        "filename": file.filename,
+        "doc_type": doc_type,
+        "paragraph_count": len(indexed),
+        "preview": preview[:5000],
+    }
+
+
+@router.post("/doc-updater/{session_id}/supplementary")
+async def doc_updater_upload_supplementary(
+    session_id: str, files: List[UploadFile] = File(...)
+):
+    """추가 자료 파일 업로드."""
+    temp_dir = _doc_updater_sessions.get(session_id)
+    if not temp_dir:
+        return {"error": "세션이 없습니다. 원본 문서를 먼저 업로드해주세요."}
+
+    sup_dir = os.path.join(temp_dir, "supplementary")
+    os.makedirs(sup_dir, exist_ok=True)
+
+    filenames = []
+    for f in files:
+        path = os.path.join(sup_dir, f.filename)
+        content = await f.read()
+        with open(path, "wb") as out:
+            out.write(content)
+        filenames.append(f.filename)
+
+    return {"filenames": filenames, "count": len(filenames)}
+
+
+@router.post("/doc-updater/run")
+def doc_updater_run(req: DocUpdaterRunRequest):
+    """문서 업데이트 실행 (백그라운드)."""
+    temp_dir = _doc_updater_sessions.get(req.session_id)
+    if not temp_dir:
+        return {"error": "세션이 없습니다."}
+
+    settings = _load_settings()
+    api_key = settings.get("api_key", "")
+    model = settings.get("model_name", "gemini-3.1-pro-preview")
+
+    # Find original file
+    original_files = [
+        f for f in os.listdir(temp_dir)
+        if os.path.isfile(os.path.join(temp_dir, f))
+    ]
+    if not original_files:
+        return {"error": "원본 문서가 없습니다."}
+    original_path = os.path.join(temp_dir, original_files[0])
+
+    # Find supplementary files
+    sup_dir = os.path.join(temp_dir, "supplementary")
+    sup_paths = []
+    if os.path.isdir(sup_dir):
+        sup_paths = [
+            os.path.join(sup_dir, f) for f in os.listdir(sup_dir)
+            if os.path.isfile(os.path.join(sup_dir, f))
+        ]
+
+    task_id = create_task()
+
+    def _run():
+        task = get_task(task_id)
+        task["status"] = "generating"
+        try:
+            import core_doc_updater
+            output_path, summary, preview = core_doc_updater.update_document(
+                original_path, sup_paths, req.supplementary_text,
+                req.instruction, req.mode, api_key, model,
+            )
+            task["result"] = json.dumps({
+                "output_path": output_path,
+                "output_filename": os.path.basename(output_path),
+                "summary": summary,
+                "preview": preview,
+            }, ensure_ascii=False)
+            task["status"] = "complete"
+        except Exception as e:
+            task["error"] = str(e)
+            task["status"] = "error"
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
+
+
+@router.get("/doc-updater/download")
+def doc_updater_download(path: str):
+    """업데이트된 문서 다운로드."""
+    from fastapi.responses import FileResponse
+    if not os.path.exists(path):
+        return {"error": "파일을 찾을 수 없습니다."}
+    return FileResponse(
+        path,
+        filename=os.path.basename(path),
+        media_type="application/octet-stream",
     )

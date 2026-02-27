@@ -23,6 +23,7 @@ const NAV_SECTIONS = [
       { label: '자유양식 문서', id: 'freedoc', icon: '📝' },
       { label: 'LP Q&A 대응', id: 'lp_qa', icon: '🙋' },
       { label: '자료기반 Q&A', id: 'qa_session', icon: '💬' },
+      { label: '문서 업데이트', id: 'doc_updater', icon: '🔄' },
     ],
   },
   {

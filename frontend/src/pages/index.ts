@@ -18,4 +18,5 @@ export const PAGE_REGISTRY: Record<
   markdown: { label: '📝 MD to Word', component: lazy(() => import('./MarkdownPage')) },
   doctemplate: { label: '📋 문서양식', component: lazy(() => import('./DocTemplatePage')) },
   text_organizer: { label: '✏️ 문장 정리기', component: lazy(() => import('./TextOrganizerPage')) },
+  doc_updater: { label: '🔄 문서 업데이트', component: lazy(() => import('./DocUpdaterPage')) },
 };

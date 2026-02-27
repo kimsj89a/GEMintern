@@ -97,4 +97,41 @@ export const api = {
   syncPull: (project: string) =>
     request<any>('/sync/pull', { method: 'POST', body: JSON.stringify({ project_name: project }) }),
   cloudSyncStatus: () => request<any>('/sync/status'),
+
+  // Document Updater
+  docUpdaterUploadOriginal: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${BASE}/doc-updater/upload-original`, {
+      method: 'POST', body: formData,
+    });
+    return res.json();
+  },
+  docUpdaterUploadSupplementary: async (sessionId: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const res = await fetch(`${BASE}/doc-updater/${sessionId}/supplementary`, {
+      method: 'POST', body: formData,
+    });
+    return res.json();
+  },
+  docUpdaterRun: (data: {
+    session_id: string; supplementary_text?: string;
+    instruction: string; mode?: string;
+  }) =>
+    request<{ task_id: string }>('/doc-updater/run', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  docUpdaterDownload: async (path: string, filename: string) => {
+    const res = await fetch(
+      `${BASE}/doc-updater/download?path=${encodeURIComponent(path)}`
+    );
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
