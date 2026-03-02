@@ -27,6 +27,14 @@ def _get_api_key() -> str:
         return env_key
     return _load_settings().get("api_key", "")
 
+
+def _get_anthropic_api_key() -> str:
+    """Return Anthropic API key: env var first, then settings.json fallback."""
+    env_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if env_key:
+        return env_key
+    return _load_settings().get("anthropic_api_key", "")
+
 # Max context size (~200K tokens for Gemini)
 MAX_CONTEXT_CHARS = 800_000
 
@@ -124,7 +132,7 @@ def _save_settings(data: dict):
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok", "version": "7.0"}
+    return {"status": "ok", "version": "7.1"}
 
 
 # ========================================
@@ -135,9 +143,11 @@ def health_check():
 def get_settings(user: dict = Depends(get_current_user)):
     data = _load_settings()
     masked = {**data}
-    # Never expose full API key — only show whether it's configured
+    # Never expose full API keys — only show whether they're configured
     masked.pop("api_key", None)
+    masked.pop("anthropic_api_key", None)
     masked["api_key_configured"] = bool(_get_api_key())
+    masked["anthropic_api_key_configured"] = bool(_get_anthropic_api_key())
     return masked
 
 
@@ -145,6 +155,7 @@ def get_settings(user: dict = Depends(get_current_user)):
 def update_settings(settings: dict, user: dict = Depends(get_current_user)):
     current = _load_settings()
     settings.pop("api_key", None)  # API key managed via env var
+    settings.pop("anthropic_api_key", None)  # Anthropic key managed via env var
     current.update(settings)
     _save_settings(current)
     return {"success": True}
@@ -152,6 +163,27 @@ def update_settings(settings: dict, user: dict = Depends(get_current_user)):
 
 @router.post("/settings/apply")
 def apply_settings(user: dict = Depends(get_current_user)):
+    settings = _load_settings()
+    model = settings.get("model_name", "")
+
+    # Claude 모델 선택 시 Anthropic key 검증
+    if model.startswith("claude-"):
+        anthropic_key = _get_anthropic_api_key()
+        if not anthropic_key:
+            return {"success": False, "error": "Anthropic API Key가 설정되지 않았습니다. (.env 파일의 ANTHROPIC_API_KEY 확인)"}
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=anthropic_key)
+            # 간단한 검증 호출
+            client.messages.create(
+                model=model, max_tokens=10,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": f"Anthropic API 검증 실패: {str(e)}"}
+
+    # Gemini 모델
     api_key = _get_api_key()
     if not api_key:
         return {"success": False, "error": "API Key가 설정되지 않았습니다. (GEMINI_API_KEY 환경변수 확인)"}
@@ -681,9 +713,9 @@ def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)
         task = get_task(task_id)
         task["status"] = "generating"
         try:
-            from google import genai
             from google.genai import types
-            client = genai.Client(api_key=api_key)
+            from ai_client import AIClient
+            client = AIClient(api_key=api_key)
 
             system_prompt = (
                 "당신은 전문 문서 작성 AI입니다.\n"

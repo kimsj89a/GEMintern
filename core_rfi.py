@@ -1,11 +1,11 @@
 import os
 import datetime
-from google import genai
 from google.genai import types
+from ai_client import AIClient, make_status_chunk
 import prompts
 
 def get_client(api_key):
-    return genai.Client(api_key=api_key)
+    return AIClient(api_key=api_key)
 
 def analyze_rfi_status(client, existing_rfi, file_index_str):
     """Step 1: Flash 모델로 인덱싱"""
@@ -37,19 +37,11 @@ def generate_rfi_stream(api_key, model_name, inputs, thinking_level, file_contex
     if not file_index_str:
         file_index_str = "(파일 인덱스 없음 - 사용자가 입력하지 않음)"
     
-    yield types.GenerateContentResponse(
-        candidates=[types.Candidate(
-            content=types.Content(parts=[types.Part(text="📂 [Step 1] 파일 인덱스 기반 대사(Indexing) 진행 중...\n\n")])
-        )]
-    )
+    yield make_status_chunk("📂 [Step 1] 파일 인덱스 기반 대사(Indexing) 진행 중...\n\n")
     
     rfi_status_table = analyze_rfi_status(client, inputs['rfi_existing'], file_index_str)
     
-    yield types.GenerateContentResponse(
-        candidates=[types.Candidate(
-            content=types.Content(parts=[types.Part(text=f"{rfi_status_table}\n\n---\n🧠 [Step 2] 부족 자료 분석 및 최종 RFI 작성 중... ({model_name})\n\n")])
-        )]
-    )
+    yield make_status_chunk(f"{rfi_status_table}\n\n---\n🧠 [Step 2] 부족 자료 분석 및 최종 RFI 작성 중... ({model_name})\n\n")
 
     main_prompt = f"""
     [System: Thinking Level {thinking_level.upper() if isinstance(thinking_level, str) else 'HIGH'}]

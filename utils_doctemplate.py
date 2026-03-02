@@ -4,7 +4,7 @@ Extracted from ui_doctemplate.py to remove streamlit dependency.
 """
 import io
 import os
-from google import genai
+from ai_client import AIClient
 
 # 지원 파일 형식
 SUPPORTED_FILE_TYPES = ['docx', 'pdf', 'pptx', 'xlsx', 'xls', 'txt', 'md']
@@ -77,7 +77,7 @@ def extract_text_from_file(file_path: str) -> str:
 
 def analyze_document_format(raw_text: str, api_key: str, model: str) -> str:
     """AI로 문서 형식을 마크다운으로 분석"""
-    client = genai.Client(api_key=api_key)
+    client = AIClient(api_key=api_key)
 
     prompt = """다음 문서의 **형식과 구조**를 분석해서 마크다운 템플릿으로 변환해주세요.
 
@@ -105,7 +105,7 @@ def analyze_document_format(raw_text: str, api_key: str, model: str) -> str:
 
 def extract_content_as_markdown(raw_text: str, api_key: str, model: str) -> str:
     """AI로 콘텐츠를 마크다운으로 정리"""
-    client = genai.Client(api_key=api_key)
+    client = AIClient(api_key=api_key)
 
     prompt = """다음 문서의 **내용**을 마크다운 형식으로 깔끔하게 정리해주세요.
 
@@ -128,7 +128,7 @@ def extract_content_as_markdown(raw_text: str, api_key: str, model: str) -> str:
 
 def generate_final_document(format_md: str, content_md: str, api_key: str, model: str) -> str:
     """형식 템플릿 + 콘텐츠 = 최종 문서 생성"""
-    client = genai.Client(api_key=api_key)
+    client = AIClient(api_key=api_key)
 
     prompt = f"""다음 두 가지를 결합하여 완성된 문서를 마크다운으로 작성해주세요.
 

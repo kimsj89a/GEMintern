@@ -7,8 +7,8 @@ import io
 import json
 import copy
 import shutil
-from google import genai
 from google.genai import types
+from ai_client import AIClient
 from prompts import DOC_UPDATER_PROMPTS
 
 
@@ -126,10 +126,63 @@ def parse_supplementary_files(file_paths: list[str]) -> str:
 
 # ── 3. AI 호출 ──
 
+def _repair_truncated_json(raw: str) -> dict:
+    """잘린 JSON 응답을 복구 시도. 실패 시 None 반환."""
+    # 열린 문자열 닫기: 마지막 열린 " 찾아서 닫기
+    text = raw.rstrip()
+    # 마지막 완전한 항목까지 잘라내기
+    # updated_paragraphs 또는 new_paragraphs 배열 중간에서 잘렸을 가능성
+    for attempt in range(5):
+        # 각 시도마다 마지막 불완전 요소를 점점 더 제거
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # 전략 1: 열린 문자열 닫고 구조 닫기
+        closers = ""
+        in_string = False
+        brace_depth = 0
+        bracket_depth = 0
+        for ch in text:
+            if ch == '"' and (not text or text[text.index(ch) - 1:text.index(ch)] != '\\'):
+                in_string = not in_string
+            elif not in_string:
+                if ch == '{':
+                    brace_depth += 1
+                elif ch == '}':
+                    brace_depth -= 1
+                elif ch == '[':
+                    bracket_depth += 1
+                elif ch == ']':
+                    bracket_depth -= 1
+
+        if in_string:
+            closers += '"'
+        closers += ']' * bracket_depth
+        closers += '}' * brace_depth
+
+        try:
+            return json.loads(text + closers)
+        except json.JSONDecodeError:
+            pass
+
+        # 전략 2: 마지막 불완전 JSON 객체/항목 제거 후 재시도
+        # 마지막 '{' 부터 잘라내기
+        last_brace = text.rfind('{')
+        last_comma = text.rfind(',', 0, last_brace)
+        if last_comma > 0:
+            text = text[:last_comma]
+        else:
+            break
+
+    return None
+
+
 def call_update_ai(document_map: str, supplementary: str, instruction: str,
                    mode: str, api_key: str, model: str) -> dict:
     """Gemini API를 호출하여 업데이트 지시 JSON을 받는다."""
-    client = genai.Client(api_key=api_key)
+    client = AIClient(api_key=api_key)
 
     if mode == "full":
         user_prompt = DOC_UPDATER_PROMPTS['full_update'].format(
@@ -148,6 +201,7 @@ def call_update_ai(document_map: str, supplementary: str, instruction: str,
         system_instruction=DOC_UPDATER_PROMPTS['system'],
         temperature=0.3,
         response_mime_type="application/json",
+        max_output_tokens=65536,
     )
 
     response = client.models.generate_content(
@@ -155,7 +209,17 @@ def call_update_ai(document_map: str, supplementary: str, instruction: str,
     )
 
     raw = response.text.strip()
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        # 잘린 JSON 복구 시도
+        repaired = _repair_truncated_json(raw)
+        if repaired is not None:
+            return repaired
+        raise ValueError(
+            f"AI 응답이 불완전한 JSON입니다 (출력이 잘렸을 수 있습니다). "
+            f"문서 크기를 줄이거나 부분 수정 모드를 사용해 보세요. 원본 오류: {e}"
+        )
 
 
 # ── 4. 원본 파일 직접 수정 ──

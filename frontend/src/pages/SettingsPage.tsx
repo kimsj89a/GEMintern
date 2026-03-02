@@ -9,6 +9,8 @@ const MODELS = [
   'gemini-2.5-flash',
   'gemini-2.5-pro',
   'gemini-2.0-flash',
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
 ];
 
 const THINKING_LEVELS = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
@@ -18,14 +20,18 @@ export default function SettingsPage() {
   const [model, setModel] = useState(MODELS[0]);
   const [thinking, setThinking] = useState('MEDIUM');
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
+  const [anthropicKeyConfigured, setAnthropicKeyConfigured] = useState(false);
   const [status, setStatus] = useState<{ type: string; msg: string } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const isClaude = model.startsWith('claude-');
 
   useEffect(() => {
     api.getSettings().then((data) => {
       if (data.model_name) setModel(data.model_name);
       if (data.thinking_level) setThinking(data.thinking_level);
       setApiKeyConfigured(!!data.api_key_configured);
+      setAnthropicKeyConfigured(!!data.anthropic_api_key_configured);
     }).catch(() => {});
   }, []);
 
@@ -69,14 +75,27 @@ export default function SettingsPage() {
 
       {/* API Settings */}
       <div className="bg-white border border-[#E9E9E7] rounded-xl p-6 mb-4">
-        <h2 className="text-sm font-semibold text-[#37352F] mb-4">Gemini API</h2>
+        <h2 className="text-sm font-semibold text-[#37352F] mb-4">AI API 설정</h2>
 
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg">
+        <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-[#F7F6F3] rounded-lg">
           <div className={`w-2 h-2 rounded-full ${apiKeyConfigured ? 'bg-emerald-500' : 'bg-red-400'}`} />
           <span className="text-sm text-[#787774]">
-            API Key: {apiKeyConfigured ? '서버 환경변수에서 설정됨' : '미설정 (GEMINI_API_KEY 환경변수 필요)'}
+            Gemini API Key: {apiKeyConfigured ? '설정됨' : '미설정 (GEMINI_API_KEY 환경변수 필요)'}
           </span>
         </div>
+
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg">
+          <div className={`w-2 h-2 rounded-full ${anthropicKeyConfigured ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+          <span className="text-sm text-[#787774]">
+            Anthropic API Key: {anthropicKeyConfigured ? '설정됨' : '미설정 (Claude 모델 사용 시 필요)'}
+          </span>
+        </div>
+
+        {isClaude && !anthropicKeyConfigured && (
+          <div className="mb-4 px-4 py-3 rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200">
+            Claude 모델을 사용하려면 .env 파일에 ANTHROPIC_API_KEY를 설정해주세요.
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>

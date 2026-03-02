@@ -1,5 +1,5 @@
-﻿from google import genai
-from google.genai import types
+﻿from google.genai import types
+from ai_client import AIClient
 import utils
 import core_rfi
 import core_chained
@@ -8,7 +8,7 @@ import core_rag
 import prompts
 
 def get_client(api_key):
-    return genai.Client(api_key=api_key)
+    return AIClient(api_key=api_key)
 
 def extract_structure(api_key, structure_file):
     try:

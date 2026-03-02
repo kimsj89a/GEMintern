@@ -4,13 +4,13 @@ Chained Prompting 모듈
 - 이전 파트 결과를 컨텍스트로 활용하여 일관성 유지
 """
 
-from google import genai
 from google.genai import types
+from ai_client import AIClient, make_status_chunk
 import prompts
 
 
 def get_client(api_key):
-    return genai.Client(api_key=api_key)
+    return AIClient(api_key=api_key)
 
 
 # 템플릿별 파트 정의
@@ -73,11 +73,7 @@ def generate_chained_stream(api_key, model_name, inputs, thinking_level, file_co
     for part_key, part_title, max_tokens in parts:
         # 진행 상황 알림
         status_text = f"\n\n---\n\n**[{part_title}] 생성 중...**\n\n"
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=status_text)])
-            )]
-        )
+        yield make_status_chunk(status_text)
 
         # 이전 파트 결과를 컨텍스트로 포함
         prev_context = ""

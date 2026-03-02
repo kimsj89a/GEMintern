@@ -1,4 +1,4 @@
-# GEM Intern v7.0 - Web Stack (FastAPI + React)
+# GEM Intern v7.1 - Web Stack (FastAPI + React)
 
 # Web Framework
 fastapi
@@ -10,6 +10,7 @@ PyJWT
 # AI / LLM
 google-genai
 openai
+anthropic
 
 # Document Processing
 python-docx

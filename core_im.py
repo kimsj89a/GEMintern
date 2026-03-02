@@ -5,13 +5,13 @@ IM (Information Memorandum) Chained Prompting 모듈
 - investment_type별 프롬프트 분기
 """
 
-from google import genai
 from google.genai import types
+from ai_client import AIClient, make_status_chunk
 import prompts
 
 
 def get_client(api_key):
-    return genai.Client(api_key=api_key)
+    return AIClient(api_key=api_key)
 
 
 IM_CHAINED_PARTS = [
@@ -58,11 +58,7 @@ def generate_im_chained_stream(api_key, model_name, inputs, thinking_level,
     for part_key, part_title, max_tokens in IM_CHAINED_PARTS:
         # 진행 상황 알림
         status_text = f"\n\n---\n\n**[{part_title}] 생성 중...**\n\n"
-        yield types.GenerateContentResponse(
-            candidates=[types.Candidate(
-                content=types.Content(parts=[types.Part(text=status_text)])
-            )]
-        )
+        yield make_status_chunk(status_text)
 
         # 이전 파트 결과를 컨텍스트로 포함 (25K chars)
         prev_context = ""

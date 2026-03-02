@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**GEM Intern v7.0**은 투자 분석 업무를 지원하는 AI 기반 웹 애플리케이션입니다.
+**GEM Intern v7.1**은 투자 분석 업무를 지원하는 AI 기반 웹 애플리케이션입니다.
 Google Gemini API를 활용하여 투자심의보고서 작성, 문서 분석, PPT 생성 등 PE/VC 투자 프로세스 전반을 자동화합니다.
 
 **아키텍처**: FastAPI 백엔드 + React (Vite) 프론트엔드, localhost 전용.
@@ -13,7 +13,7 @@ Google Gemini API를 활용하여 투자심의보고서 작성, 문서 분석, P
 - **Backend**: FastAPI (Python) + Uvicorn
 - **Frontend**: React + TypeScript + Vite
 - **State Management**: Zustand (프론트엔드)
-- **AI/ML**: Google Gemini API
+- **AI/ML**: Google Gemini API, Anthropic Claude API
 - **Document Processing**:
   - Google Cloud Document AI
   - MarkItDown (문서 변환)
@@ -223,6 +223,6 @@ python -m backend.main --dev
 ---
 
 **Last Updated**: 2026-02-26
-**Version**: 7.0
+**Version**: 7.1
 **Maintained by**: kimsj
 **Project Path**: `C:\Users\kimsj\GEMintern\GEMintern`
