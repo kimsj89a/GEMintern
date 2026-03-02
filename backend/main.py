@@ -11,7 +11,12 @@ import argparse
 import webbrowser
 
 # Add parent dir to path so core_*.py modules are importable
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _project_root)
+
+# Load .env from project root
+from dotenv import load_dotenv
+load_dotenv(os.path.join(_project_root, ".env"))
 
 import uvicorn
 from fastapi import FastAPI, WebSocket

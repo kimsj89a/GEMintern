@@ -119,13 +119,6 @@ export const api = {
   freedocGenerate: (data: { instruction: string; file_text?: string; paste_text?: string }) =>
     request<{ task_id: string }>('/freedoc/generate', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Sync
-  syncPush: (project: string) =>
-    request<any>('/sync/push', { method: 'POST', body: JSON.stringify({ project_name: project }) }),
-  syncPull: (project: string) =>
-    request<any>('/sync/pull', { method: 'POST', body: JSON.stringify({ project_name: project }) }),
-  cloudSyncStatus: () => request<any>('/sync/status'),
-
   // Document Updater
   docUpdaterUploadOriginal: async (file: File) => {
     const formData = new FormData();
@@ -163,19 +156,25 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
-  // Auth (no auth header needed for login/register)
-  login: (username: string, password: string) =>
-    request<{ token: string; user: any }>('/auth/login', {
+  // Auth (no auth header — must bypass request() to avoid stale token)
+  login: async (username: string, password: string) => {
+    const res = await fetch(`${BASE}/auth/login`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
-      headers: { 'Content-Type': 'application/json' },
-    }),
-  register: (username: string, password: string, invite_code: string) =>
-    request<{ token: string; user: any }>('/auth/register', {
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ token: string; user: any }>;
+  },
+  register: async (username: string, password: string, invite_code: string) => {
+    const res = await fetch(`${BASE}/auth/register`, {
       method: 'POST',
-      body: JSON.stringify({ username, password, invite_code }),
       headers: { 'Content-Type': 'application/json' },
-    }),
+      body: JSON.stringify({ username, password, invite_code }),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ token: string; user: any }>;
+  },
   getMe: () => request<any>('/auth/me'),
 
   // Admin

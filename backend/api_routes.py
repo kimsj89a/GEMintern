@@ -11,7 +11,7 @@ from fastapi import APIRouter, UploadFile, File, Depends
 from pydantic import BaseModel
 from backend.api_models import (
     ProjectCreate, FolderCreate, DocMoveRequest,
-    GenerateRequest, QaRequest, SyncRequest, AnalysisRequest,
+    GenerateRequest, QaRequest, AnalysisRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -562,82 +562,6 @@ def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get
 
 
 # ========================================
-# Cloud Sync
-# ========================================
-
-@router.get("/sync/status")
-def sync_status(user: dict = Depends(get_current_user)):
-    settings = _load_settings()
-    cs = settings.get("cloud_sync", {})
-    services = []
-    if cs.get("onedrive_enabled"):
-        services.append("OneDrive")
-    if cs.get("gsheets_enabled"):
-        services.append("GSheets")
-    if cs.get("gdrive_enabled"):
-        services.append("GDrive")
-    return {"connected": len(services) > 0, "services": services}
-
-
-@router.post("/sync/push")
-def sync_push(req: SyncRequest, user: dict = Depends(get_current_user)):
-    from cloud_sync import CloudSyncManager
-    mgr = _get_sync_manager()
-    if not mgr:
-        return {"success": False, "error": "클라우드 미연결"}
-    return mgr.push_project(req.project_name)
-
-
-@router.post("/sync/pull")
-def sync_pull(req: SyncRequest, user: dict = Depends(get_current_user)):
-    mgr = _get_sync_manager()
-    if not mgr:
-        return {"success": False, "error": "클라우드 미연결"}
-    return mgr.pull_project(req.project_name)
-
-
-@router.post("/sync/full")
-def sync_full(req: SyncRequest, user: dict = Depends(get_current_user)):
-    mgr = _get_sync_manager()
-    if not mgr:
-        return {"success": False, "error": "클라우드 미연결"}
-    return mgr.full_sync(req.project_name)
-
-
-def _get_sync_manager():
-    """Create a CloudSyncManager from current settings."""
-    settings = _load_settings()
-    cs = settings.get("cloud_sync", {})
-
-    gdrive_client = None
-    if cs.get("gdrive_enabled") and cs.get("gdrive_client_id"):
-        try:
-            from utils_gdrive import GoogleDriveClient
-            gdrive_client = GoogleDriveClient(
-                cs["gdrive_client_id"],
-                cs.get("gdrive_client_secret", ""),
-            )
-            gdrive_client.load_saved_token()
-        except Exception:
-            pass
-
-    gsheets_client = None
-    if cs.get("gsheets_enabled") and cs.get("gsheets_credentials_path"):
-        try:
-            from utils_gsheets import GSheetsClient
-            cred_path = cs["gsheets_credentials_path"]
-            if os.path.exists(cred_path):
-                gsheets_client = GSheetsClient(cred_path)
-        except Exception:
-            pass
-
-    if gdrive_client or gsheets_client:
-        from cloud_sync import CloudSyncManager
-        return CloudSyncManager(gdrive_client=gdrive_client, gsheets_client=gsheets_client)
-    return None
-
-
-# ========================================
 # OCR
 # ========================================
 
@@ -1062,3 +986,233 @@ def nps_search(name: str = "", year: int = None, month: int = None,
             "page": 1,
             "perPage": len(all_data),
         }
+
+
+# ──────────────────────────────────────────
+# DartWings (DART 전자공시 기업분석)
+# ──────────────────────────────────────────
+
+try:
+    import importlib.util as _ilu
+    import types as _types
+    _dw_base = os.path.join(os.path.expanduser("~"), "dartwings", "backend")
+
+    def _dw_import(name, filepath, extra_globals=None):
+        spec = _ilu.spec_from_file_location(name, filepath)
+        mod = _ilu.module_from_spec(spec)
+        if extra_globals:
+            for k, v in extra_globals.items():
+                setattr(mod, k, v)
+        spec.loader.exec_module(mod)
+        return mod
+
+    # Load config first
+    _dw_config = _dw_import("dw_config", os.path.join(_dw_base, "config.py"))
+    # Temporarily register fake 'backend.config' so dart_service can import it
+    _fake_pkg = _types.ModuleType("backend")
+    _fake_pkg.config = _dw_config
+    _saved_backend = _sys.modules.get("backend")
+    _sys.modules["backend"] = _fake_pkg
+    _sys.modules["backend.config"] = _dw_config
+    try:
+        _dw_dart = _dw_import("dw_dart_service", os.path.join(_dw_base, "services", "dart_service.py"))
+    finally:
+        # Restore real backend module
+        if _saved_backend:
+            _sys.modules["backend"] = _saved_backend
+        else:
+            _sys.modules.pop("backend", None)
+        _sys.modules.pop("backend.config", None)
+    _dw_stock = _dw_import("dw_stock_service", os.path.join(_dw_base, "services", "stock_service.py"))
+    _dw_analysis = _dw_import("dw_analysis_service", os.path.join(_dw_base, "services", "analysis_service.py"))
+    _DW_AVAILABLE = True
+except Exception as _e:
+    print(f"[DartWings] Failed to load: {_e}")
+    _DW_AVAILABLE = False
+
+from fastapi import Query as _Query
+from datetime import datetime as _dt, timedelta as _td
+from collections import Counter as _Counter
+
+
+@router.get("/dartwings/search")
+def dw_search(q: str = _Query(..., min_length=1), limit: int = _Query(20, le=50),
+              user: dict = Depends(get_current_user)):
+    if not _DW_AVAILABLE:
+        return {"error": "DartWings module not available"}
+    return _dw_dart.search_corps(q, limit=limit)
+
+
+@router.get("/dartwings/popular")
+def dw_popular(user: dict = Depends(get_current_user)):
+    return [
+        {"corpName": "삼성전자", "stockCode": "005930"},
+        {"corpName": "SK하이닉스", "stockCode": "000660"},
+        {"corpName": "현대차", "stockCode": "005380"},
+        {"corpName": "NAVER", "stockCode": "035420"},
+        {"corpName": "카카오", "stockCode": "035720"},
+    ]
+
+
+@router.get("/dartwings/analyze")
+def dw_analyze(stockCode: str = _Query(...), user: dict = Depends(get_current_user)):
+    if not _DW_AVAILABLE:
+        return {"error": "DartWings module not available"}
+    from fastapi import HTTPException
+    corp_code = _dw_dart.stock_code_to_corp_code(stockCode)
+    if not corp_code:
+        raise HTTPException(404, "종목코드를 찾을 수 없습니다")
+
+    company = _dw_dart.get_company_info(corp_code)
+    current_year = _dt.today().year
+    month = _dt.today().month
+    start_offset = 2 if month <= 3 else 1
+    years = [str(current_year - i) for i in range(start_offset, start_offset + 3)]
+
+    financials_by_year = []
+    for yr in years:
+        fs = _dw_dart.get_financial_statements(corp_code, yr)
+        extracted = _dw_analysis.extract_key_financials(fs)
+        extracted["year"] = yr
+        financials_by_year.append(extracted)
+    financials_by_year.reverse()
+
+    financials = {
+        "years": [f["year"] for f in financials_by_year],
+        "revenue": [f.get("revenue", 0) for f in financials_by_year],
+        "operatingProfit": [f.get("operatingProfit", 0) for f in financials_by_year],
+        "netIncome": [f.get("netIncome", 0) for f in financials_by_year],
+        "totalAssets": [f.get("totalAssets", 0) for f in financials_by_year],
+        "totalEquity": [f.get("totalEquity", 0) for f in financials_by_year],
+        "totalDebt": [f.get("totalDebt", 0) for f in financials_by_year],
+    }
+
+    price = _dw_stock.get_current_price(stockCode)
+    price_history = _dw_stock.get_price_history(stockCode)
+    market_cap = _dw_stock.get_market_cap(stockCode)
+
+    dividend_list = _dw_dart.get_dividend_info(corp_code, years[0])
+    dps = 0
+    for item in dividend_list:
+        se = item.get("se", "")
+        if "주당" in se and "현금" in se:
+            dps = _dw_analysis.parse_amount(item.get("thstrm", "0"))
+            break
+    dividend_yield = round(dps / price["current"] * 100, 2) if price["current"] else 0
+
+    return {
+        "company": company,
+        "financials": financials,
+        "stockPrice": {
+            "current": price["current"],
+            "change": price["change"],
+            "volume": price["volume"],
+            "marketCap": market_cap,
+        },
+        "dividend": {"dps": dps, "dividendYield": dividend_yield},
+        "priceHistory": price_history,
+    }
+
+
+@router.get("/dartwings/disclosure-chart")
+def dw_disclosure_chart(stockCode: str = _Query(...), user: dict = Depends(get_current_user)):
+    if not _DW_AVAILABLE:
+        return {"error": "DartWings module not available"}
+    from fastapi import HTTPException
+    corp_code = _dw_dart.stock_code_to_corp_code(stockCode)
+    if not corp_code:
+        raise HTTPException(404, "종목코드를 찾을 수 없습니다")
+
+    end = _dt.today().strftime("%Y%m%d")
+    bgn = (_dt.today() - _td(days=365 * 3)).strftime("%Y%m%d")
+    disclosures = _dw_dart.get_disclosures(corp_code, bgn, end)
+
+    monthly_counter: _Counter = _Counter()
+    type_counter: _Counter = _Counter()
+    recent = []
+
+    for d in disclosures:
+        date_str = d.get("rcept_dt", "")
+        report_nm = d.get("report_nm", "")
+        if len(date_str) == 8:
+            monthly_counter[f"{date_str[:4]}-{date_str[4:6]}"] += 1
+        if any(k in report_nm for k in ("사업보고서", "분기보고서", "반기보고서")):
+            dtype = "정기보고서"
+        elif "주요사항" in report_nm:
+            dtype = "주요사항보고"
+        elif any(k in report_nm for k in ("임원", "주식등", "지분")):
+            dtype = "지분공시"
+        else:
+            dtype = "기타공시"
+        type_counter[dtype] += 1
+        if len(recent) < 20:
+            recent.append({
+                "date": f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}" if len(date_str) == 8 else date_str,
+                "title": report_nm, "type": dtype,
+                "link": f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={d.get('rcept_no', '')}",
+            })
+
+    sorted_months = sorted(monthly_counter.keys())
+    return {
+        "monthly": {"labels": sorted_months, "counts": [monthly_counter[m] for m in sorted_months]},
+        "byType": {"labels": list(type_counter.keys()), "counts": list(type_counter.values())},
+        "recentDisclosures": recent,
+    }
+
+
+@router.get("/dartwings/valuation-models")
+def dw_valuation_models(stockCode: str = _Query(...), user: dict = Depends(get_current_user)):
+    if not _DW_AVAILABLE:
+        return {"error": "DartWings module not available"}
+    from fastapi import HTTPException
+    corp_code = _dw_dart.stock_code_to_corp_code(stockCode)
+    if not corp_code:
+        raise HTTPException(404, "종목코드를 찾을 수 없습니다")
+
+    current_year = _dt.today().year
+    month = _dt.today().month
+    start_offset = 2 if month <= 3 else 1
+    years = [str(current_year - i) for i in range(start_offset, start_offset + 3)]
+
+    financials_by_year = []
+    for yr in years:
+        fs = _dw_dart.get_financial_statements(corp_code, yr)
+        extracted = _dw_analysis.extract_key_financials(fs)
+        extracted["year"] = yr
+        financials_by_year.append(extracted)
+    financials_by_year.reverse()
+
+    latest = financials_by_year[-1] if financials_by_year else {}
+    fundamentals = _dw_stock.get_fundamentals(stockCode)
+    market_cap = _dw_stock.get_market_cap(stockCode)
+    price = _dw_stock.get_current_price(stockCode)
+
+    multiples = _dw_analysis.calc_valuation_multiples(latest, market_cap)
+    multiples["per"] = fundamentals["per"]
+    multiples["pbr"] = fundamentals["pbr"]
+
+    multiples_history = {"years": [f["year"] for f in financials_by_year], "roe": []}
+    for f in financials_by_year:
+        ni, eq = f.get("netIncome", 0), f.get("totalEquity", 0)
+        multiples_history["roe"].append(round(ni / eq * 100, 2) if eq else 0)
+
+    shares = int(market_cap / price["current"]) if price["current"] else 0
+    dcf = _dw_analysis.calc_dcf(financials_by_year, market_cap, shares)
+    dcf["currentPrice"] = price["current"]
+    if dcf["fairValue"] and price["current"]:
+        dcf["upside"] = round((dcf["fairValue"] - price["current"]) / price["current"] * 100, 1)
+
+    srim = _dw_analysis.calc_srim(fundamentals["bps"], multiples["roe"])
+    srim["currentPrice"] = price["current"]
+    if srim["fairValue"] and price["current"]:
+        srim["upside"] = round((srim["fairValue"] - price["current"]) / price["current"] * 100, 1)
+
+    avg_upside, count = 0, 0
+    if dcf.get("fairValue"):
+        avg_upside += dcf.get("upside", 0); count += 1
+    if srim.get("fairValue"):
+        avg_upside += srim.get("upside", 0); count += 1
+    avg_upside = avg_upside / count if count else 0
+    grade = "저평가" if avg_upside > 15 else ("고평가" if avg_upside < -15 else "적정")
+
+    return {"multiples": multiples, "multiplesHistory": multiples_history, "dcf": dcf, "srim": srim, "grade": grade}

@@ -83,15 +83,19 @@ def init_db():
             existing = conn.execute(
                 "SELECT id FROM users WHERE username = ?", (admin_user,)
             ).fetchone()
+            pw_hash, salt = hash_password(admin_pass)
             if not existing:
-                pw_hash, salt = hash_password(admin_pass)
                 conn.execute(
                     "INSERT INTO users (username, password_hash, password_salt, is_admin) VALUES (?, ?, ?, 1)",
                     (admin_user, pw_hash, salt),
                 )
                 print(f"[DB] Admin user '{admin_user}' created.")
             else:
-                print(f"[DB] Admin user '{admin_user}' already exists.")
+                conn.execute(
+                    "UPDATE users SET password_hash = ?, password_salt = ?, is_admin = 1 WHERE username = ?",
+                    (pw_hash, salt, admin_user),
+                )
+                print(f"[DB] Admin user '{admin_user}' password updated.")
 
 
 def log_usage(user_id: int, endpoint: str, model: str | None = None):
