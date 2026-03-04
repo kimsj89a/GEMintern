@@ -20,6 +20,7 @@ export const PAGE_REGISTRY: Record<
   text_organizer: { label: '✏️ 문장 정리기', component: lazy(() => import('./TextOrganizerPage')) },
   doc_updater: { label: '🔄 문서 업데이트', component: lazy(() => import('./DocUpdaterPage')) },
   nps: { label: '🏢 국민연금 사업장', component: lazy(() => import('./NpsPage')) },
+  quickmail: { label: '✉️ QuickMail', component: lazy(() => import('./QuickMailPage')) },
   dartwings: { label: '📊 DartWings', component: lazy(() => import('./DartwingsPage')) },
   admin: { label: '🛡️ 관리자', component: lazy(() => import('./AdminPage')) },
 };

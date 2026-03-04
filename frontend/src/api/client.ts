@@ -97,6 +97,10 @@ export const api = {
     request<{ task_id: string }>('/analyze', { method: 'POST', body: JSON.stringify(data) }),
   getTaskStatus: (taskId: string) => request<any>(`/tasks/${taskId}`),
 
+  // QuickMail
+  quickmailGenerate: (data: { prompt: string; context?: string; tone?: string; language?: string }) =>
+    request<{ task_id: string }>('/quickmail/generate', { method: 'POST', body: JSON.stringify(data) }),
+
   // Vector RAG
   reindexProject: (project: string, force = false) =>
     request<any>(`/projects/${encodeURIComponent(project)}/reindex?force=${force}`, { method: 'POST' }),

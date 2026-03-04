@@ -1021,6 +1021,95 @@ def nps_search(name: str = "", year: int = None, month: int = None,
 
 
 # ──────────────────────────────────────────
+# QuickMail (AI 이메일 작성)
+# ──────────────────────────────────────────
+
+class QuickMailRequest(BaseModel):
+    prompt: str
+    context: str = ""
+    tone: str = "professional"
+    language: str = "한국어"
+
+_TONE_MAP = {
+    "formal": "격식체 (합쇼체)",
+    "casual": "비격식 (해요체)",
+    "professional": "비즈니스 (합니다체)",
+}
+
+@router.post("/quickmail/generate")
+def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_user)):
+    """AI 이메일 생성 (task 기반 스트리밍)."""
+    api_key = _get_api_key()
+    if not api_key:
+        return {"error": "API key not configured"}
+    model = _load_settings().get("model_name", "gemini-2.0-flash")
+    is_reply = bool(req.context.strip())
+    tone_label = _TONE_MAP.get(req.tone, "비즈니스 (합니다체)")
+
+    system_prompt = (
+        "당신은 비즈니스 이메일 작성 전문가입니다.\n"
+        f"{'주어진 원본 메일에 대한 답장을 작성하세요.' if is_reply else '사용자의 요청에 맞는 이메일 본문을 작성하세요.'}\n\n"
+        "[필수 규칙]\n"
+        f"- {tone_label} 어조로 {req.language}(으)로 작성\n"
+        "- 제목(Subject)은 포함하지 말 것 (별도 요청 시에만 포함)\n"
+        "- [이름], [Your Name] 등 플레이스홀더를 사용하지 말 것\n"
+        "- 자연스럽고 바로 보낼 수 있는 이메일을 작성\n"
+        "- 마크다운 서식을 사용하지 말 것\n"
+        "- 간결하고 명확하게 작성\n"
+        f"{'- 답장 본문만 작성하고 원본 인용은 포함하지 말 것' if is_reply else ''}\n\n"
+        "[톤 & 매너 가이드라인]\n"
+        "- 공손하고 정중한 표현을 사용하세요\n"
+        "- 상대방의 시간과 노력에 대한 감사를 자연스럽게 표현하세요\n"
+        "  예: '바쁘신 와중에 회신 주셔서 감사합니다', '귀중한 시간 내주셔서 감사드립니다'\n"
+        "- 협조/도움에 대한 감사 표현을 포함하세요\n"
+        "  예: '협조해 주셔서 감사합니다', '도움 주셔서 대단히 감사드립니다'\n"
+        "- 상대방에 대한 배려와 존중이 느껴지는 표현을 사용하세요\n"
+        "  예: '번거로우시겠지만', '혹시 가능하시다면'\n"
+        "- 마무리에 적절한 안부 인사를 포함하세요\n"
+        "  예: '좋은 하루 보내시기 바랍니다', '항상 건강하시길 바랍니다'\n"
+        "- 단, 과도하게 장황하지 않게 핵심 내용과 자연스럽게 어우러지도록 작성하세요\n"
+    )
+
+    user_message = (
+        f"원본 메일:\n---\n{req.context}\n---\n\n요청: {req.prompt}"
+        if is_reply else req.prompt
+    )
+
+    task_id = str(uuid.uuid4())
+    task = create_task(task_id)
+
+    def _run():
+        try:
+            from ai_client import AIClient
+            from google.genai import types
+            client = AIClient(api_key=api_key)
+            config = types.GenerateContentConfig(
+                max_output_tokens=2048,
+                temperature=0.7,
+                system_instruction=system_prompt,
+            )
+            stream = client.models.generate_content_stream(
+                model=model, contents=user_message, config=config,
+            )
+            full_text = ""
+            for chunk in stream:
+                text = chunk.text or "" if hasattr(chunk, "text") else ""
+                if text:
+                    full_text += text
+                    task["chunks"].append(text)
+            task["result"] = full_text
+            task["status"] = "complete"
+        except Exception as e:
+            task["error"] = str(e)
+            task["status"] = "error"
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+    log_usage(user.get("user_id", 0), "quickmail", model)
+    return {"task_id": task_id}
+
+
+# ──────────────────────────────────────────
 # DartWings (DART 전자공시 기업분석)
 # ──────────────────────────────────────────
 

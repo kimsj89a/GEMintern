@@ -36,6 +36,7 @@ const NAV_SECTIONS = [
       { label: 'MD to Word', id: 'markdown', icon: '📝' },
       { label: '문서양식', id: 'doctemplate', icon: '📋' },
       { label: '문장 정리기', id: 'text_organizer', icon: '✏️' },
+      { label: 'QuickMail', id: 'quickmail', icon: '✉️' },
       { label: '국민연금 사업장', id: 'nps', icon: '🏢' },
       { label: 'DartWings', id: 'dartwings', icon: '📊' },
     ],
