@@ -28,6 +28,14 @@ def _get_api_key() -> str:
     return _load_settings().get("api_key", "")
 
 
+def _get_model_name() -> str:
+    """Return model name: env var first, then settings.json fallback."""
+    env_model = os.environ.get("MODEL_NAME", "")
+    if env_model:
+        return env_model
+    return _load_settings().get("model_name", "gemini-2.5-flash")
+
+
 def _get_anthropic_api_key() -> str:
     """Return Anthropic API key: env var first, then settings.json fallback."""
     env_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -1042,7 +1050,7 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
     api_key = _get_api_key()
     if not api_key:
         return {"error": "API key not configured"}
-    model = _load_settings().get("model_name", "gemini-2.0-flash")
+    model = _get_model_name()
     is_reply = bool(req.context.strip())
     tone_label = _TONE_MAP.get(req.tone, "비즈니스 (합니다체)")
 
