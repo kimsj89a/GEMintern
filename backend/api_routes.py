@@ -1075,8 +1075,9 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
         if is_reply else req.prompt
     )
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    task_id = create_task()
+    task = get_task(task_id)
+    task["status"] = "generating"
 
     def _run():
         try:
