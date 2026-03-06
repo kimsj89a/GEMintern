@@ -66,15 +66,29 @@ function mdToHtml(md: string): string {
       continue;
     }
 
-    // Unordered list
+    // Unordered list - detect indent level for bullet style
     if (/^\s*[-*]\s/.test(line)) {
-      out.push(`<li style="margin:2px 0;font-size:13px;">${inline(s.replace(/^[-*]\s+/, ''))}</li>`);
+      const indent = line.match(/^(\s*)/)?.[1].length || 0;
+      const text = inline(s.replace(/^[-*]\s+/, ''));
+      if (indent >= 2) {
+        out.push(`<p style="margin:1px 0;font-size:13px;line-height:1.6;padding-left:18px;">- ${text}</p>`);
+      } else {
+        out.push(`<p style="margin:2px 0;font-size:13px;line-height:1.6;">· ${text}</p>`);
+      }
       continue;
     }
 
-    // Ordered list
+    // Ordered list - detect indent level
     if (/^\s*\d+\.\s/.test(line)) {
-      out.push(`<li style="margin:2px 0;font-size:13px;">${inline(s.replace(/^\d+\.\s+/, ''))}</li>`);
+      const indent = line.match(/^(\s*)/)?.[1].length || 0;
+      const numMatch = line.match(/^\s*(\d+)\.\s/);
+      const num = numMatch ? numMatch[1] : '1';
+      const text = inline(s.replace(/^\d+\.\s+/, ''));
+      if (indent >= 2) {
+        out.push(`<p style="margin:1px 0;font-size:13px;line-height:1.6;padding-left:18px;">${num}. ${text}</p>`);
+      } else {
+        out.push(`<p style="margin:2px 0;font-size:13px;line-height:1.6;">${num}. ${text}</p>`);
+      }
       continue;
     }
 
