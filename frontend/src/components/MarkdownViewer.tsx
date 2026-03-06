@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 interface MarkdownViewerProps {
   content: string;
@@ -15,6 +16,7 @@ export default function MarkdownViewer({ content, className = '' }: MarkdownView
     <div className={`markdown-body ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
         components={{
           h1: ({ children }) => (
             <h1 className="text-xl font-bold text-slate-800 mt-6 mb-3 pb-2 border-b border-slate-200">{children}</h1>

@@ -19,8 +19,10 @@ export default function LpQaPage() {
   const [questionsText, setQuestionsText] = useState('');
   const [qaItems, setQaItems] = useState<QaItem[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
   const cancelledRef = useRef(false);
+  const queueRef = useRef<QaItem[]>([]);
+  const processingRef = useRef(false);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!currentProject) return;
@@ -39,56 +41,8 @@ export default function LpQaPage() {
     reader.readAsText(file);
   };
 
-  const handleGenerate = async () => {
-    if (!currentProject || !questionsText.trim()) return;
-    const questions = questionsText.split('\n').map((q) => q.trim()).filter(Boolean);
-    if (questions.length === 0) return;
-
-    const items: QaItem[] = questions.map((q) => ({ question: q, answer: '', status: 'pending' }));
-    setQaItems(items);
-    setGenerating(true);
-    setProgress(0);
-    cancelledRef.current = false;
-
-    for (let i = 0; i < items.length; i++) {
-      if (cancelledRef.current) break;
-      items[i].status = 'generating';
-      setQaItems([...items]);
-
-      try {
-        const { task_id } = await api.startQa({
-          project_name: currentProject,
-          question: items[i].question,
-          selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
-        });
-
-        let result = await pollTask(task_id);
-        if (cancelledRef.current) break;
-        items[i].answer = result;
-        items[i].status = 'done';
-      } catch (err: any) {
-        if (cancelledRef.current) break;
-        items[i].answer = `오류: ${err.message}`;
-        items[i].status = 'error';
-      }
-
-      setProgress(((i + 1) / items.length) * 100);
-      setQaItems([...items]);
-    }
-
-    if (cancelledRef.current) {
-      // Mark remaining as pending
-      for (const item of items) {
-        if (item.status === 'generating') item.status = 'pending';
-      }
-      setQaItems([...items]);
-    }
-    setGenerating(false);
-  };
-
-  const handleStop = () => {
-    cancelledRef.current = true;
-    setGenerating(false);
+  const syncDisplay = () => {
+    setQaItems([...queueRef.current]);
   };
 
   const pollTask = (taskId: string): Promise<string> => {
@@ -108,7 +62,74 @@ export default function LpQaPage() {
     });
   };
 
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const processQueue = async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setGenerating(true);
+    cancelledRef.current = false;
+
+    while (true) {
+      const idx = queueRef.current.findIndex((it) => it.status === 'pending');
+      if (idx === -1 || cancelledRef.current) break;
+
+      queueRef.current[idx].status = 'generating';
+      syncDisplay();
+
+      try {
+        const { task_id } = await api.startQa({
+          project_name: currentProject!,
+          question: queueRef.current[idx].question,
+          selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
+        });
+
+        const result = await pollTask(task_id);
+        if (cancelledRef.current) break;
+        queueRef.current[idx].answer = result;
+        queueRef.current[idx].status = 'done';
+      } catch (err: any) {
+        if (cancelledRef.current) break;
+        queueRef.current[idx].answer = `오류: ${err.message}`;
+        queueRef.current[idx].status = 'error';
+      }
+
+      syncDisplay();
+    }
+
+    if (cancelledRef.current) {
+      for (const item of queueRef.current) {
+        if (item.status === 'generating') item.status = 'pending';
+      }
+      syncDisplay();
+    }
+
+    processingRef.current = false;
+    setGenerating(false);
+  };
+
+  const handleGenerate = () => {
+    if (!currentProject || !questionsText.trim()) return;
+    const questions = questionsText.split('\n').map((q) => q.trim()).filter(Boolean);
+    if (questions.length === 0) return;
+
+    const newItems: QaItem[] = questions.map((q) => ({ question: q, answer: '', status: 'pending' as const }));
+    queueRef.current = [...queueRef.current, ...newItems];
+    syncDisplay();
+    setQuestionsText('');
+
+    if (!processingRef.current) {
+      processQueue();
+    }
+  };
+
+  const handleStop = () => {
+    cancelledRef.current = true;
+  };
+
+  const handleClearAll = () => {
+    if (generating) return;
+    queueRef.current = [];
+    setQaItems([]);
+  };
 
   const copyToClipboard = (text: string, idx: number) => {
     copyRichText(text);
@@ -147,6 +168,10 @@ export default function LpQaPage() {
     downloadAsWord(text, 'LP_QA_All.docx');
   };
 
+  const doneCount = qaItems.filter((it) => it.status === 'done' || it.status === 'error').length;
+  const totalCount = qaItems.length;
+  const progressPct = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
+
   if (!currentProject) {
     return (
       <div className="p-8 max-w-5xl mx-auto">
@@ -159,7 +184,7 @@ export default function LpQaPage() {
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <h1 className="text-xl font-bold text-[#37352F] mb-1">🙋 LP Q&A 대응</h1>
-      <p className="text-sm text-[#787774] mb-6">질문 목록을 입력하면 문서 기반으로 일괄 답변을 생성합니다.</p>
+      <p className="text-sm text-[#787774] mb-6">질문 목록을 입력하면 문서 기반으로 일괄 답변을 생성합니다. 생성 중에도 추가 질문을 넣을 수 있습니다.</p>
 
       <div className="flex gap-6">
         {/* Left: Document selector */}
@@ -205,7 +230,7 @@ export default function LpQaPage() {
                 value={questionsText}
                 onChange={(e) => setQuestionsText(e.target.value)}
                 placeholder="질문을 줄 단위로 입력하세요.&#10;예:&#10;투자 구조는 어떻게 되나요?&#10;리스크 요인은 무엇인가요?"
-                rows={6}
+                rows={4}
                 className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm focus:outline-none focus:border-[#2383E2] resize-none"
               />
             ) : (
@@ -223,40 +248,47 @@ export default function LpQaPage() {
             )}
           </div>
 
-          {/* Generate / Stop button */}
-          {generating ? (
-            <div className="flex gap-2 mb-4">
-              <div className="flex-1 py-2.5 bg-[#b0b0b0] text-white text-sm font-semibold rounded-xl text-center">
-                생성 중... ({Math.round(progress)}%)
-              </div>
+          {/* Generate / Stop buttons */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={handleGenerate}
+              disabled={!questionsText.trim()}
+              className="flex-1 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors"
+            >
+              {generating ? '🤖 추가 질문 투입' : '🤖 답변 생성'}
+            </button>
+            {generating && (
               <button onClick={handleStop}
                 className="px-6 py-2.5 bg-[#EB5757] text-white text-sm font-semibold rounded-xl hover:bg-[#d94848] transition-colors">
                 중지
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleGenerate}
-              disabled={!questionsText.trim()}
-              className="w-full py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors mb-4"
-            >
-              🤖 답변 생성
-            </button>
-          )}
+            )}
+          </div>
 
           {/* Progress bar */}
-          {generating && (
-            <div className="w-full bg-[#E9E9E7] rounded-full h-1.5 mb-4">
-              <div className="bg-[#2383E2] h-1.5 rounded-full transition-all" style={{ width: `${progress}%` }} />
+          {generating && totalCount > 0 && (
+            <div className="mb-4">
+              <div className="text-xs text-[#787774] mb-1">진행 중... {doneCount}/{totalCount}</div>
+              <div className="w-full bg-[#E9E9E7] rounded-full h-1.5">
+                <div className="bg-[#2383E2] h-1.5 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+              </div>
             </div>
           )}
 
           {/* Results */}
           {qaItems.length > 0 && (
             <div className="space-y-3">
-              {/* Export all button */}
+              {/* Export / Clear buttons */}
               {qaItems.some((it) => it.status === 'done') && (
                 <div className="flex justify-end gap-2">
+                  {!generating && (
+                    <button
+                      onClick={handleClearAll}
+                      className="px-3 py-1.5 text-xs border border-[#EB5757] text-[#EB5757] rounded-lg hover:bg-red-50"
+                    >
+                      전체 삭제
+                    </button>
+                  )}
                   <button
                     onClick={exportAllWord}
                     className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
@@ -274,7 +306,12 @@ export default function LpQaPage() {
               {qaItems.map((item, i) => (
                 <div key={i} className="bg-white border border-[#E9E9E7] rounded-xl p-4">
                   <div className="flex items-start justify-between mb-2">
-                    <div className="text-sm font-medium text-[#2383E2]">Q{i + 1}. {item.question}</div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-[#2383E2]">
+                      {item.status === 'generating' && (
+                        <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      )}
+                      Q{i + 1}. {item.question}
+                    </div>
                     {item.status === 'done' && (
                       <div className="flex gap-1 shrink-0 ml-2">
                         <button

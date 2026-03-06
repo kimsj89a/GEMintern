@@ -159,30 +159,31 @@ export default function FreeDocPage() {
                 onStop={handleStop}
               />
             )}
+            {!generating && result && (
+              <div className="flex gap-2 mb-4 pb-3 border-b border-[#E9E9E7]">
+                <button onClick={() => copyRichText(result)}
+                  className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium">
+                  서식 복사
+                </button>
+                <button onClick={() => downloadAsWord(result)}
+                  className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">
+                  Word 저장
+                </button>
+                <button onClick={downloadMarkdown}
+                  className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">
+                  MD 저장
+                </button>
+                <div className="flex-1" />
+                <button onClick={handleReset}
+                  className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#9B9A97]">
+                  새 문서 작성
+                </button>
+              </div>
+            )}
             <div className="max-h-[60vh] overflow-y-auto">
               <MarkdownViewer content={displayText} />
             </div>
           </div>
-          {!generating && result && (
-            <div className="flex gap-2">
-              <button onClick={() => downloadAsWord(result)}
-                className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
-                📄 Word 저장
-              </button>
-              <button onClick={downloadMarkdown}
-                className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
-                📥 MD 저장
-              </button>
-              <button onClick={() => copyRichText(result)}
-                className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
-                📋 복사
-              </button>
-              <button onClick={handleReset}
-                className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
-                🔄 새 문서 작성
-              </button>
-            </div>
-          )}
         </div>
       ) : (
         /* Input view */
