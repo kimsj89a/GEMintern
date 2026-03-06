@@ -1,136 +1,221 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { extractTitle } from '../utils/clipboard';
+import { extractTitle, copyRichText, downloadAsWord } from '../utils/clipboard';
 
+const TOOLS: Record<string, { prefix: string; suffix: string; placeholder: string; block?: boolean }> = {
+  bold: { prefix: '**', suffix: '**', placeholder: '볼드 텍스트' },
+  italic: { prefix: '*', suffix: '*', placeholder: '이탤릭 텍스트' },
+  strikethrough: { prefix: '~~', suffix: '~~', placeholder: '취소선 텍스트' },
+  inlineCode: { prefix: '`', suffix: '`', placeholder: 'code' },
+  link: { prefix: '[', suffix: '](url)', placeholder: '링크 텍스트' },
+  h1: { prefix: '# ', suffix: '', placeholder: '제목 1', block: true },
+  h2: { prefix: '## ', suffix: '', placeholder: '제목 2', block: true },
+  h3: { prefix: '### ', suffix: '', placeholder: '제목 3', block: true },
+  quote: { prefix: '> ', suffix: '', placeholder: '인용문', block: true },
+  ul: { prefix: '- ', suffix: '', placeholder: '목록 항목', block: true },
+  ol: { prefix: '1. ', suffix: '', placeholder: '목록 항목', block: true },
+  hr: { prefix: '\n---\n', suffix: '', placeholder: '' },
+  codeBlock: { prefix: '\n```\n', suffix: '\n```\n', placeholder: '코드를 입력하세요' },
+  table: { prefix: '\n| 항목 | 설명 |\n|------|------|\n| ', suffix: ' | 내용 |\n', placeholder: '데이터' },
+};
 export default function MarkdownPage() {
-  const [inputMode, setInputMode] = useState<'file' | 'direct'>('direct');
   const [markdown, setMarkdown] = useState('');
   const [filename, setFilename] = useState('');
-  const [userEditedFilename, setUserEditedFilename] = useState(false);
-  const [preview, setPreview] = useState(false);
-  const [converting, setConverting] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const [copyMsg, setCopyMsg] = useState('');
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
-  /** 마크다운 내용에서 파일명 자동 생성 (사용자가 직접 수정하지 않은 경우) */
-  const getEffectiveFilename = () => {
-    if (userEditedFilename && filename) return filename;
-    const title = extractTitle(markdown);
-    return `${title}.docx`;
-  };
+  const applyTool = useCallback((toolKey: string) => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const tool = TOOLS[toolKey];
+    if (!tool) return;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setMarkdown(reader.result as string);
-    reader.readAsText(file);
-  };
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = ta.value;
+    const selected = text.slice(start, end) || tool.placeholder;
 
-  const handleConvert = async () => {
-    if (!markdown.trim()) return;
-    setConverting(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const effectiveName = getEffectiveFilename();
-      const res = await fetch('/api/markdown-to-docx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown, filename: effectiveName }),
-        signal: controller.signal,
-      });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = effectiveName; a.click();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      if (err.name !== 'AbortError') alert(`변환 실패: ${err.message}`);
+    let prefix = tool.prefix;
+    if (tool.block && start > 0 && text[start - 1] !== '\n') {
+      prefix = '\n' + prefix;
     }
-    setConverting(false);
-  };
 
-  const handleStop = () => {
-    abortRef.current?.abort();
-    setConverting(false);
-  };
+    const before = text.slice(0, start);
+    const after = text.slice(end);
+    const inserted = prefix + selected + tool.suffix;
+    const newText = before + inserted + after;
+
+    setMarkdown(newText);
+
+    requestAnimationFrame(() => {
+      ta.focus();
+      const selStart = before.length + prefix.length;
+      const selEnd = selStart + selected.length;
+      ta.setSelectionRange(selStart, selEnd);
+    });
+  }, []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'b') { e.preventDefault(); applyTool('bold'); }
+      else if (e.key === 'i') { e.preventDefault(); applyTool('italic'); }
+      else if (e.key === 'k') { e.preventDefault(); applyTool('link'); }
+    }
+  }, [applyTool]);
+
+  const handleFileOpen = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.md,.txt,.markdown';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      setMarkdown(text);
+      setFilename(file.name.replace(/\.[^.]+$/, ''));
+    };
+    input.click();
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await copyRichText(markdown);
+      setCopyMsg('✓ 복사됨');
+      setTimeout(() => setCopyMsg(''), 2000);
+    } catch {
+      setCopyMsg('복사 실패');
+      setTimeout(() => setCopyMsg(''), 2000);
+    }
+  }, [markdown]);
+
+  const handleWord = useCallback(async () => {
+    const fname = filename || extractTitle(markdown);
+    try {
+      await downloadAsWord(markdown, fname);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Word 변환 실패');
+    }
+  }, [markdown, filename]);
+
+  const lineCount = markdown.split('\n').length;
+  const charCount = markdown.length;
+  const ToolBtn = ({ label, tool, className = '' }: { label: string; tool: string; className?: string }) => (
+    <button
+      type="button"
+      onClick={() => applyTool(tool)}
+      className={`px-2 py-1 text-xs rounded hover:bg-slate-200 transition-colors text-slate-600 ${className}`}
+      title={tool}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-xl font-bold text-[#37352F] mb-1">📝 Markdown → Word 변환</h1>
-      <p className="text-sm text-[#787774] mb-6">마크다운 텍스트를 Word 문서로 변환합니다.</p>
-
-      {/* Input mode */}
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => setInputMode('direct')}
-          className={`px-3 py-1.5 text-sm rounded-lg ${inputMode === 'direct' ? 'bg-[#2383E2] text-white' : 'border border-[#E9E9E7] hover:bg-[#F7F6F3]'}`}>
-          직접 입력
-        </button>
-        <button onClick={() => setInputMode('file')}
-          className={`px-3 py-1.5 text-sm rounded-lg ${inputMode === 'file' ? 'bg-[#2383E2] text-white' : 'border border-[#E9E9E7] hover:bg-[#F7F6F3]'}`}>
-          파일 업로드
-        </button>
-      </div>
-
-      {inputMode === 'file' && (
-        <div className="mb-4">
-          <label className="inline-block px-3 py-1.5 text-sm border border-[#E9E9E7] rounded-lg cursor-pointer hover:bg-[#F7F6F3]">
-            📂 Markdown 파일 선택
-            <input type="file" accept=".md,.txt" onChange={handleFileUpload} className="hidden" />
-          </label>
+    <div className="h-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+        <div>
+          <h1 className="text-base font-bold text-slate-800">Markdown 편집기</h1>
+          <p className="text-xs text-slate-400 mt-0.5">마크다운 편집 + 실시간 미리보기 + 서식 복사 / Word 변환</p>
         </div>
-      )}
-
-      <div className="bg-white border border-[#E9E9E7] rounded-xl p-4 mb-4">
-        <textarea
-          value={markdown}
-          onChange={(e) => setMarkdown(e.target.value)}
-          placeholder="# 제목&#10;&#10;내용을 입력하세요..."
-          rows={12}
-          className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm font-mono focus:outline-none focus:border-[#2383E2] resize-none"
-        />
-      </div>
-
-      {/* Filename */}
-      <div className="flex items-center gap-3 mb-4">
-        <label className="text-sm text-[#787774]">파일명:</label>
-        <input
-          value={filename}
-          placeholder={extractTitle(markdown) + '.docx'}
-          onChange={(e) => { setFilename(e.target.value); setUserEditedFilename(true); }}
-          className="px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-sm w-64 focus:outline-none focus:border-[#2383E2]"
-        />
-        {userEditedFilename && filename && (
-          <button onClick={() => { setFilename(''); setUserEditedFilename(false); }}
-            className="text-xs text-[#9B9A97] hover:text-[#37352F]">자동</button>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => setPreview(!preview)}
-          className="px-4 py-2 border border-[#E9E9E7] text-sm rounded-lg hover:bg-[#F7F6F3]">
-          👁️ {preview ? '미리보기 닫기' : '미리보기'}
-        </button>
-        {converting ? (
-          <button onClick={handleStop}
-            className="flex-1 py-2 bg-[#EB5757] text-white text-sm font-semibold rounded-lg hover:bg-[#d94848]">
-            중지
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleFileOpen}
+            className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+          >
+            파일 열기
           </button>
-        ) : (
-          <button onClick={handleConvert} disabled={!markdown.trim()}
-            className="flex-1 py-2 bg-[#2383E2] text-white text-sm font-semibold rounded-lg hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0]">
-            📄 Word 변환 및 저장
+          <button
+            onClick={() => setMarkdown('')}
+            className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+          >
+            초기화
           </button>
-        )}
-      </div>
-
-      {/* Preview */}
-      {preview && (
-        <div className="bg-white border border-[#E9E9E7] rounded-xl p-6">
-          <MarkdownViewer content={markdown} />
         </div>
-      )}
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-4 py-1.5 border-b border-slate-100 bg-slate-50/50 flex-wrap">
+        <ToolBtn label="H1" tool="h1" className="font-bold" />
+        <ToolBtn label="H2" tool="h2" className="font-bold" />
+        <ToolBtn label="H3" tool="h3" className="font-bold" />
+        <span className="w-px h-4 bg-slate-200 mx-1" />
+        <ToolBtn label="B" tool="bold" className="font-bold" />
+        <ToolBtn label="I" tool="italic" className="italic" />
+        <ToolBtn label="S" tool="strikethrough" className="line-through" />
+        <span className="w-px h-4 bg-slate-200 mx-1" />
+        <ToolBtn label="링크" tool="link" />
+        <ToolBtn label="Code" tool="inlineCode" />
+        <ToolBtn label="```" tool="codeBlock" />
+        <span className="w-px h-4 bg-slate-200 mx-1" />
+        <ToolBtn label="• UL" tool="ul" />
+        <ToolBtn label="1. OL" tool="ol" />
+        <ToolBtn label="❝" tool="quote" />
+        <span className="w-px h-4 bg-slate-200 mx-1" />
+        <ToolBtn label="표" tool="table" />
+        <ToolBtn label="─" tool="hr" />
+      </div>
+      {/* Split pane */}
+      <div className="flex flex-1 min-h-0">
+        {/* Editor */}
+        <div className="w-1/2 flex flex-col border-r border-slate-200">
+          <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-b border-slate-100 font-medium uppercase tracking-wider">
+            편집
+          </div>
+          <textarea
+            ref={taRef}
+            value={markdown}
+            onChange={(e) => setMarkdown(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="flex-1 w-full resize-none p-4 text-sm text-slate-800 bg-white focus:outline-none"
+            style={{ fontFamily: 'var(--font-mono, "Consolas", "Monaco", monospace)' }}
+            placeholder="마크다운을 입력하세요..."
+            spellCheck={false}
+          />
+        </div>
+
+        {/* Preview */}
+        <div className="w-1/2 flex flex-col">
+          <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-b border-slate-100 font-medium uppercase tracking-wider">
+            미리보기
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <MarkdownViewer content={markdown} />
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200 bg-slate-50/50">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleCopy}
+            disabled={!markdown}
+            className="px-4 py-1.5 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
+          >
+            서식 복사
+          </button>
+          {copyMsg && <span className="text-xs text-emerald-600">{copyMsg}</span>}
+          <span className="w-px h-4 bg-slate-200" />
+          <input
+            type="text"
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+            placeholder="파일명"
+            className="px-2 py-1 text-xs border border-slate-200 rounded-lg w-40 focus:outline-none focus:ring-1 focus:ring-blue-300"
+          />
+          <button
+            onClick={handleWord}
+            disabled={!markdown}
+            className="px-4 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
+          >
+            Word 변환
+          </button>
+        </div>
+        <div className="text-xs text-slate-400">
+          {charCount}자 / {lineCount}행
+        </div>
+      </div>
     </div>
   );
 }

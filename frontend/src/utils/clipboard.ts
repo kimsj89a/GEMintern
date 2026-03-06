@@ -97,6 +97,7 @@ function inline(t: string) {
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
   s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
   s = s.replace(/`(.+?)`/g, '<code style="background:#f0f2f6;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:12px;">$1</code>');
   s = s.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
   return s;
@@ -159,7 +160,7 @@ export function extractTitle(markdown: string): string {
     const s = line.trim();
     if (s.startsWith('#')) {
       const title = s.replace(/^#+\s*/, '').trim();
-      const clean = title.replace(/[\\/*?:"<>|]/g, '').trim();
+      const clean = title.replace(/[\/*?:"<>|]/g, '').trim();
       if (clean) return clean.slice(0, 50);
     }
   }
@@ -167,7 +168,7 @@ export function extractTitle(markdown: string): string {
   for (const line of markdown.split('\n')) {
     const s = line.trim();
     if (s) {
-      const clean = s.replace(/[\\/*?:"<>|]/g, '').trim();
+      const clean = s.replace(/[\/*?:"<>|]/g, '').trim();
       if (clean) return clean.slice(0, 50);
     }
   }

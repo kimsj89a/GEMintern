@@ -36,6 +36,10 @@ export default function MarkdownViewer({ content, className = '' }: MarkdownView
           ),
           li: ({ children }) => <li className="leading-[1.75]">{children}</li>,
           strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
+          del: ({ children }) => <del className="line-through text-slate-500">{children}</del>,
+          img: ({ src, alt }) => (
+            <img src={src} alt={alt} className="max-w-full rounded-lg my-3 border border-slate-200" />
+          ),
           blockquote: ({ children }) => (
             <blockquote className="border-l-[3px] border-blue-400 pl-4 my-3 text-sm text-slate-500 italic bg-blue-50/30 py-2 rounded-r-lg">{children}</blockquote>
           ),
