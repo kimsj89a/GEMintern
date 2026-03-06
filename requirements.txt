@@ -44,3 +44,7 @@ requests
 beautifulsoup4
 lxml
 Pillow
+# DartWings
+dart-fss
+pykrx
+httpx

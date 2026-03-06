@@ -1181,39 +1181,11 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
 # ──────────────────────────────────────────
 
 try:
-    import importlib.util as _ilu
-    import types as _types
-    _dw_base = os.path.join(os.path.expanduser("~"), "dartwings", "backend")
-
-    def _dw_import(name, filepath, extra_globals=None):
-        spec = _ilu.spec_from_file_location(name, filepath)
-        mod = _ilu.module_from_spec(spec)
-        if extra_globals:
-            for k, v in extra_globals.items():
-                setattr(mod, k, v)
-        spec.loader.exec_module(mod)
-        return mod
-
-    # Load config first
-    _dw_config = _dw_import("dw_config", os.path.join(_dw_base, "config.py"))
-    # Temporarily register fake 'backend.config' so dart_service can import it
-    _fake_pkg = _types.ModuleType("backend")
-    _fake_pkg.config = _dw_config
-    _saved_backend = _sys.modules.get("backend")
-    _sys.modules["backend"] = _fake_pkg
-    _sys.modules["backend.config"] = _dw_config
-    try:
-        _dw_dart = _dw_import("dw_dart_service", os.path.join(_dw_base, "services", "dart_service.py"))
-    finally:
-        # Restore real backend module
-        if _saved_backend:
-            _sys.modules["backend"] = _saved_backend
-        else:
-            _sys.modules.pop("backend", None)
-        _sys.modules.pop("backend.config", None)
-    _dw_stock = _dw_import("dw_stock_service", os.path.join(_dw_base, "services", "stock_service.py"))
-    _dw_analysis = _dw_import("dw_analysis_service", os.path.join(_dw_base, "services", "analysis_service.py"))
+    from dartwings import dart_service as _dw_dart
+    from dartwings import stock_service as _dw_stock
+    from dartwings import analysis_service as _dw_analysis
     _DW_AVAILABLE = True
+    print("[DartWings] Loaded successfully from local package")
 except Exception as _e:
     print(f"[DartWings] Failed to load: {_e}")
     _DW_AVAILABLE = False

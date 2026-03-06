@@ -103,6 +103,24 @@ def init_db():
                 )
                 print(f"[DB] Admin user '{admin_user}' password updated.")
 
+    # Bootstrap invite codes from env var (comma-separated)
+    init_codes = os.environ.get("INIT_INVITE_CODES", "")
+    if init_codes:
+        with get_db() as conn:
+            for code in init_codes.split(","):
+                code = code.strip()
+                if not code:
+                    continue
+                existing = conn.execute(
+                    "SELECT id FROM invite_codes WHERE code = ?", (code,)
+                ).fetchone()
+                if not existing:
+                    conn.execute(
+                        "INSERT INTO invite_codes (code, created_by) VALUES (?, 1)",
+                        (code,),
+                    )
+                    print(f"[DB] Invite code '{code}' bootstrapped.")
+
 
 def log_usage(user_id: int, endpoint: str, model: str | None = None):
     with get_db() as conn:
