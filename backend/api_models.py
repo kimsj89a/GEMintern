@@ -25,9 +25,10 @@ class GenerateRequest(BaseModel):
 
 
 class QaRequest(BaseModel):
-    project_name: str
+    project_name: str = ""
     question: str
     selected_docs: List[str] = []
+    file_context: str = ""
 
 
 class SyncRequest(BaseModel):

@@ -87,6 +87,15 @@ export const api = {
     });
     return res.json();
   },
+  parseFiles: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const res = await fetchWithAuth(`${BASE}/parse-files`, {
+      method: 'POST',
+      body: formData,
+    });
+    return res.json() as Promise<{ parsed_texts: Record<string, string>; errors: string[]; count: number }>;
+  },
 
   // AI
   startGenerate: (data: any) =>

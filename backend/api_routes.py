@@ -301,7 +301,26 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
     result = core_rag.index_texts(api_key, texts, name)
     if parse_errors:
         result["parse_errors"] = parse_errors
+    # Return parsed texts so frontend can store in IndexedDB
+    result["parsed_texts"] = texts
     return result
+
+
+@router.post("/parse-files")
+async def parse_files_only(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """Parse uploaded files and return text content without server-side storage.
+    Used by local-storage mode where files are stored in browser IndexedDB."""
+    api_key = _get_api_key()
+    parsed = {}
+    errors = []
+    for f in files:
+        content_bytes = await f.read()
+        text = _parse_file_bytes(f.filename, content_bytes, api_key)
+        if text:
+            parsed[f.filename] = text
+        else:
+            errors.append(f.filename)
+    return {"parsed_texts": parsed, "errors": errors, "count": len(parsed)}
 
 
 def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
@@ -413,12 +432,15 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     print(f"[generate] project={req.project_name}, template={req.template_option}, "
           f"user_context_len={len(user_context)}, selected_docs={selected_docs}")
 
-    file_context = ""
-    if req.project_name:
+    # If client provides file_context (local storage mode), use it directly
+    file_context = user_context
+    if not file_context and req.project_name:
         file_context = _load_context_with_budget(
             req.project_name, selected_docs if selected_docs else None
         )
-        print(f"[generate] loaded docs: {len(file_context)} chars")
+        print(f"[generate] loaded docs from server: {len(file_context)} chars")
+    elif file_context:
+        print(f"[generate] using client-provided context: {len(file_context)} chars")
 
     inputs = dict(req.inputs)
     inputs.setdefault("template_option", req.template_option)
@@ -441,9 +463,12 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
     model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
 
-    context = _get_vector_context(
-        api_key, req.project_name, req.question, req.selected_docs
-    )
+    # Use client-provided file_context if available (local storage mode)
+    context = req.file_context.strip() if req.file_context else ""
+    if not context and req.project_name:
+        context = _get_vector_context(
+            api_key, req.project_name, req.question, req.selected_docs
+        )
     task_id = create_task()
     run_analysis_task(
         task_id, "qa_answer", api_key, model,

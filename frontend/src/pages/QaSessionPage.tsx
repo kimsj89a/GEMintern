@@ -5,6 +5,7 @@ import { subscribeTask, unsubscribeTask } from '../api/ws';
 import FolderTree from '../components/FolderTree';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
+import { getLocalFolderTree, buildFileContext, getProjectDocuments } from '../utils/projectDB';
 
 export default function QaSessionPage() {
   const { currentProject } = useAppStore();
@@ -20,10 +21,10 @@ export default function QaSessionPage() {
 
   useEffect(() => {
     if (!currentProject) return;
-    api.getProjectDocs(currentProject).then((data) => {
-      setTree(data.folder_tree || {});
-      setDocCount(data.count || 0);
-    }).catch(() => {});
+    getLocalFolderTree(currentProject).then(setTree).catch(() => setTree({}));
+    getProjectDocuments(currentProject).then(docs => {
+      setDocCount(docs.filter(d => d.filename !== '__folder_placeholder__').length);
+    }).catch(() => setDocCount(0));
   }, [currentProject]);
 
   const handleSend = async (question: string) => {
@@ -34,10 +35,12 @@ export default function QaSessionPage() {
     cancelledRef.current = false;
 
     try {
+      const localCtx = await buildFileContext(currentProject, selectedDocs.length > 0 ? selectedDocs : undefined);
       const { task_id } = await api.startQa({
         project_name: currentProject,
         question,
         selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
+        file_context: localCtx,
       });
       activeTaskRef.current = task_id;
 
