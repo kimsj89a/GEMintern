@@ -6,7 +6,7 @@ import uuid
 import tempfile
 from typing import List, Dict
 
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 
 from pydantic import BaseModel
 from backend.api_models import (
@@ -134,6 +134,18 @@ def _save_settings(data: dict):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+
+
+def _verify_project_ownership(project_name: str, user_id: int):
+    """Raise 403 if user doesn't own the project."""
+    import core_rag
+    projects = core_rag._load_projects()
+    project = next((p for p in projects if p["name"] == project_name), None)
+    if not project:
+        raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+    if project.get("owner_id") is not None and project.get("owner_id") != user_id:
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
 # ========================================
 # Health
 # ========================================
@@ -149,23 +161,29 @@ def health_check():
 
 @router.get("/settings")
 def get_settings(user: dict = Depends(get_current_user)):
+    from backend.database import get_user_settings
     data = _load_settings()
     masked = {**data}
-    # Never expose full API keys — only show whether they're configured
+    # Never expose full API keys
     masked.pop("api_key", None)
     masked.pop("anthropic_api_key", None)
     masked["api_key_configured"] = bool(_get_api_key())
     masked["anthropic_api_key_configured"] = bool(_get_anthropic_api_key())
+    # Overlay per-user settings
+    user_settings = get_user_settings(user["id"])
+    masked.update(user_settings)
     return masked
 
 
 @router.put("/settings")
 def update_settings(settings: dict, user: dict = Depends(get_current_user)):
-    current = _load_settings()
+    from backend.database import save_user_settings, get_user_settings
     settings.pop("api_key", None)  # API key managed via env var
     settings.pop("anthropic_api_key", None)  # Anthropic key managed via env var
-    current.update(settings)
-    _save_settings(current)
+    # Save per-user settings to DB
+    current_user_settings = get_user_settings(user["id"])
+    current_user_settings.update(settings)
+    save_user_settings(user["id"], current_user_settings)
     return {"success": True}
 
 
@@ -210,19 +228,19 @@ def apply_settings(user: dict = Depends(get_current_user)):
 @router.get("/projects")
 def list_projects(user: dict = Depends(get_current_user)):
     import core_rag
-    return core_rag.list_projects()
+    return core_rag.list_projects(owner_id=user["id"])
 
 
 @router.post("/projects")
 def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
     import core_rag
-    return core_rag.create_project(req.name)
+    return core_rag.create_project(req.name, owner_id=user["id"])
 
 
 @router.delete("/projects/{name}")
 def delete_project(name: str, user: dict = Depends(get_current_user)):
     import core_rag
-    return core_rag.delete_project(name)
+    return core_rag.delete_project(name, owner_id=user["id"])
 
 
 # ========================================
@@ -231,6 +249,7 @@ def delete_project(name: str, user: dict = Depends(get_current_user)):
 
 @router.get("/projects/{name}/docs")
 def get_project_docs(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     import core_rag
     tree = core_rag.get_folder_tree(name)
     doc_names = core_rag.get_indexed_doc_names(name) or []
@@ -239,30 +258,35 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
 
 @router.post("/projects/{name}/folders")
 def create_folder(name: str, req: FolderCreate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     import core_rag
     return core_rag.create_folder(name, req.name)
 
 
 @router.delete("/projects/{name}/folders/{folder}")
 def delete_folder(name: str, folder: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     import core_rag
     return core_rag.delete_folder(name, folder)
 
 
 @router.post("/projects/{name}/docs/{doc}/move")
 def move_doc(name: str, doc: str, req: DocMoveRequest, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     import core_rag
     return core_rag.move_doc_to_folder(name, doc, req.target_folder)
 
 
 @router.delete("/projects/{name}/docs/{doc}")
 def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     import core_rag
     return core_rag.trash_document(name, doc)
 
 
 @router.post("/projects/{name}/upload")
 async def upload_files(name: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     import core_rag
     api_key = _get_api_key()
     texts = {}
@@ -379,6 +403,8 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
 
 @router.post("/generate")
 def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user)):
+    if req.project_name:
+        _verify_project_ownership(req.project_name, user["id"])
     api_key = _get_api_key()
     model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
 
@@ -410,6 +436,8 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
 
 @router.post("/qa")
 def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
+    if req.project_name:
+        _verify_project_ownership(req.project_name, user["id"])
     api_key = _get_api_key()
     model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
 
@@ -464,6 +492,7 @@ def get_task_status(task_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/projects/{name}/reindex")
 def reindex_project(name: str, force: bool = False, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     """프로젝트 문서를 벡터 DB에 증분 인덱싱 (서브프로세스에서 실행, segfault 격리).
 
     force=True면 전체 재인덱싱, 기본은 변경분만 처리.
@@ -495,6 +524,7 @@ print(json.dumps(result, ensure_ascii=False))
 
 @router.get("/projects/{name}/vector-stats")
 def vector_stats(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     """프로젝트 벡터 인덱스 통계 (파일시스템 기반, ChromaDB 직접 열지 않음)."""
     try:
         local_data = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "GEMintern")
@@ -512,6 +542,7 @@ def vector_stats(name: str, user: dict = Depends(get_current_user)):
 
 @router.get("/projects/{name}/sync-status")
 def doc_sync_status(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     """파일 목록과 RAG DB 동기화 상태 비교."""
     import core_rag
     try:
@@ -566,6 +597,7 @@ class SyncDocsRequest(BaseModel):
 
 @router.post("/projects/{name}/sync-docs")
 def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
     """선택한 파일들의 동기화 상태를 변경."""
     import core_rag
     try:

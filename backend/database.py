@@ -1,4 +1,5 @@
 """SQLite database for user auth and usage tracking."""
+import json
 import os
 import sqlite3
 import hashlib
@@ -73,6 +74,11 @@ def init_db():
                 model TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INTEGER PRIMARY KEY,
+                settings_json TEXT DEFAULT '{}',
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
         """)
 
     # Bootstrap admin user from env vars
@@ -103,4 +109,30 @@ def log_usage(user_id: int, endpoint: str, model: str | None = None):
         conn.execute(
             "INSERT INTO usage_log (user_id, endpoint, model) VALUES (?, ?, ?)",
             (user_id, endpoint, model),
+        )
+
+
+def get_user_settings(user_id: int) -> dict:
+    """Load per-user settings from DB."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT settings_json FROM user_settings WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if row:
+        try:
+            return json.loads(row["settings_json"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {}
+
+
+def save_user_settings(user_id: int, settings: dict):
+    """Save per-user settings to DB."""
+    settings_json = json.dumps(settings, ensure_ascii=False)
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO user_settings (user_id, settings_json)
+               VALUES (?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET settings_json = ?""",
+            (user_id, settings_json, settings_json),
         )
