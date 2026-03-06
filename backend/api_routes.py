@@ -422,7 +422,7 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
 
 @router.post("/generate")
 def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user)):
-    if req.project_name:
+    if req.project_name and not req.file_context.strip():
         _verify_project_ownership(req.project_name, user["id"])
     api_key = _get_api_key()
     model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
@@ -458,7 +458,7 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
 
 @router.post("/qa")
 def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
-    if req.project_name:
+    if req.project_name and not req.file_context.strip():
         _verify_project_ownership(req.project_name, user["id"])
     api_key = _get_api_key()
     model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
@@ -487,10 +487,12 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
     if "project_name" in kwargs:
         pname = kwargs.pop("project_name")
         sel_docs = kwargs.pop("selected_docs", [])
-        query = kwargs.get("question", req.task_type)
-        kwargs["file_context"] = _get_vector_context(
-            api_key, pname, query, sel_docs
-        )
+        # Use client-provided file_context if available (local storage mode)
+        if not kwargs.get("file_context"):
+            query = kwargs.get("question", req.task_type)
+            kwargs["file_context"] = _get_vector_context(
+                api_key, pname, query, sel_docs
+            )
 
     task_id = create_task()
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
