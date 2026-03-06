@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { api } from '../api/client';
+import { listLocalProjects, getProjectDocuments } from '../utils/projectDB';
 
 const WORKFLOW_CARDS = [
   {
@@ -33,13 +33,13 @@ export default function HomePage() {
   const [docCount, setDocCount] = useState(0);
 
   useEffect(() => {
-    api.listProjects().then((list) => {
+    listLocalProjects().then((list) => {
       setProjectCount(list.length);
     }).catch(() => {});
 
     if (currentProject) {
-      api.getProjectDocs(currentProject).then((data) => {
-        setDocCount(data.count || 0);
+      getProjectDocuments(currentProject).then((docs) => {
+        setDocCount(docs.filter(d => d.filename !== '__folder_placeholder__').length);
       }).catch(() => {});
     }
   }, [currentProject]);

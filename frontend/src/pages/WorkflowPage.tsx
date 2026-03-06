@@ -9,7 +9,7 @@ import type { ChatMessage } from '../components/ChatWidget';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, extractTitle, downloadAsWord } from '../utils/clipboard';
 import GenerationProgress from '../components/GenerationProgress';
-import { getLocalFolderTree, buildFileContext } from '../utils/projectDB';
+import { getLocalFolderTree, buildFileContext, addLocalDocuments } from '../utils/projectDB';
 
 /* ─── Types ─── */
 type WriteMode = 'report' | 'ppt';
@@ -354,11 +354,12 @@ export default function WorkflowPage() {
     setUploading(true);
     setUploadStatus('');
     try {
-      const res = await api.uploadFiles(currentProject, files);
-      const indexed = res?.indexed_count ?? res?.count ?? files.length;
-      setUploadStatus(`${files.length}개 파일 인덱싱 완료 (${indexed}건)`);
-      const data = await api.getProjectDocs(currentProject);
-      setTree(data.folder_tree || {});
+      const result = await api.parseFiles(files);
+      const docs = Object.entries(result.parsed_texts).map(([filename, text]) => ({ filename, parsedText: text }));
+      await addLocalDocuments(currentProject, docs);
+      setUploadStatus(`${docs.length}개 파일 업로드 완료. 로컬에 저장됨.`);
+      const t = await getLocalFolderTree(currentProject);
+      setTree(t);
     } catch {
       setUploadStatus('업로드 실패');
     }

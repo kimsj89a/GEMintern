@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
-import { api } from '../api/client';
+import { listLocalProjects } from '../utils/projectDB';
 
 const NAV_SECTIONS = [
   {
@@ -49,8 +49,8 @@ export default function Sidebar() {
   const [projects, setProjects] = useState<string[]>([]);
 
   useEffect(() => {
-    api.listProjects().then((list) => {
-      setProjects(list.map((p: any) => p.name || p));
+    listLocalProjects().then((list) => {
+      setProjects(list.map((p) => p.name));
     }).catch(() => {});
   }, [currentProject]);
 
