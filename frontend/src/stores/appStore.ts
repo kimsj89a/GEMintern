@@ -15,8 +15,11 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  currentProject: '',
-  setCurrentProject: (p) => set({ currentProject: p }),
+  currentProject: localStorage.getItem('lastProject') || '',
+  setCurrentProject: (p) => {
+    localStorage.setItem('lastProject', p);
+    set({ currentProject: p });
+  },
 
   activePage: 'home',
   setActivePage: (p) => {
