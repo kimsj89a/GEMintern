@@ -99,8 +99,8 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
     """
     max_chars = _max_chars_for_model(model)
 
-    # 1. 벡터 검색 시도
-    if query:
+    # 1. 벡터 검색 시도 (유저가 문서를 선택하지 않았을 때만)
+    if query and not selected_docs:
         api_key = _get_api_key()
         vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs)
         if vector_ctx and len(vector_ctx.strip()) > 100:
@@ -194,7 +194,7 @@ else:
 """
         proc = subprocess.run(
             [sys.executable, "-c", script],
-            capture_output=True, text=True, timeout=30, cwd=base,
+            capture_output=True, text=True, timeout=10, cwd=base,
         )
         if proc.returncode == 0 and "__VECTOR_OK__" in proc.stdout:
             context = proc.stdout.split("__VECTOR_OK__\n", 1)[1]
@@ -561,26 +561,24 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
 
     user_context = req.file_context.strip()
     selected_docs = req.inputs.get("selected_docs", [])
-    print(f"[generate] project={req.project_name}, template={req.template_option}, "
-          f"user_context_len={len(user_context)}, selected_docs={selected_docs}")
-
-    # 서버에 동기화된 문서가 있으면 서버 RAG 사용, 없으면 클라이언트 컨텍스트 사용
-    max_chars = _max_chars_for_model(model)
-    file_context = ""
-    if req.project_name:
-        # 서버 RAG에서 관련 문서 선별 (벡터검색 → 키워드매칭 → 전체로드)
-        query = req.inputs.get("context_text", "") or req.template_option
-        server_ctx = _select_relevant_docs(req.project_name, query, model, selected_docs if selected_docs else None)
-        if server_ctx:
-            file_context = server_ctx
-            print(f"[generate] server RAG context: {len(file_context)} chars")
-    if not file_context and user_context:
-        file_context = _truncate_context(user_context, max_chars)
-        print(f"[generate] using client-provided context: {len(file_context)} chars")
 
     inputs = dict(req.inputs)
     inputs.setdefault("template_option", req.template_option)
     inputs["context_text"] = user_context
+
+    # 문서 선택을 빠르게 (try/except로 502 방지)
+    max_chars = _max_chars_for_model(model)
+    file_context = ""
+    try:
+        if req.project_name:
+            query = inputs.get("context_text", "") or req.template_option
+            file_context = _select_relevant_docs(req.project_name, query, model, selected_docs if selected_docs else None)
+        if not file_context and user_context:
+            file_context = _truncate_context(user_context, max_chars)
+    except Exception as e:
+        print(f"[generate] doc selection error: {e}")
+        if user_context:
+            file_context = _truncate_context(user_context, max_chars)
 
     task_id = create_task()
     run_generate_task(
@@ -599,13 +597,19 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
     model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
 
-    # 서버 RAG 우선, fallback으로 클라이언트 컨텍스트
+    # 문서 선택 (try/except로 502 방지)
     max_chars = _max_chars_for_model(model)
     context = ""
-    if req.project_name:
-        context = _select_relevant_docs(req.project_name, req.question, model, req.selected_docs)
-    if not context:
-        context = _truncate_context(req.file_context.strip(), max_chars) if req.file_context else ""
+    try:
+        if req.project_name:
+            context = _select_relevant_docs(req.project_name, req.question, model, req.selected_docs)
+        if not context and req.file_context:
+            context = _truncate_context(req.file_context.strip(), max_chars)
+    except Exception as e:
+        print(f"[qa] doc selection error: {e}")
+        if req.file_context:
+            context = _truncate_context(req.file_context.strip(), max_chars)
+
     task_id = create_task()
     run_analysis_task(
         task_id, "qa_answer", api_key, model,
@@ -626,12 +630,16 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
         pname = kwargs.pop("project_name")
         sel_docs = kwargs.pop("selected_docs", [])
         query = kwargs.get("question", req.task_type)
-        # 서버 RAG 우선, fallback으로 클라이언트 컨텍스트
-        server_ctx = _select_relevant_docs(pname, query, model, sel_docs)
-        if server_ctx:
-            kwargs["file_context"] = server_ctx
-        elif kwargs.get("file_context"):
-            kwargs["file_context"] = _truncate_context(kwargs["file_context"], max_chars)
+        try:
+            server_ctx = _select_relevant_docs(pname, query, model, sel_docs)
+            if server_ctx:
+                kwargs["file_context"] = server_ctx
+            elif kwargs.get("file_context"):
+                kwargs["file_context"] = _truncate_context(kwargs["file_context"], max_chars)
+        except Exception as e:
+            print(f"[analyze] doc selection error: {e}")
+            if kwargs.get("file_context"):
+                kwargs["file_context"] = _truncate_context(kwargs["file_context"], max_chars)
 
     task_id = create_task()
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
