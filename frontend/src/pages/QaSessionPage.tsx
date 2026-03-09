@@ -6,9 +6,11 @@ import FolderTree from '../components/FolderTree';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import { getLocalFolderTree, getProjectDocuments } from '../utils/projectDB';
+import { useAutoSync } from '../utils/autoSync';
 
 export default function QaSessionPage() {
   const { currentProject } = useAppStore();
+  useAutoSync(currentProject);
   const [tree, setTree] = useState<Record<string, string[]>>({});
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);

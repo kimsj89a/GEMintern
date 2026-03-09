@@ -5,6 +5,7 @@ import FolderTree from '../components/FolderTree';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, downloadAsWord } from '../utils/clipboard';
 import { getLocalFolderTree } from '../utils/projectDB';
+import { useAutoSync } from '../utils/autoSync';
 
 interface QaItem {
   question: string;
@@ -14,6 +15,7 @@ interface QaItem {
 
 export default function LpQaPage() {
   const { currentProject } = useAppStore();
+  useAutoSync(currentProject);
   const [tree, setTree] = useState<Record<string, string[]>>({});
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [inputMode, setInputMode] = useState<'direct' | 'file'>('direct');

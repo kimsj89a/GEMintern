@@ -10,6 +10,7 @@ import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, extractTitle, downloadAsWord } from '../utils/clipboard';
 import GenerationProgress from '../components/GenerationProgress';
 import { getLocalFolderTree, addLocalDocuments } from '../utils/projectDB';
+import { useAutoSync } from '../utils/autoSync';
 
 /* ─── Types ─── */
 type WriteMode = 'report' | 'ppt';
@@ -313,6 +314,7 @@ const PHASE_CONFIG: Record<string, { title: string; desc: string; steps: { id: n
 
 export default function WorkflowPage() {
   const { currentProject, activePage } = useAppStore();
+  useAutoSync(currentProject);
   const phase = PHASE_CONFIG[activePage] || PHASE_CONFIG.phase2;
   const isPhase1 = activePage === 'phase1';
 
