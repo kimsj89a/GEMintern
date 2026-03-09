@@ -22,5 +22,6 @@ export const PAGE_REGISTRY: Record<
   nps: { label: '🏢 국민연금 사업장', component: lazy(() => import('./NpsPage')) },
   quickmail: { label: '✉️ QuickMail', component: lazy(() => import('./QuickMailPage')) },
   dartwings: { label: '📊 DartWings', component: lazy(() => import('./DartwingsPage')) },
+  draftdoc: { label: '📄 기안문 작성', component: lazy(() => import('./DraftDocPage')) },
   admin: { label: '🛡️ 관리자', component: lazy(() => import('./AdminPage')) },
 };

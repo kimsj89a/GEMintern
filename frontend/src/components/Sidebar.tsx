@@ -12,19 +12,20 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    title: 'Tools',
+    items: [
+      { label: '자유양식 문서', id: 'freedoc', icon: '📝' },
+      { label: '기안문 작성', id: 'draftdoc', icon: '📄' },
+      { label: '문서 업데이트', id: 'doc_updater', icon: '🔄' },
+    ],
+  },
+  {
     title: 'Workflow',
     items: [
       { label: '사전 정보 수집', id: 'phase1', icon: '📥' },
       { label: '문서 작성', id: 'phase2', icon: '📝' },
-    ],
-  },
-  {
-    title: 'Tools',
-    items: [
-      { label: '자유양식 문서', id: 'freedoc', icon: '📝' },
       { label: 'LP Q&A 대응', id: 'lp_qa', icon: '🙋' },
       { label: '자료기반 Q&A', id: 'qa_session', icon: '💬' },
-      { label: '문서 업데이트', id: 'doc_updater', icon: '🔄' },
     ],
   },
   {

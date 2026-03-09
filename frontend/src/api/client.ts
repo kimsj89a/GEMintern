@@ -132,6 +132,10 @@ export const api = {
   freedocGenerate: (data: { instruction: string; file_text?: string; paste_text?: string }) =>
     request<{ task_id: string }>('/freedoc/generate', { method: 'POST', body: JSON.stringify(data) }),
 
+  // Draft Document (기안문)
+  draftdocGenerate: (data: { file_text?: string; paste_text?: string; instruction?: string }) =>
+    request<{ task_id: string }>('/draftdoc/generate', { method: 'POST', body: JSON.stringify(data) }),
+
   // Document Updater
   docUpdaterUploadOriginal: async (file: File) => {
     const formData = new FormData();

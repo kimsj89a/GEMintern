@@ -827,6 +827,92 @@ def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)
     return {"task_id": task_id}
 
 
+# ========================================
+# Draft Document (기안문) Writing
+# ========================================
+
+class DraftDocRequest(BaseModel):
+    file_text: str = ""
+    paste_text: str = ""
+    instruction: str = ""
+
+
+@router.post("/draftdoc/generate")
+def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_user)):
+    """기안문 작성: 파싱된 텍스트 → AI 기안문 생성 (task)."""
+    api_key = _get_api_key()
+    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    log_usage(user["id"], "/draftdoc/generate", model)
+
+    combined = req.file_text
+    if req.paste_text.strip():
+        combined += f"\n\n--- [직접 입력 텍스트] ---\n{req.paste_text.strip()}"
+
+    if not combined.strip():
+        return {"error": "자료가 비어있습니다."}
+
+    task_id = create_task()
+
+    def _run():
+        task = get_task(task_id)
+        task["status"] = "generating"
+        try:
+            from google.genai import types
+            from ai_client import AIClient
+            client = AIClient(api_key=api_key)
+
+            system_prompt = (
+                "당신은 한국 기업의 업무 기안문 작성 전문가입니다.\n"
+                "제공된 자료를 분석하여 공식적인 기안문(품의서/결재문서)을 작성합니다.\n\n"
+                "[기안문 구조]\n"
+                "1. **제목**: 기안 건명 (간결하고 명확하게)\n"
+                "2. **기안 배경/목적**: 해당 기안의 배경과 필요성\n"
+                "3. **세부 내용**: 구체적인 사항 (금액, 일정, 대상, 범위 등)\n"
+                "4. **기대 효과**: 예상되는 효과나 성과\n"
+                "5. **요청 사항**: 결재권자에게 요청하는 구체적 내용\n"
+                "6. **첨부**: 참고 자료 목록 (있는 경우)\n\n"
+                "[핵심 규칙]\n"
+                "1. 제공된 자료의 내용을 충실히 반영하세요. 자료에 없는 내용을 임의로 추가하지 마세요.\n"
+                "2. 수치, 고유명사, 날짜 등 구체적 데이터는 절대 변경하지 마세요.\n"
+                "3. 공식적이고 격식체(합쇼체)로 작성하세요.\n"
+                "4. 마크다운 형식으로 출력하세요.\n"
+                "5. 한국어로 작성하세요.\n"
+                "6. 서문이나 인트로 없이 바로 기안문 본문으로 시작하세요.\n"
+            )
+
+            user_instruction = req.instruction.strip() if req.instruction.strip() else "제공된 자료를 바탕으로 기안문을 작성해주세요."
+
+            prompt = (
+                f"[사용자 추가 요청]\n{user_instruction}\n\n"
+                f"[제공된 자료]\n{_truncate_context(combined)}"
+            )
+
+            config = types.GenerateContentConfig(
+                max_output_tokens=65536,
+                temperature=0.3,
+                system_instruction=system_prompt,
+            )
+
+            stream = client.models.generate_content_stream(
+                model=model, contents=prompt, config=config
+            )
+            full_text = ""
+            for chunk in stream:
+                text = chunk.text or "" if hasattr(chunk, "text") else ""
+                if text:
+                    full_text += text
+                    task["chunks"].append(text)
+            task["result"] = full_text
+            task["status"] = "complete"
+        except Exception as e:
+            task["error"] = str(e)
+            task["status"] = "error"
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
+
+
 @router.post("/markdown-to-docx")
 def markdown_to_docx(req: MarkdownToDocxRequest, user: dict = Depends(get_current_user)):
     """마크다운 텍스트를 Word 문서로 변환."""
