@@ -1,5 +1,8 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Options as GfmOptions } from 'remark-gfm';
+
+const gfmOptions: GfmOptions = { singleTilde: false };
 import rehypeRaw from 'rehype-raw';
 
 interface MarkdownViewerProps {
@@ -15,7 +18,7 @@ export default function MarkdownViewer({ content, className = '' }: MarkdownView
   return (
     <div className={`markdown-body ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[[remarkGfm, gfmOptions]]}
         rehypePlugins={[rehypeRaw]}
         components={{
           h1: ({ children }) => (
