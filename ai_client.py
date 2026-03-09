@@ -151,6 +151,7 @@ class _ModelsNamespace:
     # ── Anthropic 구현 ──
 
     def _claude_generate(self, model: str, contents, config=None):
+        """비스트리밍 호출 — 내부적으로 스트리밍으로 수집 (Anthropic 10분 제한 회피)."""
         client = self._get_anthropic()
         prompt_text = contents if isinstance(contents, str) else str(contents)
         params, system_msg, prompt_text = _translate_config(config, prompt_text)
@@ -163,9 +164,11 @@ class _ModelsNamespace:
         if system_msg:
             kwargs["system"] = system_msg
 
-        response = client.messages.create(**kwargs)
-        text = response.content[0].text if response.content else ""
-        return _AnthropicTextResponse(text)
+        full_text = ""
+        with client.messages.stream(**kwargs) as stream:
+            for text in stream.text_stream:
+                full_text += text
+        return _AnthropicTextResponse(full_text)
 
     def _claude_stream(self, model: str, contents, config=None):
         client = self._get_anthropic()
