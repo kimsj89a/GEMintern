@@ -20,6 +20,10 @@ export default function LpQaPage() {
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [inputMode, setInputMode] = useState<'direct' | 'file'>('direct');
   const [questionsText, setQuestionsText] = useState('');
+  const [questionsList, setQuestionsList] = useState<string[]>([]);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [qaItems, setQaItems] = useState<QaItem[]>([]);
   const [generating, setGenerating] = useState(false);
   const cancelledRef = useRef(false);
@@ -36,24 +40,55 @@ export default function LpQaPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.split('.').pop()?.toLowerCase();
+    setUploading(true);
 
-    if (ext === 'txt') {
-      const reader = new FileReader();
-      reader.onload = () => setQuestionsText(reader.result as string);
-      reader.readAsText(file);
-    } else {
-      // Excel/CSV → 서버에서 셀 단위 추출
-      try {
-        const result = await api.extractExcelCells([file]);
-        if (result.cells.length > 0) {
-          setQuestionsText(result.cells.join('\n'));
-        } else {
-          setQuestionsText('파일에서 질문을 추출할 수 없습니다.');
-        }
-      } catch {
-        setQuestionsText('파일 업로드 실패');
+    try {
+      if (ext === 'txt') {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const lines = (reader.result as string).split('\n').map(l => l.trim()).filter(Boolean);
+          setQuestionsList(lines);
+          setUploading(false);
+        };
+        reader.readAsText(file);
+        return;
       }
+      // Excel/CSV
+      const result = await api.extractExcelCells([file]);
+      if (result.cells.length > 0) {
+        setQuestionsList(result.cells);
+      } else {
+        setQuestionsList(['파일에서 질문을 추출할 수 없습니다.']);
+      }
+    } catch {
+      setQuestionsList(['파일 업로드 실패']);
     }
+    setUploading(false);
+  };
+
+  const removeQuestion = (idx: number) => {
+    setQuestionsList(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const startEdit = (idx: number) => {
+    setEditingIdx(idx);
+    setEditText(questionsList[idx]);
+  };
+
+  const saveEdit = () => {
+    if (editingIdx === null) return;
+    setQuestionsList(prev => prev.map((q, i) => i === editingIdx ? editText.trim() : q));
+    setEditingIdx(null);
+    setEditText('');
+  };
+
+  const cancelEdit = () => {
+    setEditingIdx(null);
+    setEditText('');
+  };
+
+  const clearQuestionsList = () => {
+    setQuestionsList([]);
   };
 
   const syncDisplay = () => {
@@ -122,14 +157,22 @@ export default function LpQaPage() {
   };
 
   const handleGenerate = () => {
-    if (!currentProject || !questionsText.trim()) return;
-    const questions = questionsText.split('\n').map((q) => q.trim()).filter(Boolean);
+    if (!currentProject) return;
+
+    // 직접 입력 모드: questionsText에서, 파일 모드: questionsList에서
+    let questions: string[];
+    if (inputMode === 'file' && questionsList.length > 0) {
+      questions = questionsList.filter(q => q.trim());
+      setQuestionsList([]);
+    } else {
+      questions = questionsText.split('\n').map((q) => q.trim()).filter(Boolean);
+      setQuestionsText('');
+    }
     if (questions.length === 0) return;
 
     const newItems: QaItem[] = questions.map((q) => ({ question: q, answer: '', status: 'pending' as const }));
     queueRef.current = [...queueRef.current, ...newItems];
     syncDisplay();
-    setQuestionsText('');
 
     if (!processingRef.current) {
       processQueue();
@@ -186,6 +229,8 @@ export default function LpQaPage() {
   const doneCount = qaItems.filter((it) => it.status === 'done' || it.status === 'error').length;
   const totalCount = qaItems.length;
   const progressPct = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
+
+  const hasQuestions = inputMode === 'file' ? questionsList.length > 0 : questionsText.trim().length > 0;
 
   if (!currentProject) {
     return (
@@ -250,24 +295,79 @@ export default function LpQaPage() {
               />
             ) : (
               <div>
-                <label className="inline-block px-3 py-1.5 text-sm border border-[#E9E9E7] rounded-lg cursor-pointer hover:bg-[#F7F6F3]">
-                  📂 텍스트/Excel 파일 선택
-                  <input type="file" accept=".txt,.csv,.xlsx" onChange={handleFileUpload} className="hidden" />
+                <label className={`inline-block px-3 py-1.5 text-sm border border-[#E9E9E7] rounded-lg cursor-pointer hover:bg-[#F7F6F3] ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {uploading ? '⏳ 파싱 중...' : '📂 텍스트/Excel 파일 선택'}
+                  <input type="file" accept=".txt,.csv,.xlsx" onChange={handleFileUpload} className="hidden" disabled={uploading} />
                 </label>
-                {questionsText && (
-                  <div className="mt-2 text-xs text-[#9B9A97]">
-                    {questionsText.split('\n').filter(Boolean).length}개 질문 로드됨
-                  </div>
-                )}
               </div>
             )}
           </div>
+
+          {/* Question preview list (file upload mode) */}
+          {inputMode === 'file' && questionsList.length > 0 && (
+            <div className="bg-white border border-[#E9E9E7] rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-[#37352F]">
+                  질문 목록 ({questionsList.length}개)
+                </div>
+                <button onClick={clearQuestionsList} className="text-xs text-[#EB5757] hover:underline">
+                  전체 삭제
+                </button>
+              </div>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {questionsList.map((q, i) => (
+                  <div key={i} className="flex items-start gap-2 group">
+                    <span className="text-xs text-[#9B9A97] mt-1.5 shrink-0 w-6 text-right">{i + 1}.</span>
+                    {editingIdx === i ? (
+                      <div className="flex-1">
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          rows={3}
+                          className="w-full px-2 py-1.5 text-sm border border-[#2383E2] rounded-lg focus:outline-none resize-none"
+                          autoFocus
+                        />
+                        <div className="flex gap-1 mt-1">
+                          <button onClick={saveEdit}
+                            className="px-2 py-0.5 text-xs bg-[#2383E2] text-white rounded hover:bg-[#1b6ec2]">
+                            저장
+                          </button>
+                          <button onClick={cancelEdit}
+                            className="px-2 py-0.5 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 text-sm text-[#37352F] whitespace-pre-wrap leading-relaxed py-1">
+                          {q}
+                        </div>
+                        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => startEdit(i)}
+                            className="px-1.5 py-0.5 text-xs text-[#9B9A97] hover:text-[#2383E2] hover:bg-blue-50 rounded"
+                            title="수정">
+                            ✏️
+                          </button>
+                          <button onClick={() => removeQuestion(i)}
+                            className="px-1.5 py-0.5 text-xs text-[#9B9A97] hover:text-[#EB5757] hover:bg-red-50 rounded"
+                            title="삭제">
+                            🗑
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Generate / Stop buttons */}
           <div className="flex gap-2 mb-4">
             <button
               onClick={handleGenerate}
-              disabled={!questionsText.trim()}
+              disabled={!hasQuestions}
               className="flex-1 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors"
             >
               {generating ? '🤖 추가 질문 투입' : '🤖 답변 생성'}
