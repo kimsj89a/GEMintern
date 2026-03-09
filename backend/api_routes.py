@@ -45,7 +45,7 @@ def _get_anthropic_api_key() -> str:
 
 # Max context size per model family
 MAX_CONTEXT_CHARS_GEMINI = 800_000   # ~200K tokens
-MAX_CONTEXT_CHARS_CLAUDE = 400_000   # ~100K tokens (Anthropic 요청 크기 제한)
+MAX_CONTEXT_CHARS_CLAUDE = 150_000   # ~75K tokens (Claude 200K 입력 제한, 시스템프롬프트+질문 여유)
 MAX_CONTEXT_CHARS = MAX_CONTEXT_CHARS_GEMINI  # default
 
 
@@ -132,11 +132,11 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
             scored.append((name, content, score))
 
         scored.sort(key=lambda x: -x[2])
-        # 상위 문서만 선별 (최소 3개, 예산 내)
+        # 상위 문서만 선별 (예산 내, 최소 1개 보장)
         selected = []
         total = 0
         for name, content, score in scored:
-            if total + len(content) > max_chars and len(selected) >= 3:
+            if total + min(len(content), max_chars // max(len(scored), 1)) > max_chars and len(selected) >= 1:
                 break
             selected.append((name, content))
             total += len(content)
