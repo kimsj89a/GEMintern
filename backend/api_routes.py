@@ -928,7 +928,12 @@ def markdown_to_docx(req: MarkdownToDocxRequest, user: dict = Depends(get_curren
     """마크다운 텍스트를 Word 문서로 변환."""
     from fastapi.responses import Response
     import utils
-    docx_bytes = utils.create_docx(req.markdown)
+    try:
+        docx_bytes = utils.create_docx(req.markdown)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Word 변환 오류: {e}")
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
