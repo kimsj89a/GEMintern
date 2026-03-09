@@ -129,6 +129,16 @@ def _load_settings() -> dict:
     return {}
 
 
+def _load_settings_for_user(user_id: int) -> dict:
+    """settings.json + 유저별 DB 설정 오버레이. 유저가 바꾼 model_name 등이 우선."""
+    from backend.database import get_user_settings
+    base = _load_settings()
+    user_settings = get_user_settings(user_id)
+    if user_settings:
+        base.update(user_settings)
+    return base
+
+
 def _save_settings(data: dict):
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -199,7 +209,7 @@ def update_settings(settings: dict, user: dict = Depends(get_current_user)):
 
 @router.post("/settings/apply")
 def apply_settings(user: dict = Depends(get_current_user)):
-    settings = _load_settings()
+    settings = _load_settings_for_user(user["id"])
     model = settings.get("model_name", "")
 
     # Claude 모델 선택 시 Anthropic key 검증
@@ -435,7 +445,7 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     if req.project_name and not req.file_context.strip():
         _verify_project_ownership(req.project_name, user["id"])
     api_key = _get_api_key()
-    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
 
     user_context = req.file_context.strip()
     selected_docs = req.inputs.get("selected_docs", [])
@@ -471,7 +481,7 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
     if req.project_name and not req.file_context.strip():
         _verify_project_ownership(req.project_name, user["id"])
     api_key = _get_api_key()
-    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
 
     # Use client-provided file_context if available (local storage mode)
     context = req.file_context.strip() if req.file_context else ""
@@ -491,7 +501,7 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
 @router.post("/analyze")
 def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
-    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
 
     kwargs = dict(req.kwargs)
     if "project_name" in kwargs:
@@ -774,7 +784,7 @@ async def freedoc_upload(files: List[UploadFile] = File(...), user: dict = Depen
 def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)):
     """자유양식 문서작성: 파싱된 텍스트 + 지시사항 → AI 문서 생성 (task)."""
     api_key = _get_api_key()
-    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
     log_usage(user["id"], "/freedoc/generate", model)
 
     combined = req.file_text
@@ -851,7 +861,7 @@ class DraftDocRequest(BaseModel):
 def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_user)):
     """기안문 작성: 파싱된 텍스트 → AI 기안문 생성 (task)."""
     api_key = _get_api_key()
-    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
     log_usage(user["id"], "/draftdoc/generate", model)
 
     combined = req.file_text
@@ -1015,7 +1025,7 @@ def doc_updater_run(req: DocUpdaterRunRequest, user: dict = Depends(get_current_
         return {"error": "세션이 없습니다."}
 
     api_key = _get_api_key()
-    model = _load_settings().get("model_name", "gemini-3.1-pro-preview")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
     log_usage(user["id"], "/doc-updater/run", model)
 
     # Find original file
@@ -1210,7 +1220,7 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
     api_key = _get_api_key()
     if not api_key:
         return {"error": "API key not configured"}
-    model = _get_model_name()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
     is_reply = bool(req.context.strip())
     tone_label = _TONE_MAP.get(req.tone, "비즈니스 (합니다체)")
 
