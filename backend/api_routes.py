@@ -479,7 +479,14 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
                 future = executor.submit(_convert, tmp_path)
                 result = future.result(timeout=120)
             text_content = result.text_content if result else ""
-            # PDF 스캔본은 MarkItDown이 메타데이터만 반환 → 200자 이상이어야 유효
+            # PDF: 스캔본 감지 — 의미 있는 텍스트인지 검증
+            if ext == '.pdf' and text_content:
+                # 한글/영문 비율이 낮으면 바이너리/인코딩 쓰레기
+                import re as _re
+                readable = _re.findall(r'[가-힣a-zA-Z0-9]', text_content)
+                ratio = len(readable) / max(len(text_content), 1)
+                if ratio < 0.3 or len(text_content.strip()) < 200:
+                    text_content = ""  # OCR로 폴백
             min_len = 200 if ext == '.pdf' else 50
             if text_content and len(text_content.strip()) > min_len:
                 return f"### [파일명: {filename}]\n{text_content}"
@@ -501,9 +508,13 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
                 for page in doc:
                     pages.append(page.get_text())
                 text = "\n\n".join(pages)
-                if text.strip() and len(text.strip()) > 100:
+                # 읽을 수 있는 텍스트 비율 검증
+                import re as _re2
+                readable2 = _re2.findall(r'[가-힣a-zA-Z0-9]', text)
+                ratio2 = len(readable2) / max(len(text), 1)
+                if text.strip() and len(text.strip()) > 100 and ratio2 > 0.3:
                     return f"### [파일명: {filename}]\n{text}"
-                # 텍스트가 거의 없으면 스캔 PDF → Gemini OCR 시도
+                # 텍스트가 거의 없거나 바이너리면 스캔 PDF → Gemini OCR 시도
                 if api_key:
                     try:
                         import ocr as ocr_module
