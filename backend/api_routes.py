@@ -63,7 +63,10 @@ def _load_context_with_budget(project_name: str, selected_docs: list = None,
     docs_dict = core_rag.load_project_docs_dict(project_name)
 
     if selected_docs:
-        docs_dict = {k: v for k, v in docs_dict.items() if k.replace('.md', '') in selected_docs or k in selected_docs}
+        import os as _os
+        sel_stems = {_os.path.splitext(s)[0] for s in selected_docs}
+        docs_dict = {k: v for k, v in docs_dict.items()
+                     if _os.path.splitext(k)[0] in sel_stems or k in selected_docs}
 
     if not docs_dict:
         return ""
@@ -110,14 +113,18 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
         return ""
 
     if selected_docs:
+        # 확장자 무관하게 stem 비교 (서버: .md, 프론트: .pdf/.xlsx 등)
+        import os as _os
+        sel_stems = {_os.path.splitext(s)[0] for s in selected_docs}
         docs_dict = {k: v for k, v in docs_dict.items()
-                     if k.replace('.md', '') in selected_docs or k in selected_docs}
+                     if _os.path.splitext(k)[0] in sel_stems or k in selected_docs}
 
     if not docs_dict:
         return ""
 
-    # 질문이 있으면 관련 문서 스코어링
-    if query and len(docs_dict) > 3:
+    # 유저가 명시적으로 문서를 선택했으면 키워드 스코어링 건너뜀
+    # 질문이 있고, 선택이 없을 때만 관련 문서 스코어링
+    if query and not selected_docs and len(docs_dict) > 3:
         import re as _re
         query_lower = query.lower()
         keywords = set(_re.findall(r'[\w가-힣]{2,}', query_lower))
