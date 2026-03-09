@@ -43,8 +43,17 @@ def _get_anthropic_api_key() -> str:
         return env_key
     return _load_settings().get("anthropic_api_key", "")
 
-# Max context size (~200K tokens for Gemini)
-MAX_CONTEXT_CHARS = 800_000
+# Max context size per model family
+MAX_CONTEXT_CHARS_GEMINI = 800_000   # ~200K tokens
+MAX_CONTEXT_CHARS_CLAUDE = 400_000   # ~100K tokens (Anthropic 요청 크기 제한)
+MAX_CONTEXT_CHARS = MAX_CONTEXT_CHARS_GEMINI  # default
+
+
+def _max_chars_for_model(model: str) -> int:
+    """모델에 따라 최대 컨텍스트 크기 반환."""
+    if model.startswith("claude-"):
+        return MAX_CONTEXT_CHARS_CLAUDE
+    return MAX_CONTEXT_CHARS_GEMINI
 
 
 def _load_context_with_budget(project_name: str, selected_docs: list = None,
@@ -76,6 +85,80 @@ def _truncate_context(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "\n\n[... 컨텍스트 길이 제한으로 잘림]"
+
+
+def _select_relevant_docs(project_name: str, query: str, model: str = "",
+                           selected_docs: list = None) -> str:
+    """질문과 관련된 문서만 선별하여 컨텍스트 구성.
+    1순위: 벡터 검색 (인덱싱 되어 있으면)
+    2순위: 파일명/내용 키워드 매칭
+    3순위: 전체 문서 로드 + 예산 분배
+    """
+    max_chars = _max_chars_for_model(model)
+
+    # 1. 벡터 검색 시도
+    if query:
+        api_key = _get_api_key()
+        vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs)
+        if vector_ctx and len(vector_ctx.strip()) > 100:
+            return _truncate_context(vector_ctx, max_chars)
+
+    # 2. 키워드 기반 문서 선별
+    import core_rag
+    docs_dict = core_rag.load_project_docs_dict(project_name)
+    if not docs_dict:
+        return ""
+
+    if selected_docs:
+        docs_dict = {k: v for k, v in docs_dict.items()
+                     if k.replace('.md', '') in selected_docs or k in selected_docs}
+
+    if not docs_dict:
+        return ""
+
+    # 질문이 있으면 관련 문서 스코어링
+    if query and len(docs_dict) > 3:
+        import re as _re
+        query_lower = query.lower()
+        keywords = set(_re.findall(r'[\w가-힣]{2,}', query_lower))
+
+        scored = []
+        for name, content in docs_dict.items():
+            doc_lower = (name + " " + content[:2000]).lower()
+            score = sum(1 for kw in keywords if kw in doc_lower)
+            # 파일명 매치 가중치
+            name_lower = name.lower()
+            score += sum(3 for kw in keywords if kw in name_lower)
+            scored.append((name, content, score))
+
+        scored.sort(key=lambda x: -x[2])
+        # 상위 문서만 선별 (최소 3개, 예산 내)
+        selected = []
+        total = 0
+        for name, content, score in scored:
+            if total + len(content) > max_chars and len(selected) >= 3:
+                break
+            selected.append((name, content))
+            total += len(content)
+        docs_dict = dict(selected)
+
+    # 예산 분배
+    return _load_context_with_budget_from_dict(docs_dict, max_chars)
+
+
+def _load_context_with_budget_from_dict(docs_dict: dict, max_chars: int) -> str:
+    """문서 dict에서 예산 분배하여 컨텍스트 구성."""
+    if not docs_dict:
+        return ""
+    n = len(docs_dict)
+    per_doc = max_chars // n
+    parts = []
+    for name, content in sorted(docs_dict.items()):
+        doc_name = name.replace('.md', '')
+        if len(content) > per_doc:
+            content = content[:per_doc] + f"\n\n[... '{doc_name}' 일부 생략]"
+        parts.append(f"===== 문서: {doc_name} =====\n{content}")
+    return '\n\n'.join(parts)
 
 
 def _get_vector_context(api_key: str, project_name: str, query: str,
@@ -474,14 +557,18 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     print(f"[generate] project={req.project_name}, template={req.template_option}, "
           f"user_context_len={len(user_context)}, selected_docs={selected_docs}")
 
-    # If client provides file_context (local storage mode), use it directly
-    file_context = user_context
-    if not file_context and req.project_name:
-        file_context = _load_context_with_budget(
-            req.project_name, selected_docs if selected_docs else None
-        )
-        print(f"[generate] loaded docs from server: {len(file_context)} chars")
-    elif file_context:
+    # 서버에 동기화된 문서가 있으면 서버 RAG 사용, 없으면 클라이언트 컨텍스트 사용
+    max_chars = _max_chars_for_model(model)
+    file_context = ""
+    if req.project_name:
+        # 서버 RAG에서 관련 문서 선별 (벡터검색 → 키워드매칭 → 전체로드)
+        query = req.inputs.get("context_text", "") or req.template_option
+        server_ctx = _select_relevant_docs(req.project_name, query, model, selected_docs if selected_docs else None)
+        if server_ctx:
+            file_context = server_ctx
+            print(f"[generate] server RAG context: {len(file_context)} chars")
+    if not file_context and user_context:
+        file_context = _truncate_context(user_context, max_chars)
         print(f"[generate] using client-provided context: {len(file_context)} chars")
 
     inputs = dict(req.inputs)
@@ -505,12 +592,13 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
     model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
 
-    # Use client-provided file_context if available (local storage mode)
-    context = req.file_context.strip() if req.file_context else ""
-    if not context and req.project_name:
-        context = _get_vector_context(
-            api_key, req.project_name, req.question, req.selected_docs
-        )
+    # 서버 RAG 우선, fallback으로 클라이언트 컨텍스트
+    max_chars = _max_chars_for_model(model)
+    context = ""
+    if req.project_name:
+        context = _select_relevant_docs(req.project_name, req.question, model, req.selected_docs)
+    if not context:
+        context = _truncate_context(req.file_context.strip(), max_chars) if req.file_context else ""
     task_id = create_task()
     run_analysis_task(
         task_id, "qa_answer", api_key, model,
@@ -526,15 +614,17 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
     model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
 
     kwargs = dict(req.kwargs)
+    max_chars = _max_chars_for_model(model)
     if "project_name" in kwargs:
         pname = kwargs.pop("project_name")
         sel_docs = kwargs.pop("selected_docs", [])
-        # Use client-provided file_context if available (local storage mode)
-        if not kwargs.get("file_context"):
-            query = kwargs.get("question", req.task_type)
-            kwargs["file_context"] = _get_vector_context(
-                api_key, pname, query, sel_docs
-            )
+        query = kwargs.get("question", req.task_type)
+        # 서버 RAG 우선, fallback으로 클라이언트 컨텍스트
+        server_ctx = _select_relevant_docs(pname, query, model, sel_docs)
+        if server_ctx:
+            kwargs["file_context"] = server_ctx
+        elif kwargs.get("file_context"):
+            kwargs["file_context"] = _truncate_context(kwargs["file_context"], max_chars)
 
     task_id = create_task()
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
@@ -840,7 +930,7 @@ def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)
 
             prompt = (
                 f"[사용자 지시사항]\n{req.instruction}\n\n"
-                f"[제공된 자료]\n{_truncate_context(combined)}"
+                f"[제공된 자료]\n{_truncate_context(combined, _max_chars_for_model(model))}"
             )
 
             config = types.GenerateContentConfig(
@@ -926,7 +1016,7 @@ def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_use
 
             prompt = (
                 f"[사용자 추가 요청]\n{user_instruction}\n\n"
-                f"[제공된 자료]\n{_truncate_context(combined)}"
+                f"[제공된 자료]\n{_truncate_context(combined, _max_chars_for_model(model))}"
             )
 
             config = types.GenerateContentConfig(

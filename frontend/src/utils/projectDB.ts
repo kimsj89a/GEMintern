@@ -206,6 +206,9 @@ export async function getLocalFolderTree(project: string): Promise<Record<string
   return tree;
 }
 
+// 프론트에서 전송하는 최대 컨텍스트 크기 (약 150K 토큰 = 600K자)
+const MAX_CONTEXT_CHARS = 600_000;
+
 export async function buildFileContext(
   project: string,
   selectedDocs?: string[]
@@ -218,5 +221,18 @@ export async function buildFileContext(
     }
     return true;
   });
-  return filtered.map(d => d.parsedText).join('\n\n');
+
+  if (filtered.length === 0) return '';
+
+  // 문서별 균등 할당 + truncation
+  const perDoc = Math.floor(MAX_CONTEXT_CHARS / filtered.length);
+  const parts: string[] = [];
+  for (const d of filtered) {
+    let text = d.parsedText;
+    if (text.length > perDoc) {
+      text = text.slice(0, perDoc) + `\n\n[... '${d.filename}' 일부 생략]`;
+    }
+    parts.push(`===== ${d.filename} =====\n${text}`);
+  }
+  return parts.join('\n\n');
 }
