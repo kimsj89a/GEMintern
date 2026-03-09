@@ -289,8 +289,65 @@ def generate_followup_analysis(api_key, model_name, file_context, existing_analy
     return resp.text
 
 
+_INSUFFICIENT_MARKERS = [
+    "자료에서 직접 확인되지 않",
+    "자료에서 확인되지 않",
+    "자료에 언급되어 있지 않",
+    "자료에 포함되어 있지 않",
+    "관련 내용을 찾을 수 없",
+    "해당 정보가 없",
+    "확인할 수 없",
+    "자료에 없",
+]
+
+
+def _needs_web_search(answer: str) -> bool:
+    """1차 답변에서 문서 부족 신호가 있는지 감지."""
+    if not answer:
+        return True
+    answer_lower = answer.lower()
+    hit_count = sum(1 for m in _INSUFFICIENT_MARKERS if m in answer)
+    # 부족 표현이 2회 이상이면 웹 검색 필요
+    return hit_count >= 2
+
+
+def _web_search_supplement(api_key, question, doc_answer, file_context_summary=""):
+    """Gemini google_search tool로 웹 검색 보강 답변 생성."""
+    from google import genai as _genai
+    gemini_client = _genai.Client(api_key=api_key)
+
+    prompt = f"""당신은 PE/VC 투자 분석 전문가입니다. 아래 질문에 대해 기존 문서 기반 답변이 부족하여 웹 검색으로 보강합니다.
+
+[질문]
+{question}
+
+[기존 문서 기반 답변 (참고용)]
+{doc_answer[:3000]}
+
+[지침]
+- 웹 검색 결과를 활용하여 기존 답변을 보강하세요
+- 문서 기반 내용과 웹 검색 내용을 통합하여 완성도 높은 답변을 작성하세요
+- 웹 검색으로 얻은 정보는 출처를 간략히 표기하세요 (예: "웹 검색 결과에 따르면...")
+- 핵심 내용을 먼저, 부연 설명을 뒤에 배치하세요
+- 관련 데이터가 있으면 표로 정리하세요
+"""
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        max_output_tokens=65536,
+        temperature=0.3,
+    )
+    resp = gemini_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=config,
+    )
+    return resp.text
+
+
 def generate_qa_answer(api_key, model_name, file_context, question, prev_qa_context="", rag_context=""):
-    """자료 기반 Q&A - 로드된 자료를 참조하여 사용자 질문에 답변"""
+    """자료 기반 Q&A - 로드된 자료를 참조하여 사용자 질문에 답변.
+    2-pass: 문서 기반 답변 → 부족 시 Gemini 웹 검색 보강.
+    """
     client = get_client(api_key)
     prev_section = f"\n[이전 Q&A 맥락]\n{prev_qa_context}\n" if prev_qa_context else ""
     rag_section = f"\n[프로젝트 문서]\n{rag_context}\n" if rag_context else ""
@@ -316,7 +373,18 @@ def generate_qa_answer(api_key, model_name, file_context, question, prev_qa_cont
         temperature=0.2,
     )
     resp = client.models.generate_content(model=model_name, contents=prompt_text, config=config)
-    return resp.text
+    first_answer = resp.text
+
+    # 2nd pass: 문서 답변이 부족하면 Gemini 웹 검색으로 보강
+    if _needs_web_search(first_answer):
+        try:
+            web_answer = _web_search_supplement(api_key, question, first_answer)
+            if web_answer and len(web_answer.strip()) > 100:
+                return web_answer + "\n\n---\n*웹 검색 결과를 포함하여 보강된 답변입니다.*"
+        except Exception as e:
+            print(f"[qa] web search supplement failed: {e}")
+
+    return first_answer
 
 
 def generate_followup_questions(api_key, model_name, file_context, rag_context=""):
