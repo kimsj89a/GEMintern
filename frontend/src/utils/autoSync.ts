@@ -1,12 +1,14 @@
 /**
  * Auto-sync: when a project is selected, ensure server has documents
- * by syncing from IndexedDB if needed.
+ * by syncing from IndexedDB if needed. Batches to avoid 502/413.
  */
 import { useEffect, useRef } from 'react';
 import { api } from '../api/client';
 import { getProjectDocuments } from './projectDB';
 
 const syncedProjects = new Set<string>();
+
+const BATCH_SIZE = 5; // docs per request to avoid large payloads
 
 export async function ensureServerSync(project: string): Promise<void> {
   if (!project || syncedProjects.has(project)) return;
@@ -21,7 +23,7 @@ export async function ensureServerSync(project: string): Promise<void> {
       return;
     }
 
-    // Server empty — sync from IndexedDB
+    // Server empty — sync from IndexedDB in batches
     const localDocs = await getProjectDocuments(project);
     const realDocs = localDocs.filter(d => d.filename !== '__folder_placeholder__' && d.parsedText);
 
@@ -30,13 +32,14 @@ export async function ensureServerSync(project: string): Promise<void> {
       return;
     }
 
-    const payload = realDocs.map(d => ({
-      filename: d.filename,
-      parsedText: d.parsedText,
-      folder: d.folder,
-    }));
+    for (let i = 0; i < realDocs.length; i += BATCH_SIZE) {
+      const batch = realDocs.slice(i, i + BATCH_SIZE).map(d => ({
+        filename: d.filename,
+        parsedText: d.parsedText,
+      }));
+      await api.syncTextsToServer(project, batch);
+    }
 
-    await api.syncTextsToServer(project, payload);
     syncedProjects.add(project);
     console.log(`[autoSync] Synced ${realDocs.length} docs for "${project}" to server`);
   } catch (err) {
