@@ -184,6 +184,16 @@ def update_settings(settings: dict, user: dict = Depends(get_current_user)):
     current_user_settings = get_user_settings(user["id"])
     current_user_settings.update(settings)
     save_user_settings(user["id"], current_user_settings)
+    # Also sync model_name/thinking_level to settings.json so all endpoints pick it up
+    global_keys = ("model_name", "thinking_level")
+    global_settings = _load_settings()
+    changed = False
+    for k in global_keys:
+        if k in settings and settings[k] != global_settings.get(k):
+            global_settings[k] = settings[k]
+            changed = True
+    if changed:
+        _save_settings(global_settings)
     return {"success": True}
 
 
