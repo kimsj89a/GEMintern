@@ -457,15 +457,16 @@ async def parse_files_only(files: List[UploadFile] = File(...), user: dict = Dep
 
 @router.post("/extract-excel-cells")
 async def extract_excel_cells(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
-    """엑셀 파일에서 셀 단위로 텍스트 추출 (LP Q&A 질문 목록용)."""
-    cells: list[str] = []
+    """엑셀 파일에서 행 단위로 텍스트 추출 (LP Q&A 질문 목록용).
+    동일 행의 모든 셀을 ' | '로 합치고, 셀 내 줄바꿈은 유지하여 하나의 질문으로 취급.
+    """
+    rows_out: list[str] = []
     for f in files:
         ext = os.path.splitext(f.filename)[1].lower()
         if ext not in ('.xlsx', '.xls', '.csv'):
-            # 텍스트 파일은 줄 단위로
             data = await f.read()
             lines = data.decode("utf-8", errors="replace").split("\n")
-            cells.extend(l.strip() for l in lines if l.strip())
+            rows_out.extend(l.strip() for l in lines if l.strip())
             continue
         try:
             import pandas as pd
@@ -476,14 +477,20 @@ async def extract_excel_cells(files: List[UploadFile] = File(...), user: dict = 
                 df_dict = pd.read_excel(io.BytesIO(data), sheet_name=None, header=None)
             for _sheet_name, df in df_dict.items():
                 for _, row in df.iterrows():
+                    parts = []
                     for val in row:
                         if pd.notna(val):
                             text = str(val).strip()
-                            if text and len(text) > 2:
-                                cells.append(text)
+                            if text:
+                                parts.append(text)
+                    if parts:
+                        combined = " | ".join(parts)
+                        # 너무 짧거나 숫자만이면 제목/번호행 → 건너뜀
+                        if len(combined) > 5:
+                            rows_out.append(combined)
         except Exception as e:
-            cells.append(f"파싱 오류: {e}")
-    return {"cells": cells, "count": len(cells)}
+            rows_out.append(f"파싱 오류: {e}")
+    return {"cells": rows_out, "count": len(rows_out)}
 
 
 def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
