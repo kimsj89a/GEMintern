@@ -72,11 +72,17 @@ export default function ProjectPage() {
     setStatus('');
     try {
       const result = await api.parseFiles(files);
-      const docs = Object.entries(result.parsed_texts).map(([filename, text]) => ({ filename, parsedText: text }));
+      const docs = Object.entries(result.parsed_texts).map(([filename, text]) => ({ filename, parsedText: text as string }));
       await addLocalDocuments(currentProject, docs);
       const errorMsg = result.errors.length > 0 ? ` (${result.errors.length}개 파일 파싱 실패)` : '';
-      setStatus(`${docs.length}개 파일 업로드 완료${errorMsg}. 로컬에 저장됨.`);
+      setStatus(`${docs.length}개 파일 업로드 완료${errorMsg}. 서버 동기화 중...`);
       loadDocs();
+      // 백그라운드로 서버 RAG 저장소에 동기화
+      api.syncTextsToServer(currentProject, docs).then(() => {
+        setStatus(`${docs.length}개 파일 업로드 완료${errorMsg}. 서버 동기화 완료.`);
+      }).catch(() => {
+        setStatus(`${docs.length}개 파일 업로드 완료${errorMsg}. 서버 동기화 실패 (로컬은 정상).`);
+      });
     } catch { setStatus('업로드 실패'); } finally { setUploading(false); }
   };
 
@@ -167,6 +173,24 @@ export default function ProjectPage() {
               </div>
               <div className="flex items-center gap-3 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg text-xs text-[#787774]">
                 <span>로컬 저장: {docCount}개 문서 (브라우저 IndexedDB)</span>
+                {docCount > 0 && (
+                  <button
+                    onClick={async () => {
+                      setStatus('서버 동기화 중...');
+                      try {
+                        const docs = await getProjectDocuments(currentProject);
+                        const syncDocs = docs
+                          .filter(d => d.filename !== '__folder_placeholder__')
+                          .map(d => ({ filename: d.filename, parsedText: d.parsedText }));
+                        await api.syncTextsToServer(currentProject, syncDocs);
+                        setStatus(`${syncDocs.length}개 문서 서버 동기화 완료.`);
+                      } catch { setStatus('서버 동기화 실패.'); }
+                    }}
+                    className="px-2 py-0.5 bg-[#2383E2] text-white rounded hover:bg-[#1b6ec2] text-xs"
+                  >
+                    서버 동기화
+                  </button>
+                )}
               </div>
               <FilePicker onFilesSelected={handleUpload} loading={uploading} />
             </>

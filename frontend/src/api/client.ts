@@ -87,6 +87,12 @@ export const api = {
     });
     return res.json();
   },
+  syncTextsToServer: (project: string, docs: { filename: string; parsedText: string }[]) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/sync-texts`, {
+      method: 'POST',
+      body: JSON.stringify({ docs }),
+    }),
+
   parseFiles: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));

@@ -304,6 +304,28 @@ def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):
     return core_rag.trash_document(name, doc)
 
 
+@router.post("/projects/{name}/sync-texts")
+def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_current_user)):
+    """IndexedDB에서 파싱된 텍스트를 서버 RAG 저장소로 동기화.
+    payload: { docs: [{ filename, parsedText }] }
+    프로젝트가 서버에 없으면 자동 생성.
+    """
+    import core_rag
+
+    # 서버에 프로젝트가 없으면 자동 생성
+    projects = core_rag.list_projects(owner_id=user["id"])
+    if not any(p["name"] == name for p in projects):
+        core_rag.create_project(name, owner_id=user["id"])
+
+    docs = payload.get("docs", [])
+    if not docs:
+        return {"success": True, "indexed": [], "message": "동기화할 문서 없음"}
+
+    texts = {d["filename"]: d["parsedText"] for d in docs if d.get("parsedText")}
+    result = core_rag.index_texts("", texts, name)
+    return result
+
+
 @router.post("/projects/{name}/upload")
 async def upload_files(name: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
