@@ -4,8 +4,23 @@ AI Client Adapter — Gemini / Anthropic 통합 어댑터.
 기존 코드의 `genai.Client` 인터페이스(client.models.generate_content / generate_content_stream)를 유지.
 """
 import os
+import re
+import time
+import logging
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+
+
+def _parse_retry_delay(error_msg: str) -> float:
+    """429 에러 메시지에서 retryDelay 추출. 없으면 기본 15초."""
+    m = re.search(r'retry\s*(?:in|Delay[\'"]?\s*:\s*[\'"]?)\s*([\d.]+)', str(error_msg), re.IGNORECASE)
+    if m:
+        return min(float(m.group(1)) + 1, 60)
+    return 15.0
 
 
 def _get_anthropic_key() -> str:
@@ -108,12 +123,30 @@ class _ModelsNamespace:
     def generate_content(self, model: str, contents, config=None):
         if _is_claude(model):
             return self._claude_generate(model, contents, config)
-        return self._gemini.models.generate_content(model=model, contents=contents, config=config)
+        for attempt in range(MAX_RETRIES):
+            try:
+                return self._gemini.models.generate_content(model=model, contents=contents, config=config)
+            except Exception as e:
+                if '429' in str(e) and attempt < MAX_RETRIES - 1:
+                    delay = _parse_retry_delay(str(e))
+                    logger.warning(f"Rate limited (429), retrying in {delay:.0f}s (attempt {attempt + 1}/{MAX_RETRIES})")
+                    time.sleep(delay)
+                else:
+                    raise
 
     def generate_content_stream(self, model: str, contents, config=None):
         if _is_claude(model):
             return self._claude_stream(model, contents, config)
-        return self._gemini.models.generate_content_stream(model=model, contents=contents, config=config)
+        for attempt in range(MAX_RETRIES):
+            try:
+                return self._gemini.models.generate_content_stream(model=model, contents=contents, config=config)
+            except Exception as e:
+                if '429' in str(e) and attempt < MAX_RETRIES - 1:
+                    delay = _parse_retry_delay(str(e))
+                    logger.warning(f"Rate limited (429), retrying in {delay:.0f}s (attempt {attempt + 1}/{MAX_RETRIES})")
+                    time.sleep(delay)
+                else:
+                    raise
 
     # ── Anthropic 구현 ──
 
