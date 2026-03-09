@@ -93,6 +93,16 @@ export const api = {
       body: JSON.stringify({ docs }),
     }),
 
+  extractExcelCells: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const res = await fetchWithAuth(`${BASE}/extract-excel-cells`, {
+      method: 'POST',
+      body: formData,
+    });
+    return res.json() as Promise<{ cells: string[]; count: number }>;
+  },
+
   parseFiles: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));

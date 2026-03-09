@@ -455,6 +455,37 @@ async def parse_files_only(files: List[UploadFile] = File(...), user: dict = Dep
     return {"parsed_texts": parsed, "errors": errors, "count": len(parsed)}
 
 
+@router.post("/extract-excel-cells")
+async def extract_excel_cells(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """엑셀 파일에서 셀 단위로 텍스트 추출 (LP Q&A 질문 목록용)."""
+    cells: list[str] = []
+    for f in files:
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ('.xlsx', '.xls', '.csv'):
+            # 텍스트 파일은 줄 단위로
+            data = await f.read()
+            lines = data.decode("utf-8", errors="replace").split("\n")
+            cells.extend(l.strip() for l in lines if l.strip())
+            continue
+        try:
+            import pandas as pd
+            data = await f.read()
+            if ext == '.csv':
+                df_dict = {"Sheet1": pd.read_csv(io.BytesIO(data), header=None)}
+            else:
+                df_dict = pd.read_excel(io.BytesIO(data), sheet_name=None, header=None)
+            for _sheet_name, df in df_dict.items():
+                for _, row in df.iterrows():
+                    for val in row:
+                        if pd.notna(val):
+                            text = str(val).strip()
+                            if text and len(text) > 2:
+                                cells.append(text)
+        except Exception as e:
+            cells.append(f"파싱 오류: {e}")
+    return {"cells": cells, "count": len(cells)}
+
+
 def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
     """파일 바이트를 텍스트로 변환. PDF/DOCX/PPTX/XLSX 파서 지원."""
     import tempfile

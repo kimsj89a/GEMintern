@@ -32,14 +32,28 @@ export default function LpQaPage() {
     getLocalFolderTree(currentProject).then(setTree).catch(() => setTree({}));
   }, [currentProject]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setQuestionsText(reader.result as string);
-    };
-    reader.readAsText(file);
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    if (ext === 'txt') {
+      const reader = new FileReader();
+      reader.onload = () => setQuestionsText(reader.result as string);
+      reader.readAsText(file);
+    } else {
+      // Excel/CSV → 서버에서 셀 단위 추출
+      try {
+        const result = await api.extractExcelCells([file]);
+        if (result.cells.length > 0) {
+          setQuestionsText(result.cells.join('\n'));
+        } else {
+          setQuestionsText('파일에서 질문을 추출할 수 없습니다.');
+        }
+      } catch {
+        setQuestionsText('파일 업로드 실패');
+      }
+    }
   };
 
   const syncDisplay = () => {
