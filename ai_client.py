@@ -120,9 +120,19 @@ class _ModelsNamespace:
             self._anthropic_client = anthropic.Anthropic(api_key=self._anthropic_key)
         return self._anthropic_client
 
+    # Gemini 폴백 모델 (Claude 429 시 사용)
+    GEMINI_FALLBACK = "gemini-2.5-flash"
+
     def generate_content(self, model: str, contents, config=None):
         if _is_claude(model):
-            return self._claude_generate(model, contents, config)
+            try:
+                return self._claude_generate(model, contents, config)
+            except Exception as e:
+                if '429' in str(e) or 'rate_limit' in str(e):
+                    logger.warning(f"Claude 429 rate limit — Gemini 폴백 사용")
+                    return self._gemini.models.generate_content(
+                        model=self.GEMINI_FALLBACK, contents=contents, config=config)
+                raise
         for attempt in range(MAX_RETRIES):
             try:
                 return self._gemini.models.generate_content(model=model, contents=contents, config=config)
@@ -136,7 +146,7 @@ class _ModelsNamespace:
 
     def generate_content_stream(self, model: str, contents, config=None):
         if _is_claude(model):
-            return self._claude_stream(model, contents, config)
+            return self._claude_stream_with_fallback(model, contents, config)
         for attempt in range(MAX_RETRIES):
             try:
                 return self._gemini.models.generate_content_stream(model=model, contents=contents, config=config)
@@ -149,6 +159,22 @@ class _ModelsNamespace:
                     raise
 
     # ── Anthropic 구현 ──
+
+    def _claude_stream_with_fallback(self, model, contents, config):
+        """Claude 스트리밍 시도, 429면 Gemini 폴백."""
+        try:
+            gen = self._claude_stream(model, contents, config)
+            # Generator이므로 첫 chunk를 가져와서 429 체크
+            first = next(gen)
+            yield first
+            yield from gen
+        except Exception as e:
+            if '429' in str(e) or 'rate_limit' in str(e):
+                logger.warning(f"Claude 429 rate limit (stream) — Gemini 폴백 사용")
+                yield from self._gemini.models.generate_content_stream(
+                    model=self.GEMINI_FALLBACK, contents=contents, config=config)
+            else:
+                raise
 
     def _claude_generate(self, model: str, contents, config=None):
         """비스트리밍 호출 — 내부적으로 스트리밍으로 수집 (Anthropic 10분 제한 회피)."""

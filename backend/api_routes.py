@@ -45,7 +45,7 @@ def _get_anthropic_api_key() -> str:
 
 # Max context size per model family
 MAX_CONTEXT_CHARS_GEMINI = 800_000   # ~200K tokens
-MAX_CONTEXT_CHARS_CLAUDE = 150_000   # ~75K tokens (Claude 200K 입력 제한, 시스템프롬프트+질문 여유)
+MAX_CONTEXT_CHARS_CLAUDE = 50_000    # ~25K tokens (Claude 분당 30K 토큰 제한 대응)
 MAX_CONTEXT_CHARS = MAX_CONTEXT_CHARS_GEMINI  # default
 
 
