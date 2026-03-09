@@ -478,8 +478,11 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(_convert, tmp_path)
                 result = future.result(timeout=120)
-            if result and result.text_content and len(result.text_content.strip()) > 50:
-                return f"### [파일명: {filename}]\n{result.text_content}"
+            text_content = result.text_content if result else ""
+            # PDF 스캔본은 MarkItDown이 메타데이터만 반환 → 200자 이상이어야 유효
+            min_len = 200 if ext == '.pdf' else 50
+            if text_content and len(text_content.strip()) > min_len:
+                return f"### [파일명: {filename}]\n{text_content}"
         finally:
             if os.path.exists(tmp_path):
                 try:
@@ -489,7 +492,7 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
     except Exception:
         pass
 
-    # PDF fallback: PyMuPDF
+    # PDF fallback: PyMuPDF → OCR if scanned
     if ext == '.pdf':
         try:
             import fitz
@@ -498,8 +501,17 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
                 for page in doc:
                     pages.append(page.get_text())
                 text = "\n\n".join(pages)
-                if text.strip():
+                if text.strip() and len(text.strip()) > 100:
                     return f"### [파일명: {filename}]\n{text}"
+                # 텍스트가 거의 없으면 스캔 PDF → Gemini OCR 시도
+                if api_key:
+                    try:
+                        import ocr as ocr_module
+                        ocr_text = ocr_module.extract_pdf_with_gemini_ocr(doc, api_key)
+                        if ocr_text and len(ocr_text.strip()) > 50:
+                            return f"### [파일명: {filename} (OCR)]\n{ocr_text}"
+                    except Exception as ocr_err:
+                        print(f"[parse] OCR failed for {filename}: {ocr_err}")
         except Exception:
             pass
 
