@@ -152,9 +152,12 @@ export async function copyRichText(markdown: string): Promise<void> {
 export async function downloadAsWord(markdown: string, filename?: string): Promise<void> {
   const title = filename || (extractTitle(markdown) + '.docx');
   const fname = title.endsWith('.docx') ? title : title + '.docx';
+  const token = (await import('../stores/authStore')).useAuthStore.getState().token;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch('/api/markdown-to-docx', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ markdown, filename: fname }),
   });
   if (!res.ok) throw new Error(`Word 변환 실패: ${res.status}`);
