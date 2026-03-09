@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import FolderTree from '../components/FolderTree';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, downloadAsWord } from '../utils/clipboard';
-import { buildFileContext, getLocalFolderTree } from '../utils/projectDB';
+import { getLocalFolderTree } from '../utils/projectDB';
 
 interface QaItem {
   question: string;
@@ -75,12 +75,10 @@ export default function LpQaPage() {
       syncDisplay();
 
       try {
-        const localCtx = await buildFileContext(currentProject!, selectedDocs.length > 0 ? selectedDocs : undefined);
         const { task_id } = await api.startQa({
           project_name: currentProject!,
           question: queueRef.current[idx].question,
           selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
-          file_context: localCtx,
         });
 
         const result = await pollTask(task_id);

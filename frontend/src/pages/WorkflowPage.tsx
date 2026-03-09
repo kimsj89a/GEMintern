@@ -9,7 +9,7 @@ import type { ChatMessage } from '../components/ChatWidget';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, extractTitle, downloadAsWord } from '../utils/clipboard';
 import GenerationProgress from '../components/GenerationProgress';
-import { getLocalFolderTree, buildFileContext, addLocalDocuments } from '../utils/projectDB';
+import { getLocalFolderTree, addLocalDocuments } from '../utils/projectDB';
 
 /* ─── Types ─── */
 type WriteMode = 'report' | 'ppt';
@@ -373,10 +373,9 @@ export default function WorkflowPage() {
     setStep(2);
     cancelAnalyzeRef.current = false;
     try {
-      const localCtx = await buildFileContext(currentProject, selectedDocs.length > 0 ? selectedDocs : undefined);
       const { task_id } = await api.startAnalysis({
         task_type: 'material_summary',
-        kwargs: { project_name: currentProject, selected_docs: selectedDocs, file_context: localCtx },
+        kwargs: { project_name: currentProject, selected_docs: selectedDocs },
       });
       const check = async () => {
         if (cancelAnalyzeRef.current) return;
@@ -399,12 +398,10 @@ export default function WorkflowPage() {
     setChatLoading(true);
     cancelChatRef.current = false;
     try {
-      const localCtx = await buildFileContext(currentProject, selectedDocs.length > 0 ? selectedDocs : undefined);
       const { task_id } = await api.startQa({
         project_name: currentProject,
         question,
         selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
-        file_context: localCtx,
       });
       const check = async () => {
         if (cancelChatRef.current) return;
@@ -443,12 +440,11 @@ export default function WorkflowPage() {
       structureText = `# 투자심사보고서: [대상기업명]\n\n` + filtered.map(s => s.structure).join('\n\n');
     }
     try {
-      const localContext = await buildFileContext(currentProject, selectedDocs.length > 0 ? selectedDocs : undefined);
       const { task_id } = await api.startGenerate({
         project_name: currentProject,
         template_option: selectedTemplate,
         thinking_level: 'MEDIUM',
-        file_context: localContext || context,
+        file_context: '',
         inputs: { selected_docs: selectedDocs, ...(structureText ? { structure_text: structureText } : {}) },
         mode,
       });
