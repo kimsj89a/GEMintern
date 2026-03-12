@@ -214,6 +214,12 @@ export const api = {
   },
   getMe: () => request<any>('/auth/me'),
 
+  // NPS
+  npsSearch: (params: URLSearchParams) =>
+    request<{ data: any[]; total: number; page: number; perPage: number; error?: string }>(
+      `/nps/search?${params.toString()}`
+    ),
+
   // Admin
   createInviteCodes: (count: number) =>
     request<{ codes: string[] }>('/auth/invite-codes', {

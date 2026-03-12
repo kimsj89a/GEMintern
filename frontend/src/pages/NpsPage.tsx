@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '../api/client';
 
 interface NpsRow {
   자료생성년월: string;
@@ -51,8 +52,7 @@ export default function NpsPage() {
     params.set('perPage', String(perPage));
 
     try {
-      const res = await fetch(`/api/nps/search?${params}`);
-      const json = await res.json();
+      const json = await api.npsSearch(params);
       if (json.error) {
         setResults([]);
         setTotal(0);
