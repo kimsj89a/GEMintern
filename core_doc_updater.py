@@ -391,11 +391,13 @@ def update_document(original_path: str, supplementary_paths: list[str],
     changes = []
     for item in updates.get("updated_paragraphs", []):
         idx = item["index"]
+        # AI가 str로 반환할 수 있으므로 int/str 모두 시도
+        orig = original_map.get(idx) or original_map.get(int(idx) if isinstance(idx, str) else str(idx)) or ""
         changes.append({
             "type": "modified",
             "index": idx,
             "reason": item.get("reason", ""),
-            "original": original_map.get(idx, ""),
+            "original": orig,
             "modified": item["new_text"],
         })
     for item in updates.get("new_paragraphs", []):

@@ -1,4 +1,4 @@
-import{u as we,r as n,b as re,j as e,a as h,f as ke}from"./index-CFy78svS.js";import{s as Se,u as L}from"./ws-CdU8899C.js";import{F as ne}from"./FolderTree-GCbHNQ1F.js";import{F as ie}from"./FilePicker-DhjXgEI0.js";import{C as oe}from"./ChatWidget-Cr1i5l0R.js";import{M as y}from"./MarkdownViewer-D8j9Dh0N.js";import{d as ce,g as q,c as Te}from"./clipboard-xncFioMl.js";import{G as Ce}from"./GenerationProgress-UakEsVG5.js";import{u as Me}from"./autoSync-Bx0Vh9ka.js";const _e=[{id:"inv1",label:"1. 투자내용",structure:`## 1. 투자내용
+import{u as we,r as n,b as re,j as e,a as h,f as ke}from"./index-BloUMuyR.js";import{s as Se,u as L}from"./ws-BQSTUbe2.js";import{F as ne}from"./FolderTree-BelbBrok.js";import{F as ie}from"./FilePicker-B8j_aSTL.js";import{C as oe}from"./ChatWidget-TWXgWWfN.js";import{M as y}from"./MarkdownViewer-Dy7BmIHi.js";import{d as ce,g as q,c as Te}from"./clipboard-Dz0BKSis.js";import{G as Ce}from"./GenerationProgress-968Cu9Lf.js";import{u as Me}from"./autoSync-D6QnNwnU.js";const _e=[{id:"inv1",label:"1. 투자내용",structure:`## 1. 투자내용
 ### 1.1 투자개요
 ### 1.2 투자 구조 및 재원
 ### 1.3 주요 투자 조건 (Key Terms)

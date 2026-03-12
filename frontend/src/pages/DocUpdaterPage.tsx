@@ -269,11 +269,13 @@ export default function DocUpdaterPage() {
                     )}
                   </div>
                   <div className="divide-y divide-[#E9E9E7]">
-                    {/* Original */}
-                    {c.original && (
+                    {/* Original (always show for modified type) */}
+                    {c.type === 'modified' && (
                       <div className="px-4 py-3 bg-red-50/40">
                         <div className="text-[11px] font-medium text-red-400 uppercase mb-1">기존</div>
-                        <p className="text-sm text-[#37352F] whitespace-pre-wrap leading-relaxed">{c.original}</p>
+                        <p className="text-sm text-[#37352F] whitespace-pre-wrap leading-relaxed">
+                          {c.original || '(원본 텍스트 없음)'}
+                        </p>
                       </div>
                     )}
                     {/* Modified */}
