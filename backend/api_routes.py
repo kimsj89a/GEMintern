@@ -1318,9 +1318,12 @@ def doc_updater_promote_output(req: DocUpdaterPromoteRequest, user: dict = Depen
 # ──────────────────────────────────────────
 
 import sys as _sys
-_nps_path = os.path.join(os.path.expanduser("~"), "nps_query")
-if _nps_path not in _sys.path:
-    _sys.path.insert(0, _nps_path)
+# Try local project copy first, then fallback to ~/nps_query
+_nps_project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_nps_home_path = os.path.join(os.path.expanduser("~"), "nps_query")
+for _p in [_nps_project_path, _nps_home_path]:
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
 
 try:
     from nps_query import NpsQuery, ENDPOINTS as NPS_ENDPOINTS
