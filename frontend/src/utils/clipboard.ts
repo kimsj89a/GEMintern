@@ -2,7 +2,24 @@
  * Rich clipboard copy & title extraction utilities.
  * - copyRichText: copies both plain text + HTML so Word paste preserves formatting
  * - extractTitle: extracts first heading from markdown for filenames
+ * - generateFilename: generates standardized filename with project, menu, date/time
  */
+
+/**
+ * Generate standardized filename: (프로젝트명)_메뉴이름_YYYYMMDD_HHmmss.ext
+ */
+export function generateFilename(menuName: string, ext: string, project?: string): string {
+  const now = new Date();
+  const date = now.getFullYear().toString()
+    + String(now.getMonth() + 1).padStart(2, '0')
+    + String(now.getDate()).padStart(2, '0');
+  const time = String(now.getHours()).padStart(2, '0')
+    + String(now.getMinutes()).padStart(2, '0')
+    + String(now.getSeconds()).padStart(2, '0');
+  const prefix = project ? `${project}_` : '';
+  const cleanExt = ext.startsWith('.') ? ext.slice(1) : ext;
+  return `${prefix}${menuName}_${date}_${time}.${cleanExt}`;
+}
 
 /** Simple markdown → HTML converter for clipboard (not for display). */
 function mdToHtml(md: string): string {

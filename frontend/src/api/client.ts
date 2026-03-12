@@ -176,6 +176,10 @@ export const api = {
     request<{ task_id: string }>('/doc-updater/run', {
       method: 'POST', body: JSON.stringify(data),
     }),
+  docUpdaterPromoteOutput: (data: { session_id: string; output_path: string }) =>
+    request<{ filename: string; doc_type: string; paragraph_count: number; preview: string }>(
+      '/doc-updater/promote-output', { method: 'POST', body: JSON.stringify(data) },
+    ),
   docUpdaterDownload: async (path: string, filename: string) => {
     const res = await fetchWithAuth(
       `${BASE}/doc-updater/download?path=${encodeURIComponent(path)}`

@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from '../components/MarkdownViewer';
+import { generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 
 export default function PptToolsPage() {
+  const { currentProject } = useAppStore();
   const [tab, setTab] = useState<'generate' | 'update'>('generate');
 
   // Generate tab
@@ -70,7 +73,7 @@ export default function PptToolsPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'presentation.pptx'; a.click();
+      a.href = url; a.download = generateFilename('발표자료', 'pptx', currentProject); a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
       alert(`PPTX 생성 실패: ${err.message}`);
@@ -96,7 +99,7 @@ export default function PptToolsPage() {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = pptxFile.name.replace('.pptx', '_updated.pptx'); a.click();
+        a.href = url; a.download = generateFilename('PPT업데이트', 'pptx', currentProject); a.click();
         URL.revokeObjectURL(url);
         setUpdateStatus('업데이트 완료! 파일이 다운로드됩니다.');
       } else {

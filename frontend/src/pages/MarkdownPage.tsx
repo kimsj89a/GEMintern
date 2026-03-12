@@ -22,6 +22,7 @@ export default function MarkdownPage() {
   const [markdown, setMarkdown] = useState('');
   const [filename, setFilename] = useState('');
   const [copyMsg, setCopyMsg] = useState('');
+  const [dragOver, setDragOver] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const applyTool = useCallback((toolKey: string) => {
@@ -77,6 +78,22 @@ export default function MarkdownPage() {
     input.click();
   }, []);
 
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!['md', 'txt', 'markdown'].includes(ext || '')) {
+      alert('마크다운(.md), 텍스트(.txt) 파일만 지원합니다.');
+      return;
+    }
+    file.text().then((text) => {
+      setMarkdown(text);
+      setFilename(file.name.replace(/\.[^.]+$/, ''));
+    });
+  }, []);
+
   const handleCopy = useCallback(async () => {
     try {
       await copyRichText(markdown);
@@ -111,7 +128,19 @@ export default function MarkdownPage() {
   );
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div
+      className={`h-full flex flex-col bg-white relative ${dragOver ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={handleDrop}
+    >
+      {dragOver && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-blue-50/80 backdrop-blur-[2px] pointer-events-none">
+          <div className="text-base text-blue-500 font-medium px-6 py-3 bg-white rounded-xl shadow-lg border border-blue-200">
+            📄 파일을 놓으면 마크다운을 불러옵니다
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
         <div>
@@ -159,8 +188,9 @@ export default function MarkdownPage() {
       <div className="flex flex-1 min-h-0">
         {/* Editor */}
         <div className="w-1/2 flex flex-col border-r border-slate-200">
-          <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-b border-slate-100 font-medium uppercase tracking-wider">
-            편집
+          <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-b border-slate-100 font-medium uppercase tracking-wider flex items-center justify-between">
+            <span>편집</span>
+            <span className="text-slate-300">{charCount}자 / {lineCount}행</span>
           </div>
           <textarea
             ref={taRef}
@@ -169,7 +199,7 @@ export default function MarkdownPage() {
             onKeyDown={handleKeyDown}
             className="flex-1 w-full resize-none p-4 text-sm text-slate-800 bg-white focus:outline-none"
             style={{ fontFamily: 'var(--font-mono, "Consolas", "Monaco", monospace)' }}
-            placeholder="마크다운을 입력하세요..."
+            placeholder="마크다운을 입력하세요... (파일을 드래그해서 놓을 수도 있습니다)"
             spellCheck={false}
           />
         </div>
@@ -182,38 +212,32 @@ export default function MarkdownPage() {
           <div className="flex-1 overflow-y-auto p-4">
             <MarkdownViewer content={markdown} />
           </div>
-        </div>
-      </div>
-
-      {/* Bottom bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200 bg-slate-50/50">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleCopy}
-            disabled={!markdown}
-            className="px-4 py-1.5 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
-          >
-            서식 복사
-          </button>
-          {copyMsg && <span className="text-xs text-emerald-600">{copyMsg}</span>}
-          <span className="w-px h-4 bg-slate-200" />
-          <input
-            type="text"
-            value={filename}
-            onChange={(e) => setFilename(e.target.value)}
-            placeholder="파일명"
-            className="px-2 py-1 text-xs border border-slate-200 rounded-lg w-40 focus:outline-none focus:ring-1 focus:ring-blue-300"
-          />
-          <button
-            onClick={handleWord}
-            disabled={!markdown}
-            className="px-4 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
-          >
-            Word 변환
-          </button>
-        </div>
-        <div className="text-xs text-slate-400">
-          {charCount}자 / {lineCount}행
+          {/* Action buttons under preview */}
+          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
+            <button
+              onClick={handleCopy}
+              disabled={!markdown}
+              className="px-4 py-1.5 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
+            >
+              서식 복사
+            </button>
+            {copyMsg && <span className="text-xs text-emerald-600">{copyMsg}</span>}
+            <span className="w-px h-4 bg-slate-200" />
+            <input
+              type="text"
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              placeholder="파일명"
+              className="px-2 py-1 text-xs border border-slate-200 rounded-lg w-36 focus:outline-none focus:ring-1 focus:ring-blue-300"
+            />
+            <button
+              onClick={handleWord}
+              disabled={!markdown}
+              className="px-4 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
+            >
+              Word 변환
+            </button>
+          </div>
         </div>
       </div>
     </div>

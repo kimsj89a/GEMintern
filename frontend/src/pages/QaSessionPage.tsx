@@ -3,7 +3,7 @@ import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import { subscribeTask, unsubscribeTask } from '../api/ws';
 import FolderTree from '../components/FolderTree';
-import ChatWidget from '../components/ChatWidget';
+import ChatWidget, { ChatInputBar } from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import { getLocalFolderTree, getProjectDocuments } from '../utils/projectDB';
 import { useAutoSync } from '../utils/autoSync';
@@ -117,52 +117,70 @@ export default function QaSessionPage() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-[#37352F] mb-1">💬 자료기반 Q&A</h1>
-          <p className="text-sm text-[#787774]">
-            📂 {currentProject} &middot; 문서 {docCount}건
-            {selectedDocs.length > 0 && ` · 선택 ${selectedDocs.length}건`}
-          </p>
+    <>
+      {/* Scrollable content */}
+      <div className="p-8 pb-28 max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-bold text-[#37352F] mb-1">💬 자료기반 Q&A</h1>
+            <p className="text-sm text-[#787774]">
+              📂 {currentProject} &middot; 문서 {docCount}건
+              {selectedDocs.length > 0 && ` · 선택 ${selectedDocs.length}건`}
+            </p>
+          </div>
+          <button
+            onClick={handleClearChat}
+            className="px-3 py-1.5 text-sm border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]"
+          >
+            대화 초기화
+          </button>
         </div>
-        <button
-          onClick={handleClearChat}
-          className="px-3 py-1.5 text-sm border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]"
-        >
-          대화 초기화
-        </button>
+
+        <div className="flex gap-4">
+          {/* Left: Document selector */}
+          <div className="w-64 shrink-0">
+            <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 max-h-80 overflow-y-auto">
+              <div className="text-xs font-semibold text-[#9B9A97] uppercase mb-2">문서 선택</div>
+              {Object.keys(tree).length > 0 ? (
+                <FolderTree
+                  tree={tree}
+                  projectName={currentProject}
+                  selectable
+                  selectedDocs={selectedDocs}
+                  onSelectionChange={setSelectedDocs}
+                />
+              ) : (
+                <div className="text-xs text-[#9B9A97] py-4 text-center">문서가 없습니다.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Chat messages */}
+          <div className="flex-1">
+            <ChatWidget
+              messages={messages}
+              onSend={handleSend}
+              loading={loading}
+              onStop={handleStop}
+              streamingText={streamingText}
+              placeholder="선택한 문서에 대해 질문하세요..."
+              externalInput
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
-        {/* Left: Document selector */}
-        <div className="w-64 shrink-0 bg-white border border-[#E9E9E7] rounded-xl p-3 overflow-y-auto">
-          <div className="text-xs font-semibold text-[#9B9A97] uppercase mb-2">문서 선택</div>
-          {Object.keys(tree).length > 0 ? (
-            <FolderTree
-              tree={tree}
-              projectName={currentProject}
-              selectable
-              selectedDocs={selectedDocs}
-              onSelectionChange={setSelectedDocs}
-            />
-          ) : (
-            <div className="text-xs text-[#9B9A97] py-4 text-center">문서가 없습니다.</div>
-          )}
-        </div>
-
-        {/* Right: Chat */}
-        <div className="flex-1 bg-white border border-[#E9E9E7] rounded-xl p-4 flex flex-col min-h-0">
-          <ChatWidget
-            messages={messages}
+      {/* Floating bottom input bar */}
+      <div className="sticky bottom-0 z-10 border-t border-[#E9E9E7] bg-white/95 backdrop-blur-sm shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+        <div className="max-w-5xl mx-auto px-8 py-4">
+          <ChatInputBar
             onSend={handleSend}
             loading={loading}
             onStop={handleStop}
-            streamingText={streamingText}
             placeholder="선택한 문서에 대해 질문하세요..."
           />
         </div>
       </div>
-    </div>
+    </>
   );
 }

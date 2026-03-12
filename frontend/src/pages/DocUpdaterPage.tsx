@@ -23,11 +23,21 @@ type DocInfo = {
   preview: string;
 };
 
+type ChangeItem = {
+  type: 'modified' | 'inserted';
+  index?: number;
+  after_index?: number;
+  reason: string;
+  original: string;
+  modified: string;
+};
+
 type UpdateResult = {
   output_path: string;
   output_filename: string;
   summary: string;
   preview: string;
+  changes?: ChangeItem[];
 };
 
 export default function DocUpdaterPage() {
@@ -50,6 +60,7 @@ export default function DocUpdaterPage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<UpdateResult | null>(null);
   const [error, setError] = useState('');
+  const [additionalInstruction, setAdditionalInstruction] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleUploadOriginal = async (files: File[]) => {
@@ -144,11 +155,71 @@ export default function DocUpdaterPage() {
     setMode('full');
     setResult(null);
     setError('');
+    setAdditionalInstruction('');
     setGenerating(false);
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
   const canRun = docInfo && instruction.trim() && !generating;
+
+  const handleAdditionalRun = async () => {
+    if (!docInfo || !result || !additionalInstruction.trim()) return;
+    setGenerating(true);
+    setError('');
+
+    try {
+      // 1. 업데이트된 출력물을 새 원본으로 승격
+      const promoted = await api.docUpdaterPromoteOutput({
+        session_id: docInfo.session_id,
+        output_path: result.output_path,
+      });
+
+      // docInfo 업데이트 (새 원본 반영)
+      setDocInfo({
+        ...docInfo,
+        filename: promoted.filename,
+        doc_type: promoted.doc_type,
+        paragraph_count: promoted.paragraph_count,
+        preview: promoted.preview,
+      });
+
+      setResult(null);
+
+      // 2. 추가 수정사항으로 재실행
+      const { task_id } = await api.docUpdaterRun({
+        session_id: docInfo.session_id,
+        supplementary_text: pasteText,
+        instruction: additionalInstruction,
+        mode,
+      });
+
+      pollRef.current = setInterval(async () => {
+        const status = await api.getTaskStatus(task_id);
+        if (status.status === 'complete') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          try {
+            const parsed = JSON.parse(status.result);
+            setResult(parsed);
+          } catch {
+            setError('결과 파싱 오류');
+          }
+          setGenerating(false);
+          setAdditionalInstruction('');
+        } else if (status.status === 'error') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setError(status.error || '알 수 없는 오류');
+          setGenerating(false);
+        }
+      }, 2000);
+
+      setTimeout(() => {
+        if (pollRef.current) clearInterval(pollRef.current);
+      }, 600000);
+    } catch (err: any) {
+      setError(err.message);
+      setGenerating(false);
+    }
+  };
 
   // Result view
   if (result) {
@@ -161,10 +232,66 @@ export default function DocUpdaterPage() {
           {docInfo?.filename} → {result.output_filename}
         </p>
 
-        <div className="space-y-4">
-          <div className="bg-white border border-[#E9E9E7] rounded-xl p-6">
-            <MarkdownViewer content={result.preview} />
+        {error && (
+          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+            {error}
           </div>
+        )}
+
+        <div className="space-y-4">
+          {/* Summary */}
+          <div className="bg-white border border-[#E9E9E7] rounded-xl p-4">
+            <div className="text-sm font-medium text-[#37352F] mb-1">변경 사항 요약</div>
+            <p className="text-sm text-[#787774]">{result.summary}</p>
+          </div>
+
+          {/* Diff view */}
+          {result.changes && result.changes.length > 0 ? (
+            <div className="space-y-3">
+              {result.changes.map((c, i) => (
+                <div key={i} className="bg-white border border-[#E9E9E7] rounded-xl overflow-hidden">
+                  {/* Header */}
+                  <div className="px-4 py-2 bg-[#F7F6F3] border-b border-[#E9E9E7] flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-[11px] font-medium rounded ${
+                      c.type === 'modified'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}>
+                      {c.type === 'modified' ? '수정' : '삽입'}
+                    </span>
+                    <span className="text-xs text-[#787774]">
+                      {c.type === 'modified'
+                        ? `${c.index}번 문단`
+                        : `${c.after_index}번 뒤 신규`}
+                    </span>
+                    {c.reason && (
+                      <span className="text-xs text-[#9B9A97] ml-auto">{c.reason}</span>
+                    )}
+                  </div>
+                  <div className="divide-y divide-[#E9E9E7]">
+                    {/* Original */}
+                    {c.original && (
+                      <div className="px-4 py-3 bg-red-50/40">
+                        <div className="text-[11px] font-medium text-red-400 uppercase mb-1">기존</div>
+                        <p className="text-sm text-[#37352F] whitespace-pre-wrap leading-relaxed">{c.original}</p>
+                      </div>
+                    )}
+                    {/* Modified */}
+                    <div className="px-4 py-3 bg-green-50/40">
+                      <div className="text-[11px] font-medium text-green-500 uppercase mb-1">
+                        {c.type === 'modified' ? '수정' : '신규'}
+                      </div>
+                      <p className="text-sm text-[#37352F] whitespace-pre-wrap leading-relaxed">{c.modified}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white border border-[#E9E9E7] rounded-xl p-6">
+              <MarkdownViewer content={result.preview} />
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button
@@ -179,6 +306,43 @@ export default function DocUpdaterPage() {
             >
               🔄 새 문서 업데이트
             </button>
+          </div>
+
+          {/* Additional modification */}
+          <div className="bg-white border border-[#E9E9E7] rounded-xl p-4">
+            <label className="block text-sm font-medium text-[#37352F] mb-2">
+              추가 수정사항
+            </label>
+            <p className="text-xs text-[#787774] mb-3">
+              결과를 확인한 후 추가로 수정할 내용을 입력하세요. 원본 문서에 새 지시사항을 반영합니다.
+            </p>
+            <textarea
+              value={additionalInstruction}
+              onChange={(e) => setAdditionalInstruction(e.target.value)}
+              placeholder="예: 3번 문단의 수치를 100억원으로 수정해주세요..."
+              rows={3}
+              className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm focus:outline-none focus:border-[#2383E2] resize-none"
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleAdditionalRun}
+                disabled={!additionalInstruction.trim() || generating}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  additionalInstruction.trim() && !generating
+                    ? 'bg-[#2383E2] text-white hover:bg-[#1b6ec2]'
+                    : 'bg-[#E9E9E7] text-[#9B9A97] cursor-not-allowed'
+                }`}
+              >
+                {generating ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    수정 반영 중...
+                  </span>
+                ) : (
+                  '🔄 추가 수정 반영'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

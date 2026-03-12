@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 
 interface CrawlResult {
   url: string;
@@ -8,6 +10,7 @@ interface CrawlResult {
 }
 
 export default function CrawlerPage() {
+  const { currentProject } = useAppStore();
   const [urls, setUrls] = useState('');
   const [depth, setDepth] = useState(1);
   const [maxPages, setMaxPages] = useState(10);
@@ -55,7 +58,7 @@ export default function CrawlerPage() {
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'crawl_results.csv'; a.click();
+    a.href = url; a.download = generateFilename('크롤링', 'csv', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -64,7 +67,7 @@ export default function CrawlerPage() {
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'crawl_results.txt'; a.click();
+    a.href = url; a.download = generateFilename('크롤링', 'txt', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 

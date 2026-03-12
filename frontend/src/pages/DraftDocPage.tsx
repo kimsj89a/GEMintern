@@ -3,10 +3,12 @@ import { api } from '../api/client';
 import { subscribeTask, unsubscribeTask } from '../api/ws';
 import FilePicker from '../components/FilePicker';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { copyRichText, extractTitle, downloadAsWord } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 import GenerationProgress from '../components/GenerationProgress';
 
 export default function DraftDocPage() {
+  const { currentProject } = useAppStore();
   const [fileText, setFileText] = useState('');
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -111,12 +113,11 @@ export default function DraftDocPage() {
 
   const downloadMarkdown = () => {
     const text = result;
-    const title = extractTitle(text) || '기안문';
     const blob = new Blob([text], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${title}.md`;
+    a.download = generateFilename('기안문', 'md', currentProject);
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -148,7 +149,7 @@ export default function DraftDocPage() {
                   className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium">
                   서식 복사
                 </button>
-                <button onClick={() => downloadAsWord(result)}
+                <button onClick={() => downloadAsWord(result, generateFilename('기안문', 'docx', currentProject))}
                   className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3]">
                   Word 저장
                 </button>

@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 
 interface OcrResult {
   filename: string;
@@ -6,6 +8,7 @@ interface OcrResult {
 }
 
 export default function OcrPage() {
+  const { currentProject } = useAppStore();
   const [files, setFiles] = useState<File[]>([]);
   const [engine, setEngine] = useState<'gemini' | 'docai'>('gemini');
   const [results, setResults] = useState<OcrResult[]>([]);
@@ -55,7 +58,7 @@ export default function OcrPage() {
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'ocr_results.txt'; a.click();
+    a.href = url; a.download = generateFilename('OCR', 'txt', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 

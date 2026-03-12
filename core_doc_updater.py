@@ -383,15 +383,39 @@ def update_document(original_path: str, supplementary_paths: list[str],
         apply_updates_pdf_as_docx(original_path, updates, indexed, output_path)
 
     summary = updates.get("summary", "업데이트 완료")
-    preview_lines = [f"## 변경 사항 요약\n{summary}\n"]
+
+    # 원본 텍스트 index → text 맵
+    original_map = {item["index"]: item["text"] for item in indexed}
+
+    # 구조화된 변경 목록
+    changes = []
     for item in updates.get("updated_paragraphs", []):
-        reason = item.get("reason", "")
-        preview_lines.append(f"**[{item['index']}번 문단 수정]** {reason}")
-        preview_lines.append(f"> {item['new_text'][:150]}...\n")
+        idx = item["index"]
+        changes.append({
+            "type": "modified",
+            "index": idx,
+            "reason": item.get("reason", ""),
+            "original": original_map.get(idx, ""),
+            "modified": item["new_text"],
+        })
     for item in updates.get("new_paragraphs", []):
-        reason = item.get("reason", "")
-        preview_lines.append(f"**[{item['after_index']}번 뒤 신규 삽입]** {reason}")
-        preview_lines.append(f"> {item['text'][:150]}...\n")
+        changes.append({
+            "type": "inserted",
+            "after_index": item["after_index"],
+            "reason": item.get("reason", ""),
+            "original": "",
+            "modified": item["text"],
+        })
+
+    # 하위 호환용 preview (마크다운 텍스트)
+    preview_lines = [f"## 변경 사항 요약\n{summary}\n"]
+    for c in changes:
+        if c["type"] == "modified":
+            preview_lines.append(f"**[{c['index']}번 문단 수정]** {c['reason']}")
+            preview_lines.append(f"> {c['modified'][:150]}...\n")
+        else:
+            preview_lines.append(f"**[{c['after_index']}번 뒤 신규 삽입]** {c['reason']}")
+            preview_lines.append(f"> {c['modified'][:150]}...\n")
     preview = "\n".join(preview_lines)
 
-    return output_path, summary, preview
+    return output_path, summary, preview, changes

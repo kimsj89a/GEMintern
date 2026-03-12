@@ -14,6 +14,54 @@ interface ChatWidgetProps {
   onStop?: () => void;
   placeholder?: string;
   streamingText?: string;
+  /** When true, only renders messages area without input. Use with ChatInputBar. */
+  externalInput?: boolean;
+}
+
+/** Standalone input bar for use outside ChatWidget (e.g. sticky bottom bar) */
+export function ChatInputBar({ onSend, loading, onStop, placeholder }: {
+  onSend: (text: string) => void;
+  loading?: boolean;
+  onStop?: () => void;
+  placeholder?: string;
+}) {
+  const [input, setInput] = useState('');
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    onSend(text);
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+        placeholder={placeholder || '질문을 입력하세요...'}
+        disabled={loading}
+        className="flex-1 px-4 py-2.5 text-sm input-ring disabled:bg-slate-50 disabled:text-slate-400"
+      />
+      {loading && onStop ? (
+        <button
+          onClick={onStop}
+          className="px-4 py-2.5 bg-red-500 text-white text-sm font-semibold rounded-[10px] hover:bg-red-600 transition-all active:scale-[0.97]"
+        >
+          중지
+        </button>
+      ) : (
+        <button
+          onClick={handleSend}
+          disabled={loading || !input.trim()}
+          className="px-4 py-2.5 text-sm font-semibold rounded-[10px] transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed btn-primary"
+        >
+          전송
+        </button>
+      )}
+    </div>
+  );
 }
 
 function downloadText(content: string, filename: string) {
@@ -24,7 +72,7 @@ function downloadText(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function ChatWidget({ messages, onSend, loading, onStop, placeholder, streamingText }: ChatWidgetProps) {
+export default function ChatWidget({ messages, onSend, loading, onStop, placeholder, streamingText, externalInput }: ChatWidgetProps) {
   const [input, setInput] = useState('');
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -62,7 +110,7 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
   const hasAssistantMessages = messages.some((m) => m.role === 'assistant');
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={externalInput ? '' : 'flex flex-col h-full'}>
       {/* Header */}
       {hasAssistantMessages && (
         <div className="flex justify-end mb-2">
@@ -76,7 +124,7 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-3 mb-3">
+      <div className={externalInput ? 'space-y-3' : 'flex-1 overflow-y-auto space-y-3 mb-3'}>
         {messages.length === 0 && !streamingText && (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <svg className="w-8 h-8 mb-2 opacity-40" viewBox="0 0 24 24" fill="none"><path d="M12 21a9 9 0 1 0-7.5-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>
@@ -136,33 +184,35 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <div className="flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-          placeholder={placeholder || '질문을 입력하세요...'}
-          disabled={loading}
-          className="flex-1 px-4 py-2.5 text-sm input-ring disabled:bg-slate-50 disabled:text-slate-400"
-        />
-        {loading && onStop ? (
-          <button
-            onClick={onStop}
-            className="px-4 py-2.5 bg-red-500 text-white text-sm font-semibold rounded-[10px] hover:bg-red-600 transition-all active:scale-[0.97]"
-          >
-            중지
-          </button>
-        ) : (
-          <button
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="px-4 py-2.5 text-sm font-semibold rounded-[10px] transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed btn-primary"
-          >
-            전송
-          </button>
-        )}
-      </div>
+      {/* Input (hidden when externalInput is used) */}
+      {!externalInput && (
+        <div className="flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            placeholder={placeholder || '질문을 입력하세요...'}
+            disabled={loading}
+            className="flex-1 px-4 py-2.5 text-sm input-ring disabled:bg-slate-50 disabled:text-slate-400"
+          />
+          {loading && onStop ? (
+            <button
+              onClick={onStop}
+              className="px-4 py-2.5 bg-red-500 text-white text-sm font-semibold rounded-[10px] hover:bg-red-600 transition-all active:scale-[0.97]"
+            >
+              중지
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={loading || !input.trim()}
+              className="px-4 py-2.5 text-sm font-semibold rounded-[10px] transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed btn-primary"
+            >
+              전송
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

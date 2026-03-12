@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { copyRichText, downloadAsWord } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 
 export default function TextOrganizerPage() {
+  const { currentProject } = useAppStore();
   const [text, setText] = useState('');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,7 +44,7 @@ export default function TextOrganizerPage() {
     const blob = new Blob([result], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `organized.${ext}`; a.click();
+    a.href = url; a.download = generateFilename('문장정리', ext, currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -83,7 +85,7 @@ export default function TextOrganizerPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold text-[#37352F]">결과</div>
             <div className="flex gap-2">
-              <button onClick={() => downloadAsWord(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">📄 Word</button>
+              <button onClick={() => downloadAsWord(result, generateFilename('문장정리', 'docx', currentProject))} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">📄 Word</button>
               <button onClick={() => downloadResult('txt')} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">TXT</button>
               <button onClick={() => downloadResult('md')} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">MD</button>
               <button onClick={() => copyRichText(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">복사</button>

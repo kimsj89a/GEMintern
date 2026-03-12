@@ -1241,7 +1241,7 @@ def doc_updater_run(req: DocUpdaterRunRequest, user: dict = Depends(get_current_
         task["status"] = "generating"
         try:
             import core_doc_updater
-            output_path, summary, preview = core_doc_updater.update_document(
+            output_path, summary, preview, changes = core_doc_updater.update_document(
                 original_path, sup_paths, req.supplementary_text,
                 req.instruction, req.mode, api_key, model,
             )
@@ -1250,6 +1250,7 @@ def doc_updater_run(req: DocUpdaterRunRequest, user: dict = Depends(get_current_
                 "output_filename": os.path.basename(output_path),
                 "summary": summary,
                 "preview": preview,
+                "changes": changes,
             }, ensure_ascii=False)
             task["status"] = "complete"
         except Exception as e:
@@ -1272,6 +1273,44 @@ def doc_updater_download(path: str, user: dict = Depends(get_current_user)):
         filename=os.path.basename(path),
         media_type="application/octet-stream",
     )
+
+
+class DocUpdaterPromoteRequest(BaseModel):
+    session_id: str
+    output_path: str
+
+
+@router.post("/doc-updater/promote-output")
+def doc_updater_promote_output(req: DocUpdaterPromoteRequest, user: dict = Depends(get_current_user)):
+    """업데이트된 출력 파일을 새 원본으로 승격 (추가 수정용)."""
+    import shutil
+    temp_dir = _doc_updater_sessions.get(req.session_id)
+    if not temp_dir:
+        return {"error": "세션이 없습니다."}
+    if not req.output_path or not os.path.exists(req.output_path):
+        return {"error": "출력 파일을 찾을 수 없습니다."}
+
+    # 기존 원본 파일 삭제 (supplementary 폴더 제외)
+    for f in os.listdir(temp_dir):
+        fp = os.path.join(temp_dir, f)
+        if os.path.isfile(fp):
+            os.remove(fp)
+
+    # 업데이트된 파일을 원본 위치로 복사 (_updated 접미사 제거)
+    new_name = os.path.basename(req.output_path).replace("_updated", "")
+    new_path = os.path.join(temp_dir, new_name)
+    shutil.copy2(req.output_path, new_path)
+
+    import core_doc_updater
+    doc_type, indexed = core_doc_updater.index_document(new_path)
+    preview = core_doc_updater.format_document_map(indexed)
+
+    return {
+        "filename": new_name,
+        "doc_type": doc_type,
+        "paragraph_count": len(indexed),
+        "preview": preview[:5000],
+    }
 
 
 # ──────────────────────────────────────────

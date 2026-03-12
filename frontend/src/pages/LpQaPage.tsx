@@ -3,7 +3,7 @@ import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import FolderTree from '../components/FolderTree';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { copyRichText, downloadAsWord } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
 import { getLocalFolderTree } from '../utils/projectDB';
 import { useAutoSync } from '../utils/autoSync';
 
@@ -30,6 +30,26 @@ export default function LpQaPage() {
   const queueRef = useRef<QaItem[]>([]);
   const processingRef = useRef(false);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [collapsedIdx, setCollapsedIdx] = useState<Set<number>>(new Set());
+  const [allCollapsed, setAllCollapsed] = useState(false);
+
+  const toggleCollapse = (idx: number) => {
+    setCollapsedIdx(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleCollapseAll = () => {
+    if (allCollapsed) {
+      setCollapsedIdx(new Set());
+    } else {
+      setCollapsedIdx(new Set(qaItems.map((_, i) => i)));
+    }
+    setAllCollapsed(!allCollapsed);
+  };
 
   useEffect(() => {
     if (!currentProject) return;
@@ -200,7 +220,7 @@ export default function LpQaPage() {
     const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `qa_${idx + 1}.md`; a.click();
+    a.href = url; a.download = generateFilename(`LP_QA_Q${idx + 1}`, 'md', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -213,7 +233,7 @@ export default function LpQaPage() {
     const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'lp_qa_all.md'; a.click();
+    a.href = url; a.download = generateFilename('LP_QA_전체', 'md', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -223,7 +243,7 @@ export default function LpQaPage() {
     const text = '# LP Q&A 답변 모음\n\n' + qaItems.map((it, i) =>
       `## Q${i + 1}. ${it.question}\n\n${it.answer}`
     ).join('\n\n---\n\n');
-    downloadAsWord(text, 'LP_QA_All.docx');
+    downloadAsWord(text, generateFilename('LP_QA_전체', 'docx', currentProject));
   };
 
   const doneCount = qaItems.filter((it) => it.status === 'done' || it.status === 'error').length;
@@ -242,89 +262,163 @@ export default function LpQaPage() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-xl font-bold text-[#37352F] mb-1">🙋 LP Q&A 대응</h1>
-      <p className="text-sm text-[#787774] mb-6">질문 목록을 입력하면 문서 기반으로 일괄 답변을 생성합니다. 생성 중에도 추가 질문을 넣을 수 있습니다.</p>
+    <>
+      {/* Scrollable content */}
+      <div className="p-8 pb-52 max-w-5xl mx-auto">
+        <h1 className="text-xl font-bold text-[#37352F] mb-1">🙋 LP Q&A 대응</h1>
+        <p className="text-sm text-[#787774] mb-6">질문 목록을 입력하면 문서 기반으로 일괄 답변을 생성합니다. 생성 중에도 추가 질문을 넣을 수 있습니다.</p>
 
-      <div className="flex gap-6">
-        {/* Left: Document selector */}
-        <div className="w-64 shrink-0">
-          <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 max-h-80 overflow-y-auto">
-            <div className="text-xs font-semibold text-[#9B9A97] uppercase mb-2">참조 문서</div>
-            {Object.keys(tree).length > 0 ? (
-              <FolderTree
-                tree={tree}
-                projectName={currentProject}
-                selectable
-                selectedDocs={selectedDocs}
-                onSelectionChange={setSelectedDocs}
-              />
-            ) : (
-              <div className="text-xs text-[#9B9A97] py-4 text-center">문서가 없습니다.</div>
+        <div className="flex gap-6">
+          {/* Left: Document selector */}
+          <div className="w-64 shrink-0">
+            <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 max-h-80 overflow-y-auto">
+              <div className="text-xs font-semibold text-[#9B9A97] uppercase mb-2">참조 문서</div>
+              {Object.keys(tree).length > 0 ? (
+                <FolderTree
+                  tree={tree}
+                  projectName={currentProject}
+                  selectable
+                  selectedDocs={selectedDocs}
+                  onSelectionChange={setSelectedDocs}
+                />
+              ) : (
+                <div className="text-xs text-[#9B9A97] py-4 text-center">문서가 없습니다.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Results */}
+          <div className="flex-1">
+            {/* Progress bar */}
+            {generating && totalCount > 0 && (
+              <div className="mb-4">
+                <div className="text-xs text-[#787774] mb-1">진행 중... {doneCount}/{totalCount}</div>
+                <div className="w-full bg-[#E9E9E7] rounded-full h-1.5">
+                  <div className="bg-[#2383E2] h-1.5 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                </div>
+              </div>
             )}
-          </div>
-        </div>
 
-        {/* Right: Input + Results */}
-        <div className="flex-1">
-          {/* Input mode tabs */}
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => setInputMode('direct')}
-              className={`px-3 py-1.5 text-sm rounded-lg ${inputMode === 'direct' ? 'bg-[#2383E2] text-white' : 'border border-[#E9E9E7] hover:bg-[#F7F6F3]'}`}
-            >
-              직접 입력
-            </button>
-            <button
-              onClick={() => setInputMode('file')}
-              className={`px-3 py-1.5 text-sm rounded-lg ${inputMode === 'file' ? 'bg-[#2383E2] text-white' : 'border border-[#E9E9E7] hover:bg-[#F7F6F3]'}`}
-            >
-              파일 업로드
-            </button>
-          </div>
+            {/* Results */}
+            {qaItems.length > 0 && (
+              <div className="space-y-3">
+                {/* Export / Clear buttons */}
+                {qaItems.some((it) => it.status === 'done') && (
+                  <div className="flex justify-end gap-2">
+                    {!generating && (
+                      <button
+                        onClick={handleClearAll}
+                        className="px-3 py-1.5 text-xs border border-[#EB5757] text-[#EB5757] rounded-lg hover:bg-red-50"
+                      >
+                        전체 삭제
+                      </button>
+                    )}
+                    <button
+                      onClick={toggleCollapseAll}
+                      className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
+                    >
+                      {allCollapsed ? '▼ 전체 펼치기' : '▲ 전체 접기'}
+                    </button>
+                    <button
+                      onClick={exportAllWord}
+                      className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
+                    >
+                      📄 전체 Word 저장
+                    </button>
+                    <button
+                      onClick={exportAll}
+                      className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
+                    >
+                      전체 내보내기 (.md)
+                    </button>
+                  </div>
+                )}
+                {qaItems.map((item, i) => (
+                  <div key={i} className="bg-white border border-[#E9E9E7] rounded-xl p-4">
+                    <div className="flex items-start justify-between">
+                      <div
+                        className="flex items-center gap-2 text-sm font-medium text-[#2383E2] cursor-pointer select-none"
+                        onClick={() => (item.status === 'done' || item.status === 'error') && toggleCollapse(i)}
+                      >
+                        {item.status === 'generating' ? (
+                          <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (item.status === 'done' || item.status === 'error') ? (
+                          <span className="text-xs text-[#9B9A97]">{collapsedIdx.has(i) ? '▶' : '▼'}</span>
+                        ) : null}
+                        Q{i + 1}. {item.question}
+                      </div>
+                      {item.status === 'done' && (
+                        <div className="flex gap-1 shrink-0 ml-2">
+                          <button
+                            onClick={() => copyToClipboard(item.answer, i)}
+                            className="px-2 py-0.5 text-xs text-[#9B9A97] hover:text-[#37352F] hover:bg-[#F7F6F3] rounded transition-colors"
+                          >
+                            {copiedIdx === i ? '복사됨' : '복사'}
+                          </button>
+                          <button
+                            onClick={() => exportSingle(item, i)}
+                            className="px-2 py-0.5 text-xs text-[#9B9A97] hover:text-[#37352F] hover:bg-[#F7F6F3] rounded transition-colors"
+                          >
+                            내보내기
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {!collapsedIdx.has(i) && (
+                      <>
+                        {item.status === 'generating' && (
+                          <div className="text-sm text-[#9B9A97] mt-2">생성 중...</div>
+                        )}
+                        {item.status === 'pending' && (
+                          <div className="text-sm text-[#9B9A97] mt-2">대기 중</div>
+                        )}
+                        {(item.status === 'done' || item.status === 'error') && (
+                          <div className="mt-2">
+                            <MarkdownViewer content={item.answer} />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-          {/* Input area */}
-          <div className="bg-white border border-[#E9E9E7] rounded-xl p-4 mb-4">
-            {inputMode === 'direct' ? (
-              <textarea
-                value={questionsText}
-                onChange={(e) => setQuestionsText(e.target.value)}
-                placeholder="질문을 줄 단위로 입력하세요.&#10;예:&#10;투자 구조는 어떻게 되나요?&#10;리스크 요인은 무엇인가요?"
-                rows={4}
-                className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm focus:outline-none focus:border-[#2383E2] resize-none"
-              />
-            ) : (
-              <div>
-                <label className={`inline-block px-3 py-1.5 text-sm border border-[#E9E9E7] rounded-lg cursor-pointer hover:bg-[#F7F6F3] ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {uploading ? '⏳ 파싱 중...' : '📂 텍스트/Excel 파일 선택'}
-                  <input type="file" accept=".txt,.csv,.xlsx" onChange={handleFileUpload} className="hidden" disabled={uploading} />
-                </label>
+            {/* Empty state */}
+            {qaItems.length === 0 && (
+              <div className="text-sm text-[#9B9A97] py-16 text-center">
+                하단 입력창에서 질문을 입력하고 답변을 생성하세요.
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Question preview list (file upload mode) */}
+      {/* Floating bottom input bar */}
+      <div className="sticky bottom-0 z-10 border-t border-[#E9E9E7] bg-white/95 backdrop-blur-sm shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+        <div className="max-w-5xl mx-auto px-8 py-4">
+          {/* File upload question preview (shown above input when in file mode) */}
           {inputMode === 'file' && questionsList.length > 0 && (
-            <div className="bg-white border border-[#E9E9E7] rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-medium text-[#37352F]">
+            <div className="bg-[#F7F6F3] border border-[#E9E9E7] rounded-xl p-3 mb-3 max-h-48 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium text-[#37352F]">
                   질문 목록 ({questionsList.length}개)
                 </div>
                 <button onClick={clearQuestionsList} className="text-xs text-[#EB5757] hover:underline">
                   전체 삭제
                 </button>
               </div>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
+              <div className="space-y-1.5">
                 {questionsList.map((q, i) => (
                   <div key={i} className="flex items-start gap-2 group">
-                    <span className="text-xs text-[#9B9A97] mt-1.5 shrink-0 w-6 text-right">{i + 1}.</span>
+                    <span className="text-xs text-[#9B9A97] mt-0.5 shrink-0 w-5 text-right">{i + 1}.</span>
                     {editingIdx === i ? (
                       <div className="flex-1">
                         <textarea
                           value={editText}
                           onChange={(e) => setEditText(e.target.value)}
-                          rows={3}
-                          className="w-full px-2 py-1.5 text-sm border border-[#2383E2] rounded-lg focus:outline-none resize-none"
+                          rows={2}
+                          className="w-full px-2 py-1 text-sm border border-[#2383E2] rounded-lg focus:outline-none resize-none"
                           autoFocus
                         />
                         <div className="flex gap-1 mt-1">
@@ -340,7 +434,7 @@ export default function LpQaPage() {
                       </div>
                     ) : (
                       <>
-                        <div className="flex-1 text-sm text-[#37352F] whitespace-pre-wrap leading-relaxed py-1">
+                        <div className="flex-1 text-sm text-[#37352F] leading-snug py-0.5">
                           {q}
                         </div>
                         <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -363,102 +457,65 @@ export default function LpQaPage() {
             </div>
           )}
 
-          {/* Generate / Stop buttons */}
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={handleGenerate}
-              disabled={!hasQuestions}
-              className="flex-1 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors"
-            >
-              {generating ? '🤖 추가 질문 투입' : '🤖 답변 생성'}
-            </button>
-            {generating && (
-              <button onClick={handleStop}
-                className="px-6 py-2.5 bg-[#EB5757] text-white text-sm font-semibold rounded-xl hover:bg-[#d94848] transition-colors">
-                중지
-              </button>
-            )}
-          </div>
-
-          {/* Progress bar */}
-          {generating && totalCount > 0 && (
-            <div className="mb-4">
-              <div className="text-xs text-[#787774] mb-1">진행 중... {doneCount}/{totalCount}</div>
-              <div className="w-full bg-[#E9E9E7] rounded-full h-1.5">
-                <div className="bg-[#2383E2] h-1.5 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+          {/* Input row */}
+          <div className="flex items-end gap-3">
+            {/* Mode switch + input */}
+            <div className="flex-1">
+              <div className="flex gap-1.5 mb-2">
+                <button
+                  onClick={() => setInputMode('direct')}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-colors ${inputMode === 'direct' ? 'bg-[#2383E2] text-white' : 'text-[#787774] hover:bg-[#F7F6F3]'}`}
+                >
+                  직접 입력
+                </button>
+                <button
+                  onClick={() => setInputMode('file')}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-colors ${inputMode === 'file' ? 'bg-[#2383E2] text-white' : 'text-[#787774] hover:bg-[#F7F6F3]'}`}
+                >
+                  파일 업로드
+                </button>
               </div>
-            </div>
-          )}
-
-          {/* Results */}
-          {qaItems.length > 0 && (
-            <div className="space-y-3">
-              {/* Export / Clear buttons */}
-              {qaItems.some((it) => it.status === 'done') && (
-                <div className="flex justify-end gap-2">
-                  {!generating && (
-                    <button
-                      onClick={handleClearAll}
-                      className="px-3 py-1.5 text-xs border border-[#EB5757] text-[#EB5757] rounded-lg hover:bg-red-50"
-                    >
-                      전체 삭제
-                    </button>
-                  )}
-                  <button
-                    onClick={exportAllWord}
-                    className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
-                  >
-                    📄 전체 Word 저장
-                  </button>
-                  <button
-                    onClick={exportAll}
-                    className="px-3 py-1.5 text-xs border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] text-[#787774]"
-                  >
-                    전체 내보내기 (.md)
-                  </button>
-                </div>
+              {inputMode === 'direct' ? (
+                <textarea
+                  value={questionsText}
+                  onChange={(e) => setQuestionsText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && hasQuestions) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  }}
+                  placeholder="질문을 줄 단위로 입력하세요... (Ctrl+Enter로 전송)"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-[#E9E9E7] rounded-xl text-sm focus:outline-none focus:border-[#2383E2] resize-none bg-white"
+                />
+              ) : (
+                <label className={`flex items-center justify-center w-full px-3 py-2.5 border border-dashed border-[#E9E9E7] rounded-xl cursor-pointer hover:bg-[#F7F6F3] transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <span className="text-sm text-[#787774]">{uploading ? '⏳ 파싱 중...' : '📂 텍스트/Excel 파일 선택'}</span>
+                  <input type="file" accept=".txt,.csv,.xlsx" onChange={handleFileUpload} className="hidden" disabled={uploading} />
+                </label>
               )}
-              {qaItems.map((item, i) => (
-                <div key={i} className="bg-white border border-[#E9E9E7] rounded-xl p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2 text-sm font-medium text-[#2383E2]">
-                      {item.status === 'generating' && (
-                        <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                      )}
-                      Q{i + 1}. {item.question}
-                    </div>
-                    {item.status === 'done' && (
-                      <div className="flex gap-1 shrink-0 ml-2">
-                        <button
-                          onClick={() => copyToClipboard(item.answer, i)}
-                          className="px-2 py-0.5 text-xs text-[#9B9A97] hover:text-[#37352F] hover:bg-[#F7F6F3] rounded transition-colors"
-                        >
-                          {copiedIdx === i ? '복사됨' : '복사'}
-                        </button>
-                        <button
-                          onClick={() => exportSingle(item, i)}
-                          className="px-2 py-0.5 text-xs text-[#9B9A97] hover:text-[#37352F] hover:bg-[#F7F6F3] rounded transition-colors"
-                        >
-                          내보내기
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {item.status === 'generating' && (
-                    <div className="text-sm text-[#9B9A97]">생성 중...</div>
-                  )}
-                  {item.status === 'pending' && (
-                    <div className="text-sm text-[#9B9A97]">대기 중</div>
-                  )}
-                  {(item.status === 'done' || item.status === 'error') && (
-                    <MarkdownViewer content={item.answer} />
-                  )}
-                </div>
-              ))}
             </div>
-          )}
+
+            {/* Generate / Stop buttons */}
+            <div className="flex gap-2 shrink-0 pb-[1px]">
+              <button
+                onClick={handleGenerate}
+                disabled={!hasQuestions}
+                className="px-6 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] disabled:cursor-not-allowed transition-colors"
+              >
+                {generating ? '추가 투입' : '답변 생성'}
+              </button>
+              {generating && (
+                <button onClick={handleStop}
+                  className="px-4 py-2.5 bg-[#EB5757] text-white text-sm font-semibold rounded-xl hover:bg-[#d94848] transition-colors">
+                  중지
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

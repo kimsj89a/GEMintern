@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { copyRichText, downloadAsWord } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 
 export default function DocTemplatePage() {
+  const { currentProject } = useAppStore();
   const [formatText, setFormatText] = useState('');
   const [contentText, setContentText] = useState('');
   const [formatAnalysis, setFormatAnalysis] = useState('');
@@ -86,7 +88,7 @@ export default function DocTemplatePage() {
     const blob = new Blob([result], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `formatted_doc.${ext}`; a.click();
+    a.href = url; a.download = generateFilename('문서양식', ext, currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -163,7 +165,7 @@ export default function DocTemplatePage() {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold text-[#37352F]">결과</div>
             <div className="flex gap-2">
-              <button onClick={() => downloadAsWord(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">📄 Word</button>
+              <button onClick={() => downloadAsWord(result, generateFilename('문서양식', 'docx', currentProject))} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">📄 Word</button>
               <button onClick={() => downloadResult('md')} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">MD</button>
               <button onClick={() => copyRichText(result)} className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">복사</button>
             </div>

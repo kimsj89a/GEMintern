@@ -7,7 +7,7 @@ import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { copyRichText, extractTitle, downloadAsWord } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
 import GenerationProgress from '../components/GenerationProgress';
 import { getLocalFolderTree, addLocalDocuments } from '../utils/projectDB';
 import { useAutoSync } from '../utils/autoSync';
@@ -498,11 +498,10 @@ export default function WorkflowPage() {
 
   const downloadMarkdown = () => {
     const text = result || analysisResult;
-    const title = extractTitle(text) || `${currentProject}_${activePage}`;
     const blob = new Blob([text], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `${title}.md`; a.click();
+    a.href = url; a.download = generateFilename(activePage || '자료분석', 'md', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -594,7 +593,7 @@ export default function WorkflowPage() {
           {!analyzing && analysisResult && (
             <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
               <button onClick={() => setStep(3)} className="px-4 py-2 btn-primary text-sm rounded-lg">자료 Q&A</button>
-              <button onClick={() => downloadAsWord(analysisResult)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Word 저장</button>
+              <button onClick={() => downloadAsWord(analysisResult, generateFilename('자료분석', 'docx', currentProject))} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Word 저장</button>
               <button onClick={downloadMarkdown} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">MD 저장</button>
             </div>
           )}
@@ -863,7 +862,7 @@ export default function WorkflowPage() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setPhase2View('refine')} className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">수정/보완</button>
-              <button onClick={() => downloadAsWord(result)} className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Word</button>
+              <button onClick={() => downloadAsWord(result, generateFilename(activePage || '보고서', 'docx', currentProject))} className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Word</button>
               <button onClick={downloadMarkdown} className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">MD</button>
               <button onClick={() => copyRichText(result)} className="px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">복사</button>
             </div>

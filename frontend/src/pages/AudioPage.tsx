@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from '../components/MarkdownViewer';
+import { generateFilename } from '../utils/clipboard';
+import { useAppStore } from '../stores/appStore';
 
 const MODES = [
   { id: 'meeting', label: '회의록 정리' },
@@ -11,6 +13,7 @@ const MODES = [
 ];
 
 export default function AudioPage() {
+  const { currentProject } = useAppStore();
   const [inputMode, setInputMode] = useState<'file' | 'direct'>('direct');
   const [text, setText] = useState('');
   const [processMode, setProcessMode] = useState('meeting');
@@ -69,7 +72,7 @@ export default function AudioPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `audio_processed.${ext}`;
+    a.download = generateFilename('오디오전사', ext, currentProject);
     a.click();
     URL.revokeObjectURL(url);
   };
