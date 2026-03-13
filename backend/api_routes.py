@@ -378,6 +378,15 @@ def list_projects(user: dict = Depends(get_current_user)):
             doc_count = len(core_rag.get_indexed_doc_names(r["name"], owner_id=user["id"]))
         except Exception:
             pass
+        # Fallback: check SQLite documents table (for Railway ephemeral FS)
+        if doc_count == 0:
+            with get_db() as conn2:
+                cnt = conn2.execute(
+                    "SELECT COUNT(*) as cnt FROM documents WHERE project_id = ?",
+                    (r["id"],)
+                ).fetchone()
+                if cnt:
+                    doc_count = cnt["cnt"]
         result.append({
             "id": r["id"], "name": r["name"], "storage_name": r["storage_name"],
             "created_at": r["created_at"], "doc_count": doc_count,
@@ -474,8 +483,31 @@ def delete_project(name: str, user: dict = Depends(get_current_user)):
 def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
+    from backend.database import get_db
     tree = core_rag.get_folder_tree(name, owner_id=user["id"])
     doc_names = core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or []
+
+    # Fallback: also check SQLite documents table (for Railway ephemeral FS)
+    if not doc_names:
+        with get_db() as conn:
+            project = conn.execute(
+                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                (name, user["id"])
+            ).fetchone()
+            if project:
+                rows = conn.execute(
+                    "SELECT DISTINCT filename, folder FROM documents WHERE project_id = ?",
+                    (project["id"],)
+                ).fetchall()
+                if rows:
+                    db_names = [r["filename"] for r in rows]
+                    # Rebuild tree from DB
+                    tree = {}
+                    for r in rows:
+                        folder = r["folder"] or core_rag.ROOT_FOLDER
+                        tree.setdefault(folder, []).append(r["filename"])
+                    doc_names = db_names
+
     return {"folder_tree": tree, "doc_names": doc_names, "count": len(doc_names)}
 
 

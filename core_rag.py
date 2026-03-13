@@ -592,23 +592,42 @@ def load_selected_project_docs(project_name: str, selected_doc_names: List[str],
 
 
 def load_project_docs_dict(project_name: str, owner_id: int | None = None) -> Dict[str, str]:
-    """Load all documents from a project as a dict {filename: content}."""
+    """Load all documents from a project as a dict {filename: content}.
+    Falls back to SQLite documents table when filesystem is empty (Railway).
+    """
     storage = _get_storage_name(project_name, owner_id=owner_id)
     docs_dir = _get_project_docs_dir(storage)
-    if not os.path.exists(docs_dir):
-        return {}
 
     result = {}
-    for fname in sorted(os.listdir(docs_dir)):
-        if fname.endswith(".md"):
-            fpath = os.path.join(docs_dir, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                if content:
-                    result[fname] = content
-            except Exception:
-                pass
+    if os.path.exists(docs_dir):
+        for fname in sorted(os.listdir(docs_dir)):
+            if fname.endswith(".md"):
+                fpath = os.path.join(docs_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                    if content:
+                        result[fname] = content
+                except Exception:
+                    pass
+
+    # Fallback: load from SQLite documents table (Railway ephemeral FS)
+    if not result:
+        try:
+            from backend.database import get_db
+            with get_db() as conn:
+                query = "SELECT d.filename, d.parsed_text FROM documents d JOIN projects p ON p.id = d.project_id WHERE p.name = ?"
+                params: list = [project_name]
+                if owner_id is not None:
+                    query += " AND p.owner_id = ?"
+                    params.append(owner_id)
+                rows = conn.execute(query, params).fetchall()
+                for r in rows:
+                    if r["parsed_text"] and r["parsed_text"].strip():
+                        fname = r["filename"] if r["filename"].endswith(".md") else r["filename"] + ".md"
+                        result[fname] = r["parsed_text"].strip()
+        except Exception:
+            pass
 
     return result
 
