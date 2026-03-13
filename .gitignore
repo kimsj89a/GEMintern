@@ -9,6 +9,7 @@
 !tsconfig.node.json
 !tsconfig.app.json
 !railway.json
+!rag_storage/**/*.json
 
 # Virtual environment
 .venv/
@@ -36,4 +37,3 @@ data/
 
 # Build artifacts
 frontend/dist/
-backend/static/

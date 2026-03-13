@@ -176,6 +176,8 @@ def init_db():
 
     # Migrate existing rag_storage projects to SQLite
     migrate_rag_projects_to_db()
+    # Sync documents from disk to SQLite (for Railway ephemeral FS recovery)
+    sync_docs_from_disk()
 
 
 def migrate_rag_projects_to_db():
@@ -209,6 +211,63 @@ def migrate_rag_projects_to_db():
                 migrated += 1
     if migrated:
         print(f"[DB] Migrated {migrated} projects from rag_storage to SQLite.")
+
+
+def sync_docs_from_disk():
+    """Sync documents from rag_storage disk files into SQLite documents table.
+    Ensures Railway deployments recover document data from git-tracked .md files.
+    """
+    rag_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rag_storage")
+    if not os.path.isdir(rag_root):
+        return
+    synced = 0
+    with get_db() as conn:
+        projects = conn.execute("SELECT id, name, storage_name FROM projects").fetchall()
+        for proj in projects:
+            docs_dir = os.path.join(rag_root, proj["storage_name"], "docs")
+            if not os.path.isdir(docs_dir):
+                continue
+            # Check if project already has documents in DB
+            existing_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM documents WHERE project_id = ?",
+                (proj["id"],)
+            ).fetchone()["cnt"]
+            if existing_count > 0:
+                continue  # Already has docs, skip
+            # Read .md files from disk and insert
+            for fname in sorted(os.listdir(docs_dir)):
+                if not fname.endswith(".md"):
+                    continue
+                fpath = os.path.join(docs_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    size = len(content.encode("utf-8"))
+                    # Determine folder from _folders.json
+                    folder = "__root__"
+                    folders_file = os.path.join(rag_root, proj["storage_name"], "_folders.json")
+                    if os.path.exists(folders_file):
+                        try:
+                            with open(folders_file, "r", encoding="utf-8") as ff:
+                                folders_data = json.load(ff)
+                            doc_stem = fname[:-3]  # remove .md
+                            for fkey, flist in folders_data.items():
+                                if doc_stem in flist:
+                                    folder = fkey
+                                    break
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                    conn.execute(
+                        """INSERT INTO documents (project_id, folder, filename, parsed_text, size)
+                           VALUES (?, ?, ?, ?, ?)
+                           ON CONFLICT(project_id, folder, filename) DO NOTHING""",
+                        (proj["id"], folder, fname[:-3], content, size),
+                    )
+                    synced += 1
+                except Exception:
+                    pass
+    if synced:
+        print(f"[DB] Synced {synced} documents from disk to SQLite.")
 
 
 def log_usage(user_id: int, endpoint: str, model: str | None = None):
