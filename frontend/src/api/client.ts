@@ -249,6 +249,41 @@ export const api = {
       method: 'POST', body: JSON.stringify({ role, content }),
     }),
 
+  // Generation History
+  listHistory: (limit = 50, offset = 0) =>
+    request<{ items: any[]; limit: number; offset: number }>(
+      `/history?limit=${limit}&offset=${offset}`
+    ),
+  getHistory: (id: number) => request<any>(`/history/${id}`),
+  deleteHistory: (id: number) =>
+    request<{ ok: boolean }>(`/history/${id}`, { method: 'DELETE' }),
+
+  // PDF Unlock
+  unlockPdf: async (file: File, password: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('password', password);
+    const res = await fetchWithAuth(`${BASE}/unlock-pdf`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '알 수 없는 오류' }));
+      throw new Error(err.detail || `API error: ${res.status}`);
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?(.+?)"?$/);
+    const filename = match ? match[1] : `unlocked_${file.name}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    return { filename };
+  },
+
   // Admin
   createInviteCodes: (count: number) =>
     request<{ codes: string[] }>('/auth/invite-codes', {

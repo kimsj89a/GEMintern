@@ -1,0 +1,134 @@
+<h2>대시보드 레이아웃</h2>
+<p class="subtitle">로그인 후 첫 화면. 어떤 레이아웃이 더 좋은지 골라주세요.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding: 16px; background: #f8fafc;">
+        <!-- Layout A: Summary cards + Fund list -->
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <div style="flex:1; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 10px; color: #94a3b8;">총 모집 목표</div>
+            <div style="font-size: 18px; font-weight: bold; color: #1e293b;">500억</div>
+          </div>
+          <div style="flex:1; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 10px; color: #94a3b8;">확약 금액</div>
+            <div style="font-size: 18px; font-weight: bold; color: #10b981;">320억</div>
+          </div>
+          <div style="flex:1; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 10px; color: #94a3b8;">납입 완료</div>
+            <div style="font-size: 18px; font-weight: bold; color: #3b82f6;">200억</div>
+          </div>
+          <div style="flex:1; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 10px; color: #94a3b8;">활성 LP</div>
+            <div style="font-size: 18px; font-weight: bold; color: #8b5cf6;">24</div>
+          </div>
+        </div>
+        <!-- Fund list -->
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 8px;">펀드별 현황</div>
+          <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+              <span style="font-weight: 600;">AI Growth Fund I</span>
+              <span style="color: #10b981;">64%</span>
+            </div>
+            <div style="background: #e2e8f0; border-radius: 4px; height: 6px;">
+              <div style="background: #10b981; border-radius: 4px; height: 6px; width: 64%;"></div>
+            </div>
+          </div>
+          <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+              <span style="font-weight: 600;">Infra Fund II</span>
+              <span style="color: #f59e0b;">38%</span>
+            </div>
+            <div style="background: #e2e8f0; border-radius: 4px; height: 6px;">
+              <div style="background: #f59e0b; border-radius: 4px; height: 6px; width: 38%;"></div>
+            </div>
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+              <span style="font-weight: 600;">PE Fund III</span>
+              <span style="color: #3b82f6;">85%</span>
+            </div>
+            <div style="background: #e2e8f0; border-radius: 4px; height: 6px;">
+              <div style="background: #3b82f6; border-radius: 4px; height: 6px; width: 85%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A) 요약 카드 + 펀드 리스트</h3>
+      <p>깔끔한 KPI 카드 상단, 아래에 펀드별 진행률 바. 한눈에 전체 현황 파악.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding: 16px; background: #f8fafc;">
+        <!-- Layout B: Two column - funds left, activity right -->
+        <div style="display: flex; gap: 12px;">
+          <div style="flex: 3;">
+            <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+              <div style="flex:1; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center;">
+                <div style="font-size: 9px; color: #94a3b8;">확약률</div>
+                <div style="font-size: 16px; font-weight: bold; color: #10b981;">64%</div>
+              </div>
+              <div style="flex:1; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center;">
+                <div style="font-size: 9px; color: #94a3b8;">LP</div>
+                <div style="font-size: 16px; font-weight: bold; color: #8b5cf6;">24</div>
+              </div>
+            </div>
+            <!-- Fund cards -->
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 12px; font-weight: 600;">AI Growth Fund I</div>
+                  <div style="font-size: 10px; color: #94a3b8;">목표 300억 · 확약 192억</div>
+                </div>
+                <div style="font-size: 14px; font-weight: bold; color: #10b981;">64%</div>
+              </div>
+              <div style="display: flex; gap: 4px; margin-top: 6px;">
+                <div style="background: #10b981; height: 4px; border-radius: 2px; flex: 3;"></div>
+                <div style="background: #fbbf24; height: 4px; border-radius: 2px; flex: 2;"></div>
+                <div style="background: #e2e8f0; height: 4px; border-radius: 2px; flex: 5;"></div>
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 4px; font-size: 9px; color: #94a3b8;">
+                <span>🟢 확약 3</span><span>🟡 협의 2</span><span>⚪ 접촉 5</span>
+              </div>
+            </div>
+            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 12px; font-weight: 600;">Infra Fund II</div>
+                  <div style="font-size: 10px; color: #94a3b8;">목표 200억 · 확약 76억</div>
+                </div>
+                <div style="font-size: 14px; font-weight: bold; color: #f59e0b;">38%</div>
+              </div>
+            </div>
+          </div>
+          <!-- Activity feed -->
+          <div style="flex: 2; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+            <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 8px;">최근 활동</div>
+            <div style="font-size: 10px; color: #475569; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
+              <span style="color: #94a3b8;">10분 전</span><br>
+              김팀장: 한국투자 → <b>확약</b> 변경
+            </div>
+            <div style="font-size: 10px; color: #475569; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
+              <span style="color: #94a3b8;">2시간 전</span><br>
+              박대리: NH투자 미팅 메모 추가
+            </div>
+            <div style="font-size: 10px; color: #475569;">
+              <span style="color: #94a3b8;">어제</span><br>
+              이과장: 교보생명 50억 커밋 등록
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B) 펀드 카드 + 활동 피드</h3>
+      <p>왼쪽에 펀드별 상세 카드 (상태별 LP 수 포함), 오른쪽에 팀 활동 타임라인. 협업 상황이 바로 보임.</p>
+    </div>
+  </div>
+</div>

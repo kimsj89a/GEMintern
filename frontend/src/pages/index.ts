@@ -23,5 +23,6 @@ export const PAGE_REGISTRY: Record<
   quickmail: { label: '✉️ QuickMail', component: lazy(() => import('./QuickMailPage')) },
   dartwings: { label: '📊 DartWings', component: lazy(() => import('./DartwingsPage')) },
   draftdoc: { label: '📄 기안문 작성', component: lazy(() => import('./DraftDocPage')) },
+  pdf_unlock: { label: 'PDF 잠금 해제', component: lazy(() => import('./PdfUnlockPage')) },
   admin: { label: '🛡️ 관리자', component: lazy(() => import('./AdminPage')) },
 };

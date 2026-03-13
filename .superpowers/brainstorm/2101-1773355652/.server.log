@@ -1,3 +1,11 @@
 {"type":"server-started","port":56850,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:56850","screen_dir":"C:/Users/kimsj/GEMintern/GEMintern/.superpowers/brainstorm/2101-1773355652"}
 {"type":"screen-added","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\architecture-overview.html"}
 {"type":"screen-updated","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\architecture-overview.html"}
+{"source":"user-event","type":"click","text":"3\n      \n        LP 상세\n        해당 LP의 전체 히스토리 — 미팅 기록, 상태 변경 이력, 메모, 커밋 금액 변동","choice":"lp-detail","id":null,"timestamp":1773365019528}
+{"source":"user-event","type":"click","text":"3\n      \n        LP 상세\n        해당 LP의 전체 히스토리 — 미팅 기록, 상태 변경 이력, 메모, 커밋 금액 변동","choice":"lp-detail","id":null,"timestamp":1773365020063}
+{"source":"user-event","type":"click","text":"2\n      \n        펀드 상세\n        LP 리스트를 상태별 칸반 또는 테이블로 보기. LP 드래그로 상태 변경. 금액 요약.","choice":"fund-detail","id":null,"timestamp":1773365020832}
+{"type":"screen-added","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\dashboard-layout.html"}
+{"type":"screen-updated","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\dashboard-layout.html"}
+{"type":"screen-added","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\dashboard-layout-v2.html"}
+{"type":"screen-added","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\fund-detail-view.html"}
+{"type":"screen-added","file":"C:\\Users\\kimsj\\GEMintern\\GEMintern\\.superpowers\\brainstorm\\2101-1773355652\\waiting.html"}

@@ -40,6 +40,7 @@ const NAV_SECTIONS = [
       { label: 'QuickMail', id: 'quickmail', icon: '✉️' },
       { label: '국민연금 사업장', id: 'nps', icon: '🏢' },
       { label: 'DartWings', id: 'dartwings', icon: '📊' },
+      { label: 'PDF 잠금 해제', id: 'pdf_unlock', icon: '🔓' },
     ],
   },
 ];

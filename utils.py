@@ -614,3 +614,37 @@ def load_all_project_docs(project_name):
             with open(path, "r", encoding="utf-8") as f:
                 all_text += f.read() + "\n\n"
     return all_text
+
+
+def unlock_pdf(pdf_bytes: bytes, password: str) -> bytes:
+    """비밀번호로 보호된 PDF의 잠금을 해제하여 새 PDF 바이트를 반환한다.
+
+    Args:
+        pdf_bytes: 원본 PDF 파일의 바이트 데이터
+        password: PDF 비밀번호
+
+    Returns:
+        잠금 해제된 PDF의 바이트 데이터
+
+    Raises:
+        ValueError: 비밀번호가 틀리거나 PDF를 열 수 없는 경우
+    """
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as e:
+        raise ValueError(f"PDF 파일을 열 수 없습니다: {e}")
+
+    if not doc.is_encrypted:
+        # 이미 잠금 해제된 PDF
+        result = doc.tobytes()
+        doc.close()
+        return result
+
+    if not doc.authenticate(password):
+        doc.close()
+        raise ValueError("비밀번호가 올바르지 않습니다.")
+
+    # 잠금 해제된 PDF를 새로 저장 (암호화 없이)
+    result = doc.tobytes(garbage=3, deflate=True)
+    doc.close()
+    return result

@@ -1,5 +1,6 @@
 """WebSocket handler for streaming AI generation."""
 import asyncio
+import json
 import uuid
 import threading
 from fastapi import WebSocket, WebSocketDisconnect
@@ -10,13 +11,38 @@ from typing import Dict
 _tasks: Dict[str, dict] = {}
 
 
+def _save_task_history(task: dict, result_text: str):
+    """완료된 task의 결과를 generation_history에 저장한다."""
+    user_id = task.get("_user_id")
+    if not user_id:
+        return
+    try:
+        from backend.database import save_generation
+        save_generation(
+            user_id=user_id,
+            endpoint=task.get("_endpoint", ""),
+            title=task.get("_title", ""),
+            model=task.get("_model"),
+            inputs=task.get("_inputs"),
+            result_text=result_text,
+        )
+    except Exception as e:
+        print(f"[history] save error: {e}")
+
+
 def get_task(task_id: str) -> dict:
     return _tasks.get(task_id, {})
 
 
-def create_task() -> str:
+def create_task(user_id: int | None = None, endpoint: str = "",
+                model: str = "", title: str = "",
+                inputs: dict | None = None) -> str:
     task_id = str(uuid.uuid4())[:8]
-    _tasks[task_id] = {"status": "pending", "chunks": [], "result": None, "error": None}
+    _tasks[task_id] = {
+        "status": "pending", "chunks": [], "result": None, "error": None,
+        "_user_id": user_id, "_endpoint": endpoint,
+        "_model": model, "_title": title, "_inputs": inputs,
+    }
     return task_id
 
 
@@ -51,6 +77,7 @@ def run_generate_task(task_id: str, api_key: str, model_name: str,
                     task["chunks"].append(text)
             task["result"] = full_text
             task["status"] = "complete"
+            _save_task_history(task, full_text)
         except Exception as e:
             task["error"] = str(e)
             task["status"] = "error"
@@ -85,6 +112,8 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
             result = fn(api_key, model_name, **kwargs)
             task["result"] = result
             task["status"] = "complete"
+            result_text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+            _save_task_history(task, result_text)
         except Exception as e:
             task["error"] = str(e)
             task["status"] = "error"

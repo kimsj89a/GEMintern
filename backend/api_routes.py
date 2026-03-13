@@ -15,9 +15,27 @@ from backend.api_models import (
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
-from backend.database import log_usage
+from backend.database import log_usage, save_generation
 
 router = APIRouter()
+
+
+def _save_inline_task_history(task: dict, result_text: str):
+    """inline _run() 완료 시 generation_history에 저장."""
+    user_id = task.get("_user_id")
+    if not user_id:
+        return
+    try:
+        save_generation(
+            user_id=user_id,
+            endpoint=task.get("_endpoint", ""),
+            title=task.get("_title", ""),
+            model=task.get("_model"),
+            inputs=task.get("_inputs"),
+            result_text=result_text,
+        )
+    except Exception as e:
+        print(f"[history] save error: {e}")
 
 
 def _get_api_key() -> str:
@@ -795,7 +813,11 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
         if user_context:
             file_context = _truncate_context(user_context, max_chars)
 
-    task_id = create_task()
+    title = req.template_option or req.inputs.get("template_option", "")
+    task_id = create_task(
+        user_id=user["id"], endpoint="/generate", model=model,
+        title=title, inputs={"template_option": req.template_option, "mode": req.mode},
+    )
     run_generate_task(
         task_id, api_key, model,
         inputs, req.thinking_level, file_context,
@@ -825,7 +847,10 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
         if req.file_context:
             context = _truncate_context(req.file_context.strip(), max_chars)
 
-    task_id = create_task()
+    task_id = create_task(
+        user_id=user["id"], endpoint="/qa", model=model,
+        title=req.question[:100], inputs={"question": req.question},
+    )
     run_analysis_task(
         task_id, "qa_answer", api_key, model,
         file_context=context, question=req.question
@@ -856,7 +881,10 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
             if kwargs.get("file_context"):
                 kwargs["file_context"] = _truncate_context(kwargs["file_context"], max_chars)
 
-    task_id = create_task()
+    task_id = create_task(
+        user_id=user["id"], endpoint=f"/analyze/{req.task_type}", model=model,
+        title=req.task_type, inputs={"task_type": req.task_type},
+    )
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
     log_usage(user["id"], f"/analyze/{req.task_type}", model)
     return {"task_id": task_id}
@@ -873,6 +901,38 @@ def get_task_status(task_id: str, user: dict = Depends(get_current_user)):
         "result": task["result"],
         "error": task["error"],
     }
+
+
+# ========================================
+# Generation History
+# ========================================
+
+@router.get("/history")
+def list_history(limit: int = 50, offset: int = 0, user: dict = Depends(get_current_user)):
+    """사용자의 생성 이력 목록을 반환한다."""
+    from backend.database import list_generations
+    rows = list_generations(user["id"], limit, offset)
+    return {"items": rows, "limit": limit, "offset": offset}
+
+
+@router.get("/history/{gen_id}")
+def get_history_detail(gen_id: int, user: dict = Depends(get_current_user)):
+    """특정 생성 이력의 상세를 반환한다."""
+    from backend.database import get_generation
+    item = get_generation(gen_id, user["id"])
+    if not item:
+        raise HTTPException(status_code=404, detail="이력을 찾을 수 없습니다.")
+    return item
+
+
+@router.delete("/history/{gen_id}")
+def delete_history(gen_id: int, user: dict = Depends(get_current_user)):
+    """생성 이력을 삭제한다."""
+    from backend.database import delete_generation
+    deleted = delete_generation(gen_id, user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="이력을 찾을 수 없습니다.")
+    return {"ok": True}
 
 
 # ========================================
@@ -1108,6 +1168,35 @@ class MarkdownToDocxRequest(BaseModel):
 
 
 # ========================================
+# PDF Unlock
+# ========================================
+
+@router.post("/unlock-pdf")
+async def unlock_pdf(
+    file: UploadFile = File(...),
+    password: str = "",
+    user: dict = Depends(get_current_user),
+):
+    """비밀번호로 보호된 PDF의 잠금을 해제하여 반환한다."""
+    from fastapi.responses import Response
+    import utils
+
+    log_usage(user["id"], "/unlock-pdf")
+    pdf_bytes = await file.read()
+    try:
+        unlocked = utils.unlock_pdf(pdf_bytes, password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    orig_name = os.path.splitext(file.filename)[0]
+    return Response(
+        content=unlocked,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="unlocked_{orig_name}.pdf"'},
+    )
+
+
+# ========================================
 # Free-form Document Writing
 # ========================================
 
@@ -1138,7 +1227,10 @@ def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)
     if not combined.strip():
         return {"error": "자료가 비어있습니다."}
 
-    task_id = create_task()
+    task_id = create_task(
+        user_id=user["id"], endpoint="/freedoc/generate", model=model,
+        title=req.instruction[:100], inputs={"instruction": req.instruction},
+    )
 
     def _run():
         task = get_task(task_id)
@@ -1182,6 +1274,7 @@ def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)
                     task["chunks"].append(text)
             task["result"] = full_text
             task["status"] = "complete"
+            _save_inline_task_history(task, full_text)
         except Exception as e:
             task["error"] = str(e)
             task["status"] = "error"
@@ -1215,7 +1308,10 @@ def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_use
     if not combined.strip():
         return {"error": "자료가 비어있습니다."}
 
-    task_id = create_task()
+    task_id = create_task(
+        user_id=user["id"], endpoint="/draftdoc/generate", model=model,
+        title="기안문 작성", inputs={"instruction": req.instruction[:200] if req.instruction else ""},
+    )
 
     def _run():
         task = get_task(task_id)
@@ -1268,6 +1364,7 @@ def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_use
                     task["chunks"].append(text)
             task["result"] = full_text
             task["status"] = "complete"
+            _save_inline_task_history(task, full_text)
         except Exception as e:
             task["error"] = str(e)
             task["status"] = "error"

@@ -840,9 +840,18 @@ export default function WorkflowPage() {
       {/* ======================== PHASE 2: Refine ======================== */}
       {!isPhase1 && phase2View === 'refine' && (
         <div className="flex gap-4 animate-fade-in-up" style={{ height: 'calc(100vh - 280px)' }}>
-          <div className="flex-1 glass-card-elevated p-5 overflow-y-auto">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">현재 보고서</div>
-            <MarkdownViewer content={result} />
+          <div className="flex-1 glass-card-elevated flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">현재 보고서</div>
+              <div className="flex gap-1.5">
+                <button onClick={() => copyRichText(result)} className="px-2.5 py-1 text-[11px] font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors">서식복사</button>
+                <button onClick={() => downloadAsWord(result, generateFilename(activePage || '보고서', 'docx', currentProject))} className="px-2.5 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors">Word</button>
+                <button onClick={downloadMarkdown} className="px-2.5 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors">MD</button>
+              </div>
+            </div>
+            <div className="flex-1 px-5 pb-5 overflow-y-auto">
+              <MarkdownViewer content={result} />
+            </div>
           </div>
           <div className="w-96 glass-card-elevated p-4 flex flex-col">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">수정 요청</div>

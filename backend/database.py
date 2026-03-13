@@ -102,6 +102,19 @@ def init_db():
                 UNIQUE(project_id, folder, filename)
             );
 
+            CREATE TABLE IF NOT EXISTS generation_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                endpoint TEXT NOT NULL,
+                title TEXT DEFAULT '',
+                model TEXT,
+                inputs_json TEXT,
+                result_text TEXT,
+                status TEXT DEFAULT 'complete',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+
             CREATE TABLE IF NOT EXISTS qa_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_id INTEGER NOT NULL,
@@ -218,6 +231,68 @@ def get_user_settings(user_id: int) -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
     return {}
+
+
+def save_generation(user_id: int, endpoint: str, title: str,
+                    model: str | None, inputs: dict | None,
+                    result_text: str, status: str = "complete") -> int:
+    """생성 작업 결과를 이력에 저장하고 ID를 반환한다."""
+    inputs_json = json.dumps(inputs, ensure_ascii=False) if inputs else None
+    with get_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO generation_history
+               (user_id, endpoint, title, model, inputs_json, result_text, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, endpoint, title, model, inputs_json, result_text, status),
+        )
+        return cur.lastrowid
+
+
+def list_generations(user_id: int, limit: int = 50, offset: int = 0) -> list[dict]:
+    """사용자의 생성 이력을 최신순으로 반환한다."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, endpoint, title, model, status, created_at
+               FROM generation_history
+               WHERE user_id = ?
+               ORDER BY created_at DESC
+               LIMIT ? OFFSET ?""",
+            (user_id, limit, offset),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_generation(gen_id: int, user_id: int) -> dict | None:
+    """특정 생성 이력의 상세 정보를 반환한다."""
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT id, endpoint, title, model, inputs_json, result_text, status, created_at
+               FROM generation_history
+               WHERE id = ? AND user_id = ?""",
+            (gen_id, user_id),
+        ).fetchone()
+    if row:
+        d = dict(row)
+        if d.get("inputs_json"):
+            try:
+                d["inputs"] = json.loads(d["inputs_json"])
+            except (json.JSONDecodeError, TypeError):
+                d["inputs"] = None
+        else:
+            d["inputs"] = None
+        del d["inputs_json"]
+        return d
+    return None
+
+
+def delete_generation(gen_id: int, user_id: int) -> bool:
+    """생성 이력 삭제."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM generation_history WHERE id = ? AND user_id = ?",
+            (gen_id, user_id),
+        )
+        return cur.rowcount > 0
 
 
 def save_user_settings(user_id: int, settings: dict):
