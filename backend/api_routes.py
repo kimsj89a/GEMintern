@@ -10,7 +10,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 
 from pydantic import BaseModel
 from backend.api_models import (
-    ProjectCreate, FolderCreate, DocMoveRequest,
+    ProjectCreate, ProjectRename, FolderCreate, DocMoveRequest,
     GenerateRequest, QaRequest, AnalysisRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
@@ -237,13 +237,22 @@ def _save_settings(data: dict):
 
 
 def _verify_project_ownership(project_name: str, user_id: int):
-    """Raise 403 if user doesn't own the project."""
+    """Raise 403 if user doesn't own the project. Check SQLite first, fallback to rag_storage."""
+    from backend.database import get_db
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id, owner_id FROM projects WHERE name = ? AND owner_id = ?",
+            (project_name, user_id)
+        ).fetchone()
+    if project:
+        return  # OK
+    # Fallback: check rag_storage for legacy compatibility
     import core_rag
     projects = core_rag._load_projects()
-    project = next((p for p in projects if p["name"] == project_name), None)
-    if not project:
+    p = next((p for p in projects if p["name"] == project_name), None)
+    if not p:
         raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
-    if project.get("owner_id") is not None and project.get("owner_id") != user_id:
+    if p.get("owner_id") is not None and p.get("owner_id") != user_id:
         raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
 # ========================================
@@ -252,7 +261,7 @@ def _verify_project_ownership(project_name: str, user_id: int):
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok", "version": "7.1"}
+    return {"status": "ok", "version": "2026.03.13T1"}
 
 
 # ========================================
@@ -337,19 +346,105 @@ def apply_settings(user: dict = Depends(get_current_user)):
 
 @router.get("/projects")
 def list_projects(user: dict = Depends(get_current_user)):
+    from backend.database import get_db
     import core_rag
-    return core_rag.list_projects(owner_id=user["id"])
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, name, storage_name, created_at FROM projects WHERE owner_id = ? ORDER BY created_at DESC",
+            (user["id"],)
+        ).fetchall()
+    result = []
+    for r in rows:
+        doc_count = 0
+        try:
+            doc_count = len(core_rag.get_indexed_doc_names(r["name"]))
+        except Exception:
+            pass
+        result.append({
+            "id": r["id"], "name": r["name"], "storage_name": r["storage_name"],
+            "created_at": r["created_at"], "doc_count": doc_count,
+        })
+    return result
 
 
 @router.post("/projects")
 def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
     import core_rag
-    return core_rag.create_project(req.name, owner_id=user["id"])
+    from backend.database import get_db
+    # Create in rag_storage (files + index)
+    rag_result = core_rag.create_project(req.name, owner_id=user["id"])
+    if not rag_result.get("success"):
+        return rag_result
+    # Also insert into SQLite
+    project_info = rag_result.get("project", {})
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (req.name.strip(), user["id"])
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                "INSERT INTO projects (name, owner_id, storage_name) VALUES (?, ?, ?)",
+                (project_info.get("name", req.name.strip()), user["id"],
+                 project_info.get("storage_name", req.name.strip()))
+            )
+    return rag_result
+
+
+@router.patch("/projects/{name}")
+def rename_project(name: str, req: ProjectRename, user: dict = Depends(get_current_user)):
+    """Rename a project (display name only, storage directory unchanged)."""
+    import re
+    import core_rag
+    from backend.database import get_db
+    new_name = req.new_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="프로젝트명을 입력해주세요.")
+    safe_name = re.sub(r'[\\/*?:"<>|]', "", new_name).strip()
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="유효하지 않은 프로젝트명입니다.")
+
+    with get_db() as conn:
+        # Check ownership
+        project = conn.execute(
+            "SELECT id, storage_name FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        ).fetchone()
+        if not project:
+            raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+        # Check duplicate
+        dup = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (safe_name, user["id"])
+        ).fetchone()
+        if dup and dup["id"] != project["id"]:
+            raise HTTPException(status_code=409, detail=f"'{safe_name}' 프로젝트가 이미 존재합니다.")
+        # Update DB
+        conn.execute(
+            "UPDATE projects SET name = ? WHERE id = ?",
+            (safe_name, project["id"])
+        )
+    # Update _projects.json for legacy compatibility
+    projects = core_rag._load_projects()
+    for p in projects:
+        if p["name"] == name and (p.get("owner_id") is None or p.get("owner_id") == user["id"]):
+            p["name"] = safe_name
+            break
+    core_rag._save_projects(projects)
+    return {"success": True, "name": safe_name}
 
 
 @router.delete("/projects/{name}")
 def delete_project(name: str, user: dict = Depends(get_current_user)):
     import core_rag
+    from backend.database import get_db
+    # Delete from SQLite
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        )
+    # Delete from rag_storage
     return core_rag.delete_project(name, owner_id=user["id"])
 
 
@@ -364,6 +459,25 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     tree = core_rag.get_folder_tree(name)
     doc_names = core_rag.get_indexed_doc_names(name) or []
     return {"folder_tree": tree, "doc_names": doc_names, "count": len(doc_names)}
+
+
+@router.get("/projects/{name}/documents")
+def list_documents(name: str, user: dict = Depends(get_current_user)):
+    """Return all documents for a project from SQLite."""
+    _verify_project_ownership(name, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        ).fetchone()
+        if not project:
+            raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+        docs = conn.execute(
+            "SELECT id, folder, filename, size, uploaded_at FROM documents WHERE project_id = ? ORDER BY folder, filename",
+            (project["id"],)
+        ).fetchall()
+    return [dict(d) for d in docs]
 
 
 @router.post("/projects/{name}/folders")
@@ -397,10 +511,11 @@ def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):
 @router.post("/projects/{name}/sync-texts")
 def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_current_user)):
     """IndexedDB에서 파싱된 텍스트를 서버 RAG 저장소로 동기화.
-    payload: { docs: [{ filename, parsedText }] }
+    payload: { docs: [{ filename, parsedText, folder? }] }
     프로젝트가 서버에 없으면 자동 생성.
     """
     import core_rag
+    from backend.database import get_db
 
     # 서버에 프로젝트가 없으면 자동 생성
     projects = core_rag.list_projects(owner_id=user["id"])
@@ -413,6 +528,27 @@ def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_curr
 
     texts = {d["filename"]: d["parsedText"] for d in docs if d.get("parsedText")}
     result = core_rag.index_texts("", texts, name)
+
+    # Store in SQLite documents table
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        ).fetchone()
+        if project:
+            for d in docs:
+                fn = d.get("filename", "")
+                folder = d.get("folder", "__root__")
+                parsed = d.get("parsedText", "")
+                size = len(parsed.encode("utf-8")) if parsed else 0
+                conn.execute(
+                    """INSERT INTO documents (project_id, folder, filename, parsed_text, size)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(project_id, folder, filename) DO UPDATE SET
+                         parsed_text = excluded.parsed_text, size = excluded.size""",
+                    (project["id"], folder, fn, parsed, size),
+                )
+
     return result
 
 
@@ -420,6 +556,7 @@ def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_curr
 async def upload_files(name: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
+    from backend.database import get_db
     api_key = _get_api_key()
     texts = {}
     parse_errors = []
@@ -433,8 +570,25 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
     result = core_rag.index_texts(api_key, texts, name)
     if parse_errors:
         result["parse_errors"] = parse_errors
-    # Return parsed texts so frontend can store in IndexedDB
     result["parsed_texts"] = texts
+
+    # Store in SQLite documents table
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        ).fetchone()
+        if project:
+            for fn, parsed_text in texts.items():
+                size = len(parsed_text.encode("utf-8")) if parsed_text else 0
+                conn.execute(
+                    """INSERT INTO documents (project_id, folder, filename, parsed_text, size)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(project_id, folder, filename) DO UPDATE SET
+                         parsed_text = excluded.parsed_text, size = excluded.size""",
+                    (project["id"], "__root__", fn, parsed_text, size),
+                )
+
     return result
 
 
@@ -785,7 +939,8 @@ def doc_sync_status(name: str, user: dict = Depends(get_current_user)):
         indexed_names = set(core_rag.get_indexed_doc_names(name))
 
         # 실제 docs 디렉토리의 .md 파일
-        docs_dir = core_rag._get_project_docs_dir(name)
+        storage = core_rag._get_storage_name(name)
+        docs_dir = core_rag._get_project_docs_dir(storage)
         disk_files = {}
         if os.path.isdir(docs_dir):
             for f in sorted(os.listdir(docs_dir)):
@@ -836,8 +991,9 @@ def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get
     """선택한 파일들의 동기화 상태를 변경."""
     import core_rag
     try:
+        storage = core_rag._get_storage_name(name)
         indexed = set(core_rag.get_indexed_doc_names(name))
-        folders = core_rag._load_folders(name)
+        folders = core_rag._load_folders(storage)
 
         # disk_only → 인덱스에 추가
         for doc_name in req.add:
@@ -856,8 +1012,8 @@ def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get
                 if doc_name in folder_docs:
                     folder_docs.remove(doc_name)
 
-        core_rag._save_indexed_docs(name, list(indexed))
-        core_rag._save_folders(name, folders)
+        core_rag._save_indexed_docs(storage, list(indexed))
+        core_rag._save_folders(storage, folders)
 
         return {
             "success": True,
@@ -1717,3 +1873,98 @@ def dw_valuation_models(stockCode: str = _Query(...), user: dict = Depends(get_c
     grade = "저평가" if avg_upside > 15 else ("고평가" if avg_upside < -15 else "적정")
 
     return {"multiples": multiples, "multiplesHistory": multiples_history, "dcf": dcf, "srim": srim, "grade": grade}
+
+
+# ========================================
+# Q&A Sessions
+# ========================================
+
+@router.get("/qa/sessions")
+def list_qa_sessions(project: str, user: dict = Depends(get_current_user)):
+    """List Q&A sessions for a project."""
+    _verify_project_ownership(project, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        proj = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (project, user["id"])
+        ).fetchone()
+        if not proj:
+            return []
+        sessions = conn.execute(
+            "SELECT id, title, created_at, updated_at FROM qa_sessions WHERE project_id = ? ORDER BY updated_at DESC",
+            (proj["id"],)
+        ).fetchall()
+    return [dict(s) for s in sessions]
+
+
+@router.post("/qa/sessions")
+def create_qa_session(data: dict, user: dict = Depends(get_current_user)):
+    """Create a new Q&A session."""
+    project_name = data.get("project")
+    _verify_project_ownership(project_name, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        proj = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (project_name, user["id"])
+        ).fetchone()
+        if not proj:
+            raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+        cur = conn.execute(
+            "INSERT INTO qa_sessions (project_id, title) VALUES (?, ?)",
+            (proj["id"], data.get("title", "새 대화"))
+        )
+        session_id = cur.lastrowid
+    return {"id": session_id}
+
+
+@router.patch("/qa/sessions/{session_id}")
+def update_qa_session(session_id: int, data: dict, user: dict = Depends(get_current_user)):
+    """Update session title."""
+    from backend.database import get_db
+    with get_db() as conn:
+        title = data.get("title")
+        if title:
+            conn.execute(
+                "UPDATE qa_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (title, session_id)
+            )
+    return {"ok": True}
+
+
+@router.delete("/qa/sessions/{session_id}")
+def delete_qa_session(session_id: int, user: dict = Depends(get_current_user)):
+    """Delete a Q&A session and its messages."""
+    from backend.database import get_db
+    with get_db() as conn:
+        conn.execute("DELETE FROM qa_sessions WHERE id = ?", (session_id,))
+    return {"ok": True}
+
+
+@router.get("/qa/sessions/{session_id}/messages")
+def get_session_messages(session_id: int, user: dict = Depends(get_current_user)):
+    """Get all messages in a session."""
+    from backend.database import get_db
+    with get_db() as conn:
+        msgs = conn.execute(
+            "SELECT id, role, content, created_at FROM qa_messages WHERE session_id = ? ORDER BY created_at",
+            (session_id,)
+        ).fetchall()
+    return [dict(m) for m in msgs]
+
+
+@router.post("/qa/sessions/{session_id}/messages")
+def add_session_message(session_id: int, data: dict, user: dict = Depends(get_current_user)):
+    """Add a message to a session."""
+    from backend.database import get_db
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO qa_messages (session_id, role, content) VALUES (?, ?, ?)",
+            (session_id, data["role"], data["content"])
+        )
+        conn.execute(
+            "UPDATE qa_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (session_id,)
+        )
+    return {"ok": True}

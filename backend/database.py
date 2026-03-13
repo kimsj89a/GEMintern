@@ -79,6 +79,46 @@ def init_db():
                 settings_json TEXT DEFAULT '{}',
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                owner_id INTEGER NOT NULL,
+                storage_name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users(id),
+                UNIQUE(owner_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                folder TEXT DEFAULT '__root__',
+                filename TEXT NOT NULL,
+                parsed_text TEXT,
+                size INTEGER DEFAULT 0,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(project_id, folder, filename)
+            );
+
+            CREATE TABLE IF NOT EXISTS qa_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                title TEXT DEFAULT '새 대화',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS qa_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES qa_sessions(id) ON DELETE CASCADE
+            );
         """)
 
     # Bootstrap admin user from env vars
@@ -120,6 +160,42 @@ def init_db():
                         (code,),
                     )
                     print(f"[DB] Invite code '{code}' bootstrapped.")
+
+    # Migrate existing rag_storage projects to SQLite
+    migrate_rag_projects_to_db()
+
+
+def migrate_rag_projects_to_db():
+    """One-time migration: rag_storage/_projects.json → SQLite projects table."""
+    rag_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rag_storage")
+    projects_file = os.path.join(rag_root, "_projects.json")
+    if not os.path.exists(projects_file):
+        return
+    try:
+        with open(projects_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    migrated = 0
+    with get_db() as conn:
+        for p in data.get("projects", []):
+            owner_id = p.get("owner_id")
+            if owner_id is None:
+                owner_id = 1
+            existing = conn.execute(
+                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                (p["name"], owner_id)
+            ).fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO projects (name, owner_id, storage_name, created_at) VALUES (?, ?, ?, ?)",
+                    (p["name"], owner_id, p.get("storage_name", p["name"]),
+                     p.get("created", "2026-01-01T00:00:00"))
+                )
+                migrated += 1
+    if migrated:
+        print(f"[DB] Migrated {migrated} projects from rag_storage to SQLite.")
 
 
 def log_usage(user_id: int, endpoint: str, model: str | None = None):

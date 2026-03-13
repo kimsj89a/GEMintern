@@ -83,13 +83,33 @@ def _get_indexed_docs_file(project_name: str) -> str:
 
 
 def _get_storage_name(project_name: str, owner_id: int | None = None) -> str:
-    """Resolve display name to storage directory name."""
+    """Resolve display name to storage directory name.
+    Checks _projects.json first, then falls back to SQLite DB.
+    """
     projects = _load_projects()
     for p in projects:
         if p["name"] == project_name:
             if owner_id is not None and p.get("owner_id") is not None and p.get("owner_id") != owner_id:
                 continue
             return p.get("storage_name", p["name"])
+    # Fallback: check SQLite DB for projects created after auth migration
+    try:
+        from backend.database import get_db
+        with get_db() as conn:
+            if owner_id is not None:
+                row = conn.execute(
+                    "SELECT storage_name FROM projects WHERE name = ? AND owner_id = ?",
+                    (project_name, owner_id)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT storage_name FROM projects WHERE name = ? ORDER BY id LIMIT 1",
+                    (project_name,)
+                ).fetchone()
+            if row:
+                return row["storage_name"] if row["storage_name"] else project_name
+    except Exception:
+        pass
     return project_name
 
 # ========================================
@@ -276,6 +296,7 @@ def index_texts_to_folder(
     """Save text documents into a specific folder in the project.
     Wrapper around index_texts that places new docs into the specified folder.
     """
+    storage = _get_storage_name(project_name)
     result = index_texts(api_key, texts, project_name)
 
     # Move newly indexed docs to the target folder
@@ -461,7 +482,7 @@ def get_indexed_doc_names(project_name: str) -> List[str]:
     if indexed != disk_stems:
         _save_indexed_docs(storage, sorted(disk_stems))
         # Also fix folder structure: remove ghosts, add orphans to root
-        folders = _load_folders(project_name)
+        folders = _load_folders(storage)
         for folder_key in list(folders.keys()):
             folders[folder_key] = [d for d in folders[folder_key] if d in disk_stems]
         root = folders.setdefault(ROOT_FOLDER, [])
@@ -639,7 +660,7 @@ def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[
         for doc_stem in indexed:
             if not any(doc_stem in doc_list for doc_list in folders.values()):
                 root_docs.append(doc_stem)
-        _save_folders(project_name, folders)
+        _save_folders(storage, folders)
 
     if _sync_manager and indexed:
         try:

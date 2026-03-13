@@ -4,8 +4,7 @@ import { api } from '../api/client';
 import FolderTree from '../components/FolderTree';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
-import { getLocalFolderTree } from '../utils/projectDB';
-import { useAutoSync } from '../utils/autoSync';
+// Server-first: no IDB imports needed
 
 interface QaItem {
   question: string;
@@ -15,7 +14,6 @@ interface QaItem {
 
 export default function LpQaPage() {
   const { currentProject } = useAppStore();
-  useAutoSync(currentProject);
   const [tree, setTree] = useState<Record<string, string[]>>({});
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [inputMode, setInputMode] = useState<'direct' | 'file'>('direct');
@@ -53,7 +51,7 @@ export default function LpQaPage() {
 
   useEffect(() => {
     if (!currentProject) return;
-    getLocalFolderTree(currentProject).then(setTree).catch(() => setTree({}));
+    api.getProjectDocs(currentProject).then(data => setTree(data.folder_tree || {})).catch(() => setTree({}));
   }, [currentProject]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

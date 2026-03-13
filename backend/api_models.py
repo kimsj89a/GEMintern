@@ -7,6 +7,10 @@ class ProjectCreate(BaseModel):
     name: str
 
 
+class ProjectRename(BaseModel):
+    new_name: str
+
+
 class FolderCreate(BaseModel):
     name: str
 

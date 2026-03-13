@@ -9,8 +9,7 @@ import type { ChatMessage } from '../components/ChatWidget';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
 import GenerationProgress from '../components/GenerationProgress';
-import { getLocalFolderTree, addLocalDocuments } from '../utils/projectDB';
-import { useAutoSync } from '../utils/autoSync';
+// Server-first: no IDB imports needed
 
 /* ─── Types ─── */
 type WriteMode = 'report' | 'ppt';
@@ -314,7 +313,6 @@ const PHASE_CONFIG: Record<string, { title: string; desc: string; steps: { id: n
 
 export default function WorkflowPage() {
   const { currentProject, activePage } = useAppStore();
-  useAutoSync(currentProject);
   const phase = PHASE_CONFIG[activePage] || PHASE_CONFIG.phase2;
   const isPhase1 = activePage === 'phase1';
 
@@ -347,8 +345,7 @@ export default function WorkflowPage() {
 
   useEffect(() => {
     if (!currentProject) return;
-    getLocalFolderTree(currentProject).then(setTree).catch(() => setTree({}));
-    // docs loaded from local IndexedDB
+    api.getProjectDocs(currentProject).then(data => setTree(data.folder_tree || {})).catch(() => setTree({}));
   }, [currentProject]);
 
   const handleUpload = async (files: File[]) => {
@@ -356,12 +353,12 @@ export default function WorkflowPage() {
     setUploading(true);
     setUploadStatus('');
     try {
-      const result = await api.parseFiles(files);
-      const docs = Object.entries(result.parsed_texts).map(([filename, text]) => ({ filename, parsedText: text }));
-      await addLocalDocuments(currentProject, docs);
-      setUploadStatus(`${docs.length}개 파일 업로드 완료. 로컬에 저장됨.`);
-      const t = await getLocalFolderTree(currentProject);
-      setTree(t);
+      const uploadResult = await api.uploadFiles(currentProject, files);
+      const count = Object.keys(uploadResult.parsed_texts || {}).length;
+      const errorMsg = uploadResult.parse_errors?.length > 0 ? ` (${uploadResult.parse_errors.length}개 파싱 실패)` : '';
+      setUploadStatus(`${count}개 파일 업로드 완료${errorMsg}`);
+      const data = await api.getProjectDocs(currentProject);
+      setTree(data.folder_tree || {});
     } catch {
       setUploadStatus('업로드 실패');
     }

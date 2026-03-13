@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
-import { listLocalProjects } from '../utils/projectDB';
+import { api } from '../api/client';
 
 const NAV_SECTIONS = [
   {
@@ -49,10 +49,15 @@ export default function Sidebar() {
   const { user, logout } = useAuthStore();
   const [projects, setProjects] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === 'true');
+  const [version, setVersion] = useState('');
 
   useEffect(() => {
-    listLocalProjects().then((list) => {
-      setProjects(list.map((p) => p.name));
+    api.health().then((r) => setVersion(r.version || '')).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.listProjects().then((list) => {
+      setProjects(list.map((p: any) => p.name));
     }).catch(() => {});
   }, [currentProject]);
 
@@ -91,7 +96,7 @@ export default function Sidebar() {
               </div>
               <div>
                 <div className="text-[13px] font-bold text-white tracking-tight">GEM Intern</div>
-                <div className="text-[10px] text-slate-500 font-medium tracking-wider">v7.0</div>
+                <div className="text-[10px] text-slate-500 font-medium tracking-wider">{version}</div>
               </div>
             </div>
             <button onClick={toggleCollapsed}

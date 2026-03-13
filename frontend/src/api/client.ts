@@ -39,7 +39,7 @@ async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response>
 
 export const api = {
   // Health
-  health: () => request<{ status: string }>('/health'),
+  health: () => request<{ status: string; version?: string }>('/health'),
 
   // Settings
   getSettings: () => request<any>('/settings'),
@@ -52,6 +52,11 @@ export const api = {
   listProjects: () => request<any[]>('/projects'),
   createProject: (name: string) =>
     request<any>('/projects', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameProject: (name: string, newName: string) =>
+    request<any>(`/projects/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ new_name: newName }),
+    }),
   deleteProject: (name: string) =>
     request<any>(`/projects/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
@@ -219,6 +224,30 @@ export const api = {
     request<{ data: any[]; total: number; page: number; perPage: number; error?: string }>(
       `/nps/search?${params.toString()}`
     ),
+
+  // Server-first document list
+  listDocuments: (project: string) =>
+    request<any[]>(`/projects/${encodeURIComponent(project)}/documents`),
+
+  // Q&A Sessions
+  listQaSessions: (project: string) =>
+    request<any[]>(`/qa/sessions?project=${encodeURIComponent(project)}`),
+  createQaSession: (project: string, title?: string) =>
+    request<{ id: number }>('/qa/sessions', {
+      method: 'POST', body: JSON.stringify({ project, title }),
+    }),
+  updateQaSession: (sessionId: number, title: string) =>
+    request<any>(`/qa/sessions/${sessionId}`, {
+      method: 'PATCH', body: JSON.stringify({ title }),
+    }),
+  deleteQaSession: (sessionId: number) =>
+    request<any>(`/qa/sessions/${sessionId}`, { method: 'DELETE' }),
+  getSessionMessages: (sessionId: number) =>
+    request<any[]>(`/qa/sessions/${sessionId}/messages`),
+  addSessionMessage: (sessionId: number, role: string, content: string) =>
+    request<any>(`/qa/sessions/${sessionId}/messages`, {
+      method: 'POST', body: JSON.stringify({ role, content }),
+    }),
 
   // Admin
   createInviteCodes: (count: number) =>

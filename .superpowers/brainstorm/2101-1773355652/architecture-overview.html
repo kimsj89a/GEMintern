@@ -1,0 +1,97 @@
+<h2>FundFlow — LP 펀딩 트래커 아키텍처</h2>
+<p class="subtitle">전체 구조 확인. 이 방향이 맞는지 봐주세요.</p>
+
+<div class="section">
+  <h3>데이터 모델</h3>
+  <div class="mockup">
+    <div class="mockup-header">핵심 테이블 관계</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.8; padding: 20px;">
+      <div style="display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;">
+        <div style="border: 2px solid #3b82f6; border-radius: 8px; padding: 12px 16px; min-width: 160px;">
+          <div style="font-weight: bold; color: #3b82f6; margin-bottom: 6px;">Team</div>
+          <div style="font-size: 11px; color: #666;">id, name</div>
+        </div>
+        <div style="border: 2px solid #8b5cf6; border-radius: 8px; padding: 12px 16px; min-width: 160px;">
+          <div style="font-weight: bold; color: #8b5cf6; margin-bottom: 6px;">User</div>
+          <div style="font-size: 11px; color: #666;">id, username, team_id<br>role (admin|member)</div>
+        </div>
+        <div style="border: 2px solid #10b981; border-radius: 8px; padding: 12px 16px; min-width: 160px;">
+          <div style="font-weight: bold; color: #10b981; margin-bottom: 6px;">Fund</div>
+          <div style="font-size: 11px; color: #666;">id, team_id, name<br>target_amount, status</div>
+        </div>
+        <div style="border: 2px solid #f59e0b; border-radius: 8px; padding: 12px 16px; min-width: 160px;">
+          <div style="font-weight: bold; color: #f59e0b; margin-bottom: 6px;">LP</div>
+          <div style="font-size: 11px; color: #666;">id, team_id, name, type<br>contact_name, contact_info</div>
+        </div>
+        <div style="border: 2px solid #ef4444; border-radius: 8px; padding: 12px 16px; min-width: 200px;">
+          <div style="font-weight: bold; color: #ef4444; margin-bottom: 6px;">FundLP (핵심!)</div>
+          <div style="font-size: 11px; color: #666;">fund_id + lp_id<br>status: 접촉→관심표명→조건협의→확약→납입<br>commit_amount, paid_amount, notes</div>
+        </div>
+        <div style="border: 2px solid #ec4899; border-radius: 8px; padding: 12px 16px; min-width: 180px;">
+          <div style="font-weight: bold; color: #ec4899; margin-bottom: 6px;">Meeting</div>
+          <div style="font-size: 11px; color: #666;">fund_lp_id, date<br>summary, next_action</div>
+        </div>
+      </div>
+      <div style="text-align: center; margin-top: 16px; font-size: 12px; color: #999;">
+        Team → User (1:N) &nbsp;|&nbsp; Team → Fund (1:N) &nbsp;|&nbsp; Team → LP (1:N)<br>
+        Fund + LP → FundLP (M:N) &nbsp;|&nbsp; FundLP → Meeting (1:N)
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>주요 화면 구성</h3>
+  <div class="options">
+    <div class="option" data-choice="dashboard" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>대시보드</h3>
+        <p>펀드별 모집현황 요약 — 목표금액 대비 진행률 바, 상태별 LP 수, 최근 활동 타임라인</p>
+      </div>
+    </div>
+    <div class="option" data-choice="fund-detail" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>펀드 상세</h3>
+        <p>LP 리스트를 상태별 칸반 또는 테이블로 보기. LP 드래그로 상태 변경. 금액 요약.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="lp-detail" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>LP 상세</h3>
+        <p>해당 LP의 전체 히스토리 — 미팅 기록, 상태 변경 이력, 메모, 커밋 금액 변동</p>
+      </div>
+    </div>
+    <div class="option" data-choice="lp-master" onclick="toggleSelect(this)">
+      <div class="letter">4</div>
+      <div class="content">
+        <h3>LP 마스터</h3>
+        <p>팀 전체 LP 풀 관리. 여러 펀드에 걸쳐 재사용. LP 유형별 필터링/검색.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>LP 펀딩 파이프라인 (상태 흐름)</h3>
+  <div class="mockup">
+    <div class="mockup-header">FundLP Status Flow</div>
+    <div class="mockup-body" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px; flex-wrap: wrap;">
+      <div style="background: #e0e7ff; color: #3730a3; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">접촉</div>
+      <div style="color: #999;">→</div>
+      <div style="background: #dbeafe; color: #1e40af; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">관심표명</div>
+      <div style="color: #999;">→</div>
+      <div style="background: #fef3c7; color: #92400e; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">조건협의</div>
+      <div style="color: #999;">→</div>
+      <div style="background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">확약</div>
+      <div style="color: #999;">→</div>
+      <div style="background: #10b981; color: white; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">납입</div>
+      <div style="color: #999; margin-left: 16px;">|</div>
+      <div style="background: #fee2e2; color: #991b1b; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">Drop</div>
+    </div>
+  </div>
+</div>
+</content>
+</invoke>
