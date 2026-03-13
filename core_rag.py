@@ -183,25 +183,25 @@ def _save_folders(project_name: str, folders: Dict[str, List[str]]):
     _save_indexed_docs(project_name, all_docs)
 
 
-def get_folder_tree(project_name: str) -> Dict[str, List[str]]:
+def get_folder_tree(project_name: str, owner_id: int | None = None) -> Dict[str, List[str]]:
     """Get the folder tree structure for a project.
     Returns dict with folder names as keys and lists of doc names as values.
     ROOT_FOLDER key contains unfiled documents.
     """
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     return _load_folders(storage)
 
 
-def list_folders(project_name: str) -> List[str]:
+def list_folders(project_name: str, owner_id: int | None = None) -> List[str]:
     """List all folder names (excluding root) for a project."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     folders = _load_folders(storage)
     return [k for k in sorted(folders.keys()) if k != ROOT_FOLDER]
 
 
-def create_folder(project_name: str, folder_name: str) -> Dict[str, Any]:
+def create_folder(project_name: str, folder_name: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Create a new folder in the project."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     folder_name = folder_name.strip()
     if not folder_name:
         return {"success": False, "error": "폴더명을 입력해주세요."}
@@ -221,9 +221,9 @@ def create_folder(project_name: str, folder_name: str) -> Dict[str, Any]:
     return {"success": True, "folder": safe_name}
 
 
-def rename_folder(project_name: str, old_name: str, new_name: str) -> Dict[str, Any]:
+def rename_folder(project_name: str, old_name: str, new_name: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Rename a folder."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     new_name = new_name.strip()
     if not new_name or new_name == ROOT_FOLDER:
         return {"success": False, "error": "유효하지 않은 폴더명입니다."}
@@ -243,9 +243,9 @@ def rename_folder(project_name: str, old_name: str, new_name: str) -> Dict[str, 
     return {"success": True}
 
 
-def delete_folder(project_name: str, folder_name: str) -> Dict[str, Any]:
+def delete_folder(project_name: str, folder_name: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Delete a folder and move its documents to root."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     if folder_name == ROOT_FOLDER:
         return {"success": False, "error": "루트 폴더는 삭제할 수 없습니다."}
 
@@ -260,9 +260,9 @@ def delete_folder(project_name: str, folder_name: str) -> Dict[str, Any]:
     return {"success": True}
 
 
-def move_doc_to_folder(project_name: str, doc_name: str, target_folder: str) -> Dict[str, Any]:
+def move_doc_to_folder(project_name: str, doc_name: str, target_folder: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Move a document to a different folder (or ROOT_FOLDER for unfiled)."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     folders = _load_folders(storage)
 
     if target_folder != ROOT_FOLDER and target_folder not in folders:
@@ -280,9 +280,9 @@ def move_doc_to_folder(project_name: str, doc_name: str, target_folder: str) -> 
     return {"success": True}
 
 
-def get_doc_folder(project_name: str, doc_name: str) -> str:
+def get_doc_folder(project_name: str, doc_name: str, owner_id: int | None = None) -> str:
     """Get the folder that contains a document. Returns ROOT_FOLDER if unfiled."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     folders = _load_folders(storage)
     for folder_key, doc_list in folders.items():
         if doc_name in doc_list:
@@ -291,13 +291,13 @@ def get_doc_folder(project_name: str, doc_name: str) -> str:
 
 
 def index_texts_to_folder(
-    api_key: str, texts: Dict[str, str], project_name: str, folder: str = ROOT_FOLDER
+    api_key: str, texts: Dict[str, str], project_name: str, folder: str = ROOT_FOLDER, owner_id: int | None = None
 ) -> Dict[str, Any]:
     """Save text documents into a specific folder in the project.
     Wrapper around index_texts that places new docs into the specified folder.
     """
-    storage = _get_storage_name(project_name)
-    result = index_texts(api_key, texts, project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
+    result = index_texts(api_key, texts, project_name, owner_id=owner_id)
 
     # Move newly indexed docs to the target folder
     if result.get("indexed") and folder != ROOT_FOLDER:
@@ -454,23 +454,23 @@ def is_rag_available() -> bool:
     return True
 
 
-def is_indexed(project_name: str) -> bool:
+def is_indexed(project_name: str, owner_id: int | None = None) -> bool:
     """Check if a project has any stored documents."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     return len(_get_indexed_docs(storage)) > 0
 
 
-def get_indexed_count(project_name: str) -> int:
+def get_indexed_count(project_name: str, owner_id: int | None = None) -> int:
     """Get number of stored documents in a project."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     return len(_get_indexed_docs(storage))
 
 
-def get_indexed_doc_names(project_name: str) -> List[str]:
+def get_indexed_doc_names(project_name: str, owner_id: int | None = None) -> List[str]:
     """Get names of stored documents in a project.
     Always syncs with actual .md files on disk to prevent ghost/orphan docs.
     """
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     indexed = set(_get_indexed_docs(storage))
     docs_dir = _get_project_docs_dir(storage)
     if not os.path.exists(docs_dir):
@@ -526,11 +526,11 @@ def _load_doc_file(project_name: str, filename: str) -> str:
     return ""
 
 
-def load_all_project_docs(project_name: str) -> str:
+def load_all_project_docs(project_name: str, owner_id: int | None = None) -> str:
     """Load all documents from a project as concatenated text.
     Returns a single string with all document contents.
     """
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     docs_dir = _get_project_docs_dir(storage)
     if not os.path.exists(docs_dir):
         return ""
@@ -550,7 +550,7 @@ def load_all_project_docs(project_name: str) -> str:
     return "\n\n".join(parts)
 
 
-def load_selected_project_docs(project_name: str, selected_doc_names: List[str]) -> str:
+def load_selected_project_docs(project_name: str, selected_doc_names: List[str], owner_id: int | None = None) -> str:
     """Load only selected documents from a project as concatenated text.
 
     Args:
@@ -563,7 +563,7 @@ def load_selected_project_docs(project_name: str, selected_doc_names: List[str])
     if not selected_doc_names:
         return ""
 
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     docs_dir = _get_project_docs_dir(storage)
     if not os.path.exists(docs_dir):
         return ""
@@ -591,9 +591,9 @@ def load_selected_project_docs(project_name: str, selected_doc_names: List[str])
     return "\n\n".join(parts)
 
 
-def load_project_docs_dict(project_name: str) -> Dict[str, str]:
+def load_project_docs_dict(project_name: str, owner_id: int | None = None) -> Dict[str, str]:
     """Load all documents from a project as a dict {filename: content}."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     docs_dir = _get_project_docs_dir(storage)
     if not os.path.exists(docs_dir):
         return {}
@@ -617,11 +617,11 @@ def load_project_docs_dict(project_name: str) -> Dict[str, str]:
 # Public API - Indexing (saves documents)
 # ========================================
 
-def index_texts(api_key: str, texts: Dict[str, str], project_name: str) -> Dict[str, Any]:
+def index_texts(api_key: str, texts: Dict[str, str], project_name: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Save text documents into a project's document store.
     api_key is kept in the signature for backward compatibility but not used.
     """
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     already_indexed = set(_get_indexed_docs(storage))
     # Compare using base names (without extension) to avoid duplicates
     already_indexed_stems = {os.path.splitext(d)[0] for d in already_indexed}
@@ -735,9 +735,9 @@ def enrich_context_with_rag(
 # Index management (per-project)
 # ========================================
 
-def clear_rag_index(project_name: str):
+def clear_rag_index(project_name: str, owner_id: int | None = None):
     """Clear a project's stored documents (keeps the project entry)."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     docs_dir = _get_project_docs_dir(storage)
     if os.path.exists(docs_dir):
         shutil.rmtree(docs_dir, ignore_errors=True)
@@ -755,9 +755,9 @@ def _get_trash_dir(project_name: str) -> str:
     return os.path.join(_get_project_dir(project_name), TRASH_SUBDIR)
 
 
-def trash_document(project_name: str, doc_name: str) -> Dict[str, Any]:
+def trash_document(project_name: str, doc_name: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Move a document to the trash folder (soft delete)."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     docs_dir = _get_project_docs_dir(storage)
     trash_dir = _get_trash_dir(storage)
     os.makedirs(trash_dir, exist_ok=True)
@@ -803,18 +803,18 @@ def trash_document(project_name: str, doc_name: str) -> Dict[str, Any]:
     return {"success": True}
 
 
-def list_trash(project_name: str) -> List[str]:
+def list_trash(project_name: str, owner_id: int | None = None) -> List[str]:
     """List documents in the trash folder."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     trash_dir = _get_trash_dir(storage)
     if not os.path.exists(trash_dir):
         return []
     return sorted([f for f in os.listdir(trash_dir) if f.endswith(".md")])
 
 
-def restore_from_trash(project_name: str, trash_filename: str) -> Dict[str, Any]:
+def restore_from_trash(project_name: str, trash_filename: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Restore a document from trash back to docs folder."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     trash_dir = _get_trash_dir(storage)
     docs_dir = _get_project_docs_dir(storage)
     os.makedirs(docs_dir, exist_ok=True)
@@ -843,9 +843,9 @@ def restore_from_trash(project_name: str, trash_filename: str) -> Dict[str, Any]
     return {"success": True}
 
 
-def permanently_delete_from_trash(project_name: str, trash_filename: str) -> Dict[str, Any]:
+def permanently_delete_from_trash(project_name: str, trash_filename: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Permanently delete a document from trash."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     trash_dir = _get_trash_dir(storage)
     fpath = os.path.join(trash_dir, trash_filename)
     if os.path.exists(fpath):
@@ -854,9 +854,9 @@ def permanently_delete_from_trash(project_name: str, trash_filename: str) -> Dic
     return {"success": False, "error": "파일을 찾을 수 없습니다."}
 
 
-def empty_trash(project_name: str) -> Dict[str, Any]:
+def empty_trash(project_name: str, owner_id: int | None = None) -> Dict[str, Any]:
     """Permanently delete all documents in trash."""
-    storage = _get_storage_name(project_name)
+    storage = _get_storage_name(project_name, owner_id=owner_id)
     trash_dir = _get_trash_dir(storage)
     if os.path.exists(trash_dir):
         shutil.rmtree(trash_dir, ignore_errors=True)

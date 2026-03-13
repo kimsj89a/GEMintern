@@ -75,10 +75,10 @@ def _max_chars_for_model(model: str) -> int:
 
 
 def _load_context_with_budget(project_name: str, selected_docs: list = None,
-                               max_chars: int = MAX_CONTEXT_CHARS) -> str:
+                               max_chars: int = MAX_CONTEXT_CHARS, owner_id: int | None = None) -> str:
     """Load project docs with per-document truncation and clear headers."""
     import core_rag
-    docs_dict = core_rag.load_project_docs_dict(project_name)
+    docs_dict = core_rag.load_project_docs_dict(project_name, owner_id=owner_id)
 
     if selected_docs:
         import os as _os
@@ -109,7 +109,7 @@ def _truncate_context(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
 
 
 def _select_relevant_docs(project_name: str, query: str, model: str = "",
-                           selected_docs: list = None) -> str:
+                           selected_docs: list = None, owner_id: int | None = None) -> str:
     """질문과 관련된 문서만 선별하여 컨텍스트 구성.
     1순위: 벡터 검색 (인덱싱 되어 있으면)
     2순위: 파일명/내용 키워드 매칭
@@ -126,7 +126,7 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
 
     # 2. 키워드 기반 문서 선별
     import core_rag
-    docs_dict = core_rag.load_project_docs_dict(project_name)
+    docs_dict = core_rag.load_project_docs_dict(project_name, owner_id=owner_id)
     if not docs_dict:
         return ""
 
@@ -221,7 +221,7 @@ else:
     except Exception:
         pass
     # Fallback: 전체 문서 로드 + 예산 분배
-    return _load_context_with_budget(project_name, selected_docs)
+    return _load_context_with_budget(project_name, selected_docs, owner_id=owner_id)
 
 # Settings file path
 SETTINGS_FILE = os.path.join(
@@ -375,7 +375,7 @@ def list_projects(user: dict = Depends(get_current_user)):
     for r in rows:
         doc_count = 0
         try:
-            doc_count = len(core_rag.get_indexed_doc_names(r["name"]))
+            doc_count = len(core_rag.get_indexed_doc_names(r["name"], owner_id=user["id"]))
         except Exception:
             pass
         result.append({
@@ -474,8 +474,8 @@ def delete_project(name: str, user: dict = Depends(get_current_user)):
 def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    tree = core_rag.get_folder_tree(name)
-    doc_names = core_rag.get_indexed_doc_names(name) or []
+    tree = core_rag.get_folder_tree(name, owner_id=user["id"])
+    doc_names = core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or []
     return {"folder_tree": tree, "doc_names": doc_names, "count": len(doc_names)}
 
 
@@ -502,28 +502,28 @@ def list_documents(name: str, user: dict = Depends(get_current_user)):
 def create_folder(name: str, req: FolderCreate, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    return core_rag.create_folder(name, req.name)
+    return core_rag.create_folder(name, req.name, owner_id=user["id"])
 
 
 @router.delete("/projects/{name}/folders/{folder}")
 def delete_folder(name: str, folder: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    return core_rag.delete_folder(name, folder)
+    return core_rag.delete_folder(name, folder, owner_id=user["id"])
 
 
 @router.post("/projects/{name}/docs/{doc}/move")
 def move_doc(name: str, doc: str, req: DocMoveRequest, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    return core_rag.move_doc_to_folder(name, doc, req.target_folder)
+    return core_rag.move_doc_to_folder(name, doc, req.target_folder, owner_id=user["id"])
 
 
 @router.delete("/projects/{name}/docs/{doc}")
 def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    return core_rag.trash_document(name, doc)
+    return core_rag.trash_document(name, doc, owner_id=user["id"])
 
 
 @router.post("/projects/{name}/sync-texts")
@@ -545,7 +545,7 @@ def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_curr
         return {"success": True, "indexed": [], "message": "동기화할 문서 없음"}
 
     texts = {d["filename"]: d["parsedText"] for d in docs if d.get("parsedText")}
-    result = core_rag.index_texts("", texts, name)
+    result = core_rag.index_texts("", texts, name, owner_id=user["id"])
 
     # Store in SQLite documents table
     with get_db() as conn:
@@ -585,7 +585,7 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
             texts[f.filename] = parsed
         else:
             parse_errors.append(f.filename)
-    result = core_rag.index_texts(api_key, texts, name)
+    result = core_rag.index_texts(api_key, texts, name, owner_id=user["id"])
     if parse_errors:
         result["parse_errors"] = parse_errors
     result["parsed_texts"] = texts
@@ -996,10 +996,10 @@ def doc_sync_status(name: str, user: dict = Depends(get_current_user)):
     import core_rag
     try:
         # RAG storage에 저장된 문서 목록 (indexed .md files)
-        indexed_names = set(core_rag.get_indexed_doc_names(name))
+        indexed_names = set(core_rag.get_indexed_doc_names(name, owner_id=user["id"]))
 
         # 실제 docs 디렉토리의 .md 파일
-        storage = core_rag._get_storage_name(name)
+        storage = core_rag._get_storage_name(name, owner_id=user["id"])
         docs_dir = core_rag._get_project_docs_dir(storage)
         disk_files = {}
         if os.path.isdir(docs_dir):
@@ -1051,8 +1051,8 @@ def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get
     """선택한 파일들의 동기화 상태를 변경."""
     import core_rag
     try:
-        storage = core_rag._get_storage_name(name)
-        indexed = set(core_rag.get_indexed_doc_names(name))
+        storage = core_rag._get_storage_name(name, owner_id=user["id"])
+        indexed = set(core_rag.get_indexed_doc_names(name, owner_id=user["id"]))
         folders = core_rag._load_folders(storage)
 
         # disk_only → 인덱스에 추가
