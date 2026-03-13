@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import FolderTree from '../components/FolderTree';
 import FilePicker from '../components/FilePicker';
 import { listLocalProjects, getProjectDocuments } from '../utils/projectDB';
+import { ensureServerSync, resetSyncCache } from '../utils/autoSync';
 
 function IdbMigrationBanner({ onDone }: { onDone: () => void }) {
   const [idbProjects, setIdbProjects] = useState<any[]>([]);
@@ -87,6 +88,7 @@ export default function ProjectPage() {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
   const [docCount, setDocCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
   const loadProjects = async () => {
     try {
@@ -163,6 +165,51 @@ export default function ProjectPage() {
     } catch { setStatus('업로드 실패'); } finally { setUploading(false); }
   };
 
+  const handleForceSync = async () => {
+    if (!currentProject) return;
+    setSyncing(true);
+    setStatus('IndexedDB에서 서버로 동기화 중...');
+    try {
+      resetSyncCache(currentProject);
+      await ensureServerSync(currentProject, true);
+      await loadDocs();
+      await loadProjects();
+      const localDocs = await getProjectDocuments(currentProject);
+      const realDocs = localDocs.filter(d => d.filename !== '__folder_placeholder__' && d.parsedText);
+      setStatus(`동기화 완료! (IndexedDB: ${realDocs.length}개 → 서버)`);
+    } catch {
+      setStatus('동기화 실패');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncAll = async () => {
+    setSyncing(true);
+    setStatus('모든 프로젝트 동기화 중...');
+    try {
+      const localProjects = await listLocalProjects();
+      let total = 0;
+      for (const proj of localProjects) {
+        resetSyncCache(proj.name);
+        const localDocs = await getProjectDocuments(proj.name);
+        const realDocs = localDocs.filter(d => d.filename !== '__folder_placeholder__' && d.parsedText);
+        if (realDocs.length === 0) continue;
+        // Ensure project exists on server
+        try { await api.createProject(proj.name); } catch {}
+        await ensureServerSync(proj.name, true);
+        total += realDocs.length;
+      }
+      await loadProjects();
+      if (currentProject) await loadDocs();
+      setStatus(`전체 동기화 완료! (${localProjects.length}개 프로젝트, ${total}개 문서)`);
+    } catch {
+      setStatus('전체 동기화 실패');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleDocDelete = async (doc: string) => {
     if (!currentProject) return;
     try {
@@ -231,6 +278,10 @@ export default function ProjectPage() {
                 className="w-full text-left px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 rounded-lg">프로젝트 삭제</button>
             </div>
           )}
+          <button onClick={handleSyncAll} disabled={syncing}
+            className="w-full mt-2 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 disabled:opacity-50">
+            {syncing ? '동기화 중...' : '🔄 전체 IndexedDB → 서버 동기화'}
+          </button>
         </div>
         <div className="flex-1">
           {currentProject ? (
@@ -258,6 +309,10 @@ export default function ProjectPage() {
               </div>
               <div className="flex items-center gap-3 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg text-xs text-[#787774]">
                 <span>서버 저장: {docCount}개 문서</span>
+                <button onClick={handleForceSync} disabled={syncing}
+                  className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-blue-300">
+                  {syncing ? '동기화 중...' : 'IndexedDB → 서버 동기화'}
+                </button>
               </div>
               <FilePicker onFilesSelected={handleUpload} loading={uploading} />
             </>

@@ -10,20 +10,32 @@ const syncedProjects = new Set<string>();
 
 const BATCH_SIZE = 5; // docs per request to avoid large payloads
 
-export async function ensureServerSync(project: string): Promise<void> {
-  if (!project || syncedProjects.has(project)) return;
+/** Force re-sync: clear cache so next ensureServerSync actually runs */
+export function resetSyncCache(project?: string) {
+  if (project) {
+    syncedProjects.delete(project);
+  } else {
+    syncedProjects.clear();
+  }
+}
+
+export async function ensureServerSync(project: string, force = false): Promise<void> {
+  if (!project) return;
+  if (!force && syncedProjects.has(project)) return;
 
   try {
-    // Check if server already has documents
-    const serverDocs = await api.getProjectDocs(project).catch(() => null) as any;
-    const serverHasDocs = serverDocs && serverDocs.count > 0;
+    // Check if server already has documents (skip check when forced)
+    if (!force) {
+      const serverDocs = await api.getProjectDocs(project).catch(() => null) as any;
+      const serverHasDocs = serverDocs && serverDocs.count > 0;
 
-    if (serverHasDocs) {
-      syncedProjects.add(project);
-      return;
+      if (serverHasDocs) {
+        syncedProjects.add(project);
+        return;
+      }
     }
 
-    // Server empty — sync from IndexedDB in batches
+    // Server empty (or forced) — sync from IndexedDB in batches
     const localDocs = await getProjectDocuments(project);
     const realDocs = localDocs.filter(d => d.filename !== '__folder_placeholder__' && d.parsedText);
 
@@ -36,6 +48,7 @@ export async function ensureServerSync(project: string): Promise<void> {
       const batch = realDocs.slice(i, i + BATCH_SIZE).map(d => ({
         filename: d.filename,
         parsedText: d.parsedText,
+        folder: d.folder,
       }));
       await api.syncTextsToServer(project, batch);
     }
