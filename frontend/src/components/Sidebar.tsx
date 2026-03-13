@@ -9,6 +9,7 @@ const NAV_SECTIONS = [
     items: [
       { label: '홈', id: 'home', icon: '🏠' },
       { label: '프로젝트', id: 'project', icon: '📂' },
+      { label: '생성 이력', id: 'history', icon: '📋' },
     ],
   },
   {
