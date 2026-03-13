@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import { subscribeTask, unsubscribeTask } from '../api/ws';
@@ -9,6 +9,31 @@ import type { ChatMessage } from '../components/ChatWidget';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
 import GenerationProgress from '../components/GenerationProgress';
+
+/* ─── Diff highlight util ─── */
+function computeHighlightedMarkdown(oldText: string, newText: string): string {
+  if (!oldText || !newText || oldText === newText) return newText;
+  // Split into paragraphs (double newline separated blocks)
+  const split = (t: string) => t.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+  const oldBlocks = split(oldText);
+  const newBlocks = split(newText);
+  // Build a set of old blocks for quick lookup (normalized)
+  const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const oldSet = new Set(oldBlocks.map(normalize));
+
+  return newBlocks.map(block => {
+    const norm = normalize(block);
+    if (oldSet.has(norm)) return block;
+    // Check if it's a heading — don't highlight headings themselves if their content section changed
+    if (/^#{1,6}\s/.test(block)) {
+      // Check if heading text existed before
+      const headingText = normalize(block.replace(/^#{1,6}\s+/, ''));
+      if (oldBlocks.some(ob => normalize(ob.replace(/^#{1,6}\s+/, '')) === headingText)) return block;
+    }
+    // Wrap changed block in a <div> with highlight style
+    return `<div class="diff-highlight">\n\n${block}\n\n</div>`;
+  }).join('\n\n');
+}
 // Server-first: no IDB imports needed
 
 /* ─── Types ─── */
@@ -330,6 +355,8 @@ export default function WorkflowPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [prevResult, setPrevResult] = useState('');
+  const [showHighlight, setShowHighlight] = useState(true);
 
   const [phase2View, setPhase2View] = useState<Phase2View>('choice');
   const [writeMode, setWriteMode] = useState<WriteMode>('report');
@@ -477,6 +504,8 @@ export default function WorkflowPage() {
     setChatMessages((prev) => [...prev, { role: 'user', content: feedback }]);
     setChatLoading(true);
     cancelChatRef.current = false;
+    setPrevResult(result);
+    setShowHighlight(true);
     try {
       const { task_id } = await api.startAnalysis({
         task_type: 'refine',
@@ -501,6 +530,11 @@ export default function WorkflowPage() {
     a.href = url; a.download = generateFilename(activePage || '자료분석', 'md', currentProject); a.click();
     URL.revokeObjectURL(url);
   };
+
+  const highlightedResult = useMemo(() => {
+    if (!showHighlight || !prevResult || prevResult === result) return result;
+    return computeHighlightedMarkdown(prevResult, result);
+  }, [result, prevResult, showHighlight]);
 
   if (!currentProject) {
     return (
@@ -842,7 +876,21 @@ export default function WorkflowPage() {
         <div className="flex gap-4 animate-fade-in-up" style={{ height: 'calc(100vh - 280px)' }}>
           <div className="flex-1 glass-card-elevated flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-4 pb-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">현재 보고서</div>
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">현재 보고서</div>
+                {prevResult && prevResult !== result && (
+                  <button
+                    onClick={() => setShowHighlight(!showHighlight)}
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
+                      showHighlight
+                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200'
+                    }`}
+                  >
+                    {showHighlight ? '변경 표시 ON' : '변경 표시 OFF'}
+                  </button>
+                )}
+              </div>
               <div className="flex gap-1.5">
                 <button onClick={() => copyRichText(result)} className="px-2.5 py-1 text-[11px] font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors">서식복사</button>
                 <button onClick={() => downloadAsWord(result, generateFilename(activePage || '보고서', 'docx', currentProject))} className="px-2.5 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors">Word</button>
@@ -850,7 +898,7 @@ export default function WorkflowPage() {
               </div>
             </div>
             <div className="flex-1 px-5 pb-5 overflow-y-auto">
-              <MarkdownViewer content={result} />
+              <MarkdownViewer content={highlightedResult} />
             </div>
           </div>
           <div className="w-96 glass-card-elevated p-4 flex flex-col">

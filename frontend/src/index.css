@@ -266,6 +266,30 @@ body {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* ─── Diff highlight for refined sections ─── */
+.diff-highlight {
+  position: relative;
+  border-left: 3px solid #f59e0b;
+  padding-left: 12px;
+  margin-left: -15px;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.08) 0%, transparent 100%);
+  border-radius: 0 8px 8px 0;
+}
+.diff-highlight::before {
+  content: '수정됨';
+  position: absolute;
+  top: 0;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #d97706;
+  background: rgba(251, 191, 36, 0.15);
+  padding: 1px 6px;
+  border-radius: 0 0 4px 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
 /* ─── Noise texture overlay ─── */
 .noise-overlay::before {
   content: '';
