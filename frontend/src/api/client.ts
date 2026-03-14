@@ -127,6 +127,35 @@ export const api = {
     request<{ task_id: string }>('/analyze', { method: 'POST', body: JSON.stringify(data) }),
   getTaskStatus: (taskId: string) => request<any>(`/tasks/${taskId}`),
 
+  // PPT
+  createPptx: async (slideJson: any) => {
+    const res = await fetchWithAuth(`${BASE}/create-pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slide_json: slideJson }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'PPTX 생성 실패' }));
+      throw new Error(err.detail || `API error: ${res.status}`);
+    }
+    return res.blob();
+  },
+  slideRegenerate: (data: { current_slide: any; prev_slide?: any; next_slide?: any; instruction: string }) =>
+    request<{ task_id: string }>('/slide-regenerate', { method: 'POST', body: JSON.stringify(data) }),
+  updatePptxHistory: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetchWithAuth(`${BASE}/update-pptx-history`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '업데이트 실패' }));
+      throw new Error(err.detail || `API error: ${res.status}`);
+    }
+    return res.blob();
+  },
+
   // QuickMail
   quickmailGenerate: (data: { prompt: string; context?: string; tone?: string; language?: string }) =>
     request<{ task_id: string }>('/quickmail/generate', { method: 'POST', body: JSON.stringify(data) }),

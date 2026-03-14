@@ -44,3 +44,14 @@ class AnalysisRequest(BaseModel):
     project_name: str = ""
     file_context: str = ""
     kwargs: Dict[str, Any] = {}
+
+
+class CreatePptxRequest(BaseModel):
+    slide_json: Any  # JSON string or dict
+
+
+class SlideRegenerateRequest(BaseModel):
+    current_slide: Any
+    prev_slide: Any = None
+    next_slide: Any = None
+    instruction: str
