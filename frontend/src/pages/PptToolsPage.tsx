@@ -1,6 +1,7 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { api } from '../api/client';
 import SlidePreview from '../components/SlidePreview';
+import FolderTree from '../components/FolderTree';
 import { generateFilename } from '../utils/clipboard';
 import { useAppStore } from '../stores/appStore';
 
@@ -20,6 +21,11 @@ export default function PptToolsPage() {
   const { currentProject } = useAppStore();
   const [tab, setTab] = useState<'generate' | 'update'>('generate');
 
+  // Project docs
+  const [tree, setTree] = useState<Record<string, string[]>>({});
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [docsOpen, setDocsOpen] = useState(true);
+
   // Generate tab state
   const [context, setContext] = useState('');
   const [slides, setSlides] = useState<SlideData[]>([]);
@@ -36,12 +42,25 @@ export default function PptToolsPage() {
   const [pptxFile, setPptxFile] = useState<File | null>(null);
   const [updateStatus, setUpdateStatus] = useState('');
   const [updating, setUpdating] = useState(false);
-  const updateAbortRef = useRef<AbortController | null>(null);
+
+  // Load project docs when project changes
+  useEffect(() => {
+    if (!currentProject) { setTree({}); return; }
+    api.getProjectDocs(currentProject)
+      .then((data) => setTree(data.folder_tree || {}))
+      .catch(() => setTree({}));
+  }, [currentProject]);
+
+  const totalDocs = Object.values(tree).flat().length;
 
   // --- Generate ---
   const handleGenerate = useCallback(async () => {
     if (!currentProject) {
-      setError('프로젝트를 먼저 선택하세요.');
+      setError('사이드바에서 프로젝트를 먼저 선택하세요.');
+      return;
+    }
+    if (totalDocs === 0) {
+      setError('프로젝트에 문서가 없습니다. 프로젝트 페이지에서 문서를 업로드하세요.');
       return;
     }
     setGenerating(true);
@@ -53,8 +72,11 @@ export default function PptToolsPage() {
     try {
       const { task_id } = await api.startAnalysis({
         task_type: 'slide_json',
-        project_name: currentProject,
-        kwargs: { file_context: context, context_text: context },
+        kwargs: {
+          project_name: currentProject,
+          selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
+          context_text: context,
+        },
       });
 
       const poll = async () => {
@@ -82,7 +104,7 @@ export default function PptToolsPage() {
       setError(err.message);
       setGenerating(false);
     }
-  }, [currentProject, context]);
+  }, [currentProject, context, selectedDocs, totalDocs]);
 
   // --- Download PPTX ---
   const handleDownload = useCallback(async () => {
@@ -171,7 +193,7 @@ export default function PptToolsPage() {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-xl font-bold text-[#37352F] mb-1">발표자료 (PPT)</h1>
-      <p className="text-sm text-[#787774] mb-6">문서 기반 PPT 생성 및 투자이력 업데이트</p>
+      <p className="text-sm text-[#787774] mb-6">프로젝트 문서 기반 PPT 생성 및 투자이력 업데이트</p>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-4">
@@ -189,13 +211,56 @@ export default function PptToolsPage() {
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 text-red-700 text-sm rounded-lg">
           {error}
-          <button onClick={() => setError('')} className="ml-2 text-red-500 hover:text-red-800">X</button>
+          <button onClick={() => setError('')} className="ml-2 text-red-500 hover:text-red-800 font-bold">X</button>
         </div>
       )}
 
       {tab === 'generate' && (
         <div>
-          {/* Input area */}
+          {/* Project docs selector */}
+          <div className="bg-white border border-[#E9E9E7] rounded-xl p-4 mb-4">
+            <button onClick={() => setDocsOpen(!docsOpen)}
+              className="flex items-center gap-2 text-sm font-medium text-[#37352F] w-full text-left">
+              <span className={`transition-transform ${docsOpen ? 'rotate-90' : ''}`}>▶</span>
+              참조 문서
+              {currentProject && (
+                <span className="text-xs text-[#787774] font-normal">
+                  — {currentProject}
+                  {totalDocs > 0 && ` (${selectedDocs.length > 0 ? `${selectedDocs.length}/${totalDocs}` : `전체 ${totalDocs}개`})`}
+                </span>
+              )}
+            </button>
+            {docsOpen && (
+              <div className="mt-3">
+                {!currentProject ? (
+                  <div className="text-sm text-[#787774] py-4 text-center">
+                    사이드바에서 프로젝트를 먼저 선택하세요
+                  </div>
+                ) : totalDocs === 0 ? (
+                  <div className="text-sm text-[#787774] py-4 text-center">
+                    프로젝트에 문서가 없습니다
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-xs text-[#787774] mb-2">
+                      특정 문서만 사용하려면 체크하세요. 미선택 시 전체 문서가 사용됩니다.
+                    </div>
+                    <div className="max-h-48 overflow-y-auto border border-[#E9E9E7] rounded-lg p-2">
+                      <FolderTree
+                        tree={tree}
+                        projectName={currentProject}
+                        selectable
+                        selectedDocs={selectedDocs}
+                        onSelectionChange={setSelectedDocs}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Context/instructions */}
           <div className="bg-white border border-[#E9E9E7] rounded-xl p-4 mb-4">
             <label className="block text-sm font-medium text-[#37352F] mb-2">발표 범위/지시사항</label>
             <textarea value={context} onChange={(e) => setContext(e.target.value)}
@@ -216,9 +281,9 @@ export default function PptToolsPage() {
               </button>
             </div>
           ) : (
-            <button onClick={handleGenerate} disabled={!currentProject}
+            <button onClick={handleGenerate} disabled={!currentProject || totalDocs === 0}
               className="w-full py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors mb-4">
-              PPT 생성 ({currentProject || '프로젝트 미선택'})
+              PPT 생성 {currentProject ? `(${currentProject})` : '(프로젝트 미선택)'}
             </button>
           )}
 
@@ -322,7 +387,7 @@ export default function PptToolsPage() {
               <div className="flex-1 py-2.5 bg-[#b0b0b0] text-white text-sm font-semibold rounded-xl text-center">
                 업데이트 중...
               </div>
-              <button onClick={() => { updateAbortRef.current?.abort(); setUpdating(false); }}
+              <button onClick={() => setUpdating(false)}
                 className="px-6 py-2.5 bg-[#EB5757] text-white text-sm font-semibold rounded-xl hover:bg-[#d94848] transition-colors">
                 중지
               </button>
