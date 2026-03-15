@@ -471,7 +471,7 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
     return resp.text
 
 
-def generate_slide_json(api_key, model_name, file_context, context_text=""):
+def generate_slide_json(api_key, model_name, file_context="", context_text=""):
     """
     Generates structured JSON for PPT slides directly from source material.
     """
@@ -495,9 +495,44 @@ def generate_slide_json(api_key, model_name, file_context, context_text=""):
     )
     
     resp = client.models.generate_content(
-        model=model_name, 
-        contents=user_prompt, 
+        model=model_name,
+        contents=user_prompt,
         config=config
     )
     return resp.text
 
+
+def regenerate_single_slide(api_key, model_name, current_slide="", prev_slide="null",
+                            next_slide="null", instruction=""):
+    """Regenerate a single slide based on user instruction.
+
+    Args:
+        current_slide: JSON string of the slide to edit
+        prev_slide: JSON string of previous slide (or "null")
+        next_slide: JSON string of next slide (or "null")
+        instruction: user's edit instruction
+
+    Returns:
+        JSON string of the new slide
+    """
+    client = get_client(api_key)
+    template = prompts.LOGIC_PROMPTS.get('ppt_slide_regenerate', '')
+
+    system_prompt = template.replace("{current_slide}", current_slide) \
+                           .replace("{prev_slide}", prev_slide) \
+                           .replace("{next_slide}", next_slide) \
+                           .replace("{instruction}", instruction)
+
+    config = types.GenerateContentConfig(
+        max_output_tokens=4096,
+        temperature=0.3,
+        system_instruction=system_prompt,
+        response_mime_type="application/json"
+    )
+
+    resp = client.models.generate_content(
+        model=model_name,
+        contents=instruction,
+        config=config
+    )
+    return resp.text

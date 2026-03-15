@@ -104,6 +104,7 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
                 "checklist_eval": core_logic.evaluate_checklist_item,
                 "dd_issues": core_logic.analyze_dd_issues,
                 "slide_json": core_logic.generate_slide_json,
+                "slide_regenerate": core_logic.regenerate_single_slide,
                 "refine": core_logic.refine_report_with_context,
             }
             fn = fn_map.get(task_type)

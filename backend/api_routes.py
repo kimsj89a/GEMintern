@@ -7,11 +7,13 @@ import tempfile
 from typing import List, Dict
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi.responses import Response
 
 from pydantic import BaseModel
 from backend.api_models import (
     ProjectCreate, ProjectRename, FolderCreate, DocMoveRequest,
     GenerateRequest, QaRequest, AnalysisRequest,
+    CreatePptxRequest, SlideRegenerateRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -920,6 +922,72 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
     log_usage(user["id"], f"/analyze/{req.task_type}", model)
     return {"task_id": task_id}
+
+
+# ========================================
+# PPT Generation
+# ========================================
+
+@router.post("/create-pptx")
+def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
+    """JSON slide data → PPTX 파일 생성 및 다운로드."""
+    import utils_ppt
+
+    slide_json = req.slide_json
+    pptx_bytes = utils_ppt.create_deck_from_json(slide_json)
+    if not pptx_bytes:
+        raise HTTPException(status_code=400, detail="PPTX 생성 실패: 유효하지 않은 슬라이드 데이터")
+
+    return Response(
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": "attachment; filename=presentation.pptx"},
+    )
+
+
+@router.post("/slide-regenerate")
+def slide_regenerate(req: SlideRegenerateRequest, user: dict = Depends(get_current_user)):
+    """단일 슬라이드 재생성 (비동기 task)."""
+    api_key = _get_api_key()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+
+    current_str = json.dumps(req.current_slide, ensure_ascii=False) if not isinstance(req.current_slide, str) else req.current_slide
+    prev_str = json.dumps(req.prev_slide, ensure_ascii=False) if req.prev_slide and not isinstance(req.prev_slide, str) else (req.prev_slide or "null")
+    next_str = json.dumps(req.next_slide, ensure_ascii=False) if req.next_slide and not isinstance(req.next_slide, str) else (req.next_slide or "null")
+
+    task_id = create_task(
+        user_id=user["id"], endpoint="/slide-regenerate", model=model,
+        title="슬라이드 재생성",
+    )
+    run_analysis_task(task_id, "slide_regenerate", api_key, model,
+                      current_slide=current_str, prev_slide=prev_str,
+                      next_slide=next_str, instruction=req.instruction)
+    log_usage(user["id"], "/slide-regenerate", model)
+    return {"task_id": task_id}
+
+
+@router.post("/update-pptx-history")
+async def update_pptx_history(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """기존 PPTX 파일의 투자이력(날짜/수치) 업데이트."""
+    import core_im
+
+    content = await file.read()
+    api_key = _get_api_key()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+
+    try:
+        updated_bytes = core_im.update_pptx_history(content, api_key, model)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"업데이트 실패: {str(e)}")
+
+    if not updated_bytes:
+        raise HTTPException(status_code=400, detail="업데이트할 내용이 없습니다.")
+
+    return Response(
+        content=updated_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f"attachment; filename=updated_{file.filename}"},
+    )
 
 
 @router.get("/tasks/{task_id}")

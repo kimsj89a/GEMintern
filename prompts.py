@@ -1983,60 +1983,6 @@ RFI_PROMPTS = {
 - 표 형식을 사용하여 깔끔하게 정리하십시오.
 - | No. | 구분 | 요청 자료 | 세부 내용 | 우선순위(상/중/하) | 비고 |
 """
-,
-
-    # ========================================
-    # 12. PPT JSON 구조 생성 (New Deck Gen)
-    # ========================================
-    'ppt_structure_json': """
-[System: Thinking Level HIGH]
-You are a **Presentation Architect** for a PE/VC firm.
-Analyze the provided document and structure a presentation deck in **JSON format**.
-
-[Goal]
-Create a professional, structured presentation deck that summarizes the document effectively.
-The output MUST be a valid JSON object containing a list of slides.
-
-[JSON Schema]
-```json
-{
-  "slides": [
-    {
-      "type": "title",
-      "title": "Presentation Title",
-      "subtitle": "Subtitle or Date"
-    },
-    {
-      "type": "section",
-      "title": "Section Title (e.g., Market Analysis)"
-    },
-    {
-      "type": "content",
-      "title": "Slide Headline",
-      "layout": "2_column", 
-      "left": {
-        "title": "Key Takeaways",
-        "items": ["Bullet 1", "Bullet 2"]
-      },
-      "right": {
-        "title": "Details / Data",
-        "items": ["Detail 1", "Detail 2"]
-      },
-      "summary": "One-line summary of this slide"
-    }
-  ]
-}
-```
-
-[Rules]
-1. **Strict JSON**: Output ONLY valid JSON. No markdown code blocks (unless inside strings), no intro text.
-2. **2-Column Layout**: Most slides should be `content` type with `left` and `right` columns.
-   - Left: High-level summary, key stats, main arguments.
-   - Right: Supporting data, charts description, details.
-3. **Content Depth**: Each column must have 4-6 bullet points.
-4. **Logic**: Group related information into sections using `section` slides.
-5. **Language**: Use the same language as the source document (Korean/English).
-"""
 }
 
 
@@ -2108,3 +2054,137 @@ DOC_UPDATER_PROMPTS = {
 - 변경이 필요한 문단만 updated_paragraphs에 포함하세요
 - 각 변경에 reason을 포함하여 변경 근거를 명시하세요""",
 }
+
+
+# ========================================
+# PPT NP Template Prompts (added to LOGIC_PROMPTS)
+# ========================================
+
+LOGIC_PROMPTS['ppt_structure_json'] = """
+[System: Thinking Level HIGH]
+You are a **Presentation Architect** for a PE/VC firm.
+Analyze the provided document and create a presentation deck in **JSON format** using NP template types.
+
+[Goal]
+Create a professional, visually diverse slide deck with Navy (#1A2744) / Gold (#C5973B) theme.
+Use varied slide_type templates to make the presentation engaging — tables, charts, KPI cards, timelines, etc.
+
+[Slide Types & Data Schemas]
+
+1. title (표지):
+   {"slide_type":"title", "title":"프레젠테이션 제목", "subtitle":"부제"}
+
+2. divider (섹션 구분):
+   {"slide_type":"divider", "title":"섹션명", "subtitle":"영문 부제(선택)", "section_number":"1", "items":["목차1","목차2"]}
+
+3. data_table (데이터 테이블):
+   {"slide_type":"data_table", "title":"슬라이드 제목", "subtitle":"부제(선택)",
+    "table":{"headers":["구분","2022","2023","2024"], "rows":[["매출",100,150,200],["영업이익",10,20,30]], "has_total_row":false},
+    "metrics":[{"label":"매출","value":"200억","sub":"+33%","color":"blue"}],
+    "source":"출처: 사업보고서"}
+
+4. chart_table (차트+테이블):
+   {"slide_type":"chart_table", "title":"매출 추이",
+    "chart":{"chart_type":"bar|line|pie|donut", "categories":["2022","2023","2024"], "series":[{"name":"매출","values":[100,150,200]}], "show_legend":true},
+    "table":{"headers":["구분","값"], "rows":[["CAGR","41%"]]},
+    "banner":{"label":"핵심:","text":"3년 연속 고성장"},
+    "source":"출처: 감사보고서"}
+
+5. two_column (2단 구성):
+   {"slide_type":"two_column", "title":"슬라이드 제목",
+    "left":{"title":"왼쪽 제목", "items":["항목1","항목2","항목3"]},
+    "right":{"title":"오른쪽 제목", "items":["항목A","항목B"]}}
+   * left/right 안에 table 가능: {"title":"...", "table":{"headers":[...], "rows":[...]}}
+
+6. kpi_dashboard (KPI 대시보드):
+   {"slide_type":"kpi_dashboard", "title":"핵심 성과 지표",
+    "table":{"headers":["KPI","목표","실적","달성률"], "rows":[["매출","500억","480억","96%"]]},
+    "metrics":[{"label":"매출액","value":"480억","sub":"+25%","color":"blue"}, {"label":"영업이익률","value":"12%","sub":"+2%p","color":"green"}],
+    "banner":{"label":"요약:","text":"전체 KPI 95% 이상 달성"}}
+
+7. risk_matrix (리스크 분석):
+   {"slide_type":"risk_matrix", "title":"주요 리스크 분석",
+    "risks":[
+      {"category":"시장 리스크","severity":"high","description":"경기 침체로 인한 수요 감소 우려"},
+      {"category":"규제 리스크","severity":"medium","description":"신규 규제 도입 가능성"},
+      {"category":"운영 리스크","severity":"low","description":"핵심 인력 이탈 가능성"}
+    ]}
+   * severity: "high"|"medium"|"low"
+
+8. timeline_flow (타임라인/프로세스):
+   {"slide_type":"timeline_flow", "title":"추진 일정",
+    "nodes":[
+      {"label":"1","title":"소싱","description":"딜 발굴"},
+      {"label":"2","title":"DD","description":"실사 수행"},
+      {"label":"3","title":"투심위","description":"의사결정"},
+      {"label":"4","title":"집행","description":"계약 체결"}
+    ]}
+
+9. comparison (비교 분석):
+   {"slide_type":"comparison", "title":"투자 시나리오 비교",
+    "left":{"title":"시나리오 A","items":["높은 수익률","높은 리스크","단기 회수"]},
+    "right":{"title":"시나리오 B","items":["안정적 수익","낮은 리스크","장기 투자"]},
+    "verdict":"시나리오 B가 리스크 대비 수익률에서 우위"}
+
+[Chart Rules]
+- 연도별 추이 → "line"
+- 항목별 비교 → "bar"
+- 비율/구성 → "pie" or "donut"
+- series[].values MUST be number[] (never strings like "100억")
+- Extract pure numbers (e.g., "500억원" → 500)
+
+[Slide Type Selection Guide]
+- 표지 → title
+- 섹션 전환 → divider (section_number 포함)
+- 재무 데이터 표 → data_table
+- 차트 + 보조 테이블 → chart_table
+- 두 주제 병렬 비교/설명 → two_column
+- KPI 수치 강조 → kpi_dashboard (metrics 배열 활용)
+- 리스크/이슈 나열 → risk_matrix (severity별 색상 자동)
+- 일정/프로세스/단계 → timeline_flow
+- A vs B 비교 → comparison (verdict 포함)
+
+[Metrics (KPI Cards) Rules]
+- color: "blue"|"green"|"red"|"purple"|"orange"|"gold"
+- value에 단위 포함 (e.g., "500억", "25%")
+- sub에 증감률 (e.g., "+25%", "-3%p")
+
+[Rules]
+1. Output ONLY valid JSON: {"slides":[...]}. No markdown blocks, no intro text.
+2. Vary slide_type across slides — do NOT make all slides the same type.
+3. Use chart_table when numeric trend data (3+ data points) is available.
+4. Use kpi_dashboard when 2-4 key metrics should be highlighted.
+5. Group related content with divider slides.
+6. Language: match the source document (Korean/English).
+7. First slide should be slide_type "title".
+8. Aim for 10-20 slides depending on content volume.
+9. table.rows values can be strings or numbers — renderer handles both.
+"""
+
+LOGIC_PROMPTS['ppt_slide_regenerate'] = """
+[System: Thinking Level MEDIUM]
+You are a Slide Editor. Given the current slide JSON and the user's edit instruction,
+produce a REVISED version of this single slide.
+
+[Current Slide]
+{current_slide}
+
+[Adjacent Slides for Context]
+Previous: {prev_slide}
+Next: {next_slide}
+
+[Available Slide Types]
+title, divider, data_table, chart_table, two_column, kpi_dashboard,
+risk_matrix, timeline_flow, comparison
+
+[User Instruction]
+{instruction}
+
+[Rules]
+1. Return ONLY a single slide JSON object (not an array, not wrapped in "slides").
+2. You MAY change slide_type if the instruction requires it.
+3. Preserve content the user did NOT ask to change.
+4. If the user asks for a chart, use chart_table slide_type with chart data.
+5. If the user asks for KPI cards, use kpi_dashboard with metrics array.
+6. Language: match the existing slide language.
+"""
