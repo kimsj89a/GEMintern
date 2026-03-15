@@ -471,7 +471,7 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
     return resp.text
 
 
-def generate_slide_json(api_key, model_name, file_context, context_text=""):
+def generate_slide_json(api_key, model_name, file_context="", context_text=""):
     """
     Generates structured JSON for PPT slides directly from source material.
     """
@@ -502,8 +502,8 @@ def generate_slide_json(api_key, model_name, file_context, context_text=""):
     return resp.text
 
 
-def regenerate_single_slide(api_key, model_name, current_slide, prev_slide,
-                            next_slide, instruction):
+def regenerate_single_slide(api_key, model_name, current_slide="", prev_slide="null",
+                            next_slide="null", instruction=""):
     """Regenerate a single slide based on user instruction.
 
     Args:

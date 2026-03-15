@@ -2057,112 +2057,108 @@ DOC_UPDATER_PROMPTS = {
 
 
 # ========================================
-# PPT Atomic Elements Prompts (added to LOGIC_PROMPTS)
+# PPT NP Template Prompts (added to LOGIC_PROMPTS)
 # ========================================
 
 LOGIC_PROMPTS['ppt_structure_json'] = """
 [System: Thinking Level HIGH]
 You are a **Presentation Architect** for a PE/VC firm.
-Analyze the provided document and create a presentation deck in **JSON format** using atomic elements.
+Analyze the provided document and create a presentation deck in **JSON format** using NP template types.
 
 [Goal]
-Create a professional, visually diverse slide deck.
-Use varied layouts and element types to make the presentation engaging — not just walls of text.
+Create a professional, visually diverse slide deck with Navy (#1A2744) / Gold (#C5973B) theme.
+Use varied slide_type templates to make the presentation engaging — tables, charts, KPI cards, timelines, etc.
 
-[Slide Structure]
-Each slide has: slide_type, title (optional), layout_hint (optional), elements[]
+[Slide Types & Data Schemas]
 
-- slide_type: "title" | "section" | "content"
-- layout_hint: guides how the renderer arranges elements (see Layout Hints below)
-- elements[]: array of atomic visual elements
+1. title (표지):
+   {"slide_type":"title", "title":"프레젠테이션 제목", "subtitle":"부제"}
 
-[Element Kinds]
+2. divider (섹션 구분):
+   {"slide_type":"divider", "title":"섹션명", "subtitle":"영문 부제(선택)", "section_number":"1", "items":["목차1","목차2"]}
 
-1. text_box:
-   { "kind": "text_box", "text": "...", "role": "title|subtitle|body|label|kpi_number" }
-   Optional: bold, font_size, color, alignment ("left"|"center"|"right")
+3. data_table (데이터 테이블):
+   {"slide_type":"data_table", "title":"슬라이드 제목", "subtitle":"부제(선택)",
+    "table":{"headers":["구분","2022","2023","2024"], "rows":[["매출",100,150,200],["영업이익",10,20,30]], "has_total_row":false},
+    "metrics":[{"label":"매출","value":"200억","sub":"+33%","color":"blue"}],
+    "source":"출처: 사업보고서"}
 
-2. shape:
-   { "kind": "shape", "shape_type": "rectangle|rounded_rect|circle|diamond|hexagon|triangle|arrow_right|chevron_right|line", "text": "내부 텍스트", "fill": "#E8F0FE" }
+4. chart_table (차트+테이블):
+   {"slide_type":"chart_table", "title":"매출 추이",
+    "chart":{"chart_type":"bar|line|pie|donut", "categories":["2022","2023","2024"], "series":[{"name":"매출","values":[100,150,200]}], "show_legend":true},
+    "table":{"headers":["구분","값"], "rows":[["CAGR","41%"]]},
+    "banner":{"label":"핵심:","text":"3년 연속 고성장"},
+    "source":"출처: 감사보고서"}
 
-3. chart:
-   { "kind": "chart", "chart_type": "bar|line|pie|donut", "data": { "categories": ["2022","2023","2024"], "series": [{"name": "매출", "values": [100,150,200]}] } }
-   - values MUST be number[] (not strings)
+5. two_column (2단 구성):
+   {"slide_type":"two_column", "title":"슬라이드 제목",
+    "left":{"title":"왼쪽 제목", "items":["항목1","항목2","항목3"]},
+    "right":{"title":"오른쪽 제목", "items":["항목A","항목B"]}}
+   * left/right 안에 table 가능: {"title":"...", "table":{"headers":[...], "rows":[...]}}
 
-4. callout (KPI 카드):
-   { "kind": "callout", "value": "500억", "label": "매출액", "delta": "+25% YoY", "icon": "trending_up", "accent_color": "#0068C9" }
+6. kpi_dashboard (KPI 대시보드):
+   {"slide_type":"kpi_dashboard", "title":"핵심 성과 지표",
+    "table":{"headers":["KPI","목표","실적","달성률"], "rows":[["매출","500억","480억","96%"]]},
+    "metrics":[{"label":"매출액","value":"480억","sub":"+25%","color":"blue"}, {"label":"영업이익률","value":"12%","sub":"+2%p","color":"green"}],
+    "banner":{"label":"요약:","text":"전체 KPI 95% 이상 달성"}}
 
-5. icon:
-   { "kind": "icon", "name": "check|warning|star|chart|people|money|trending_up|building|globe|lightbulb" }
+7. risk_matrix (리스크 분석):
+   {"slide_type":"risk_matrix", "title":"주요 리스크 분석",
+    "risks":[
+      {"category":"시장 리스크","severity":"high","description":"경기 침체로 인한 수요 감소 우려"},
+      {"category":"규제 리스크","severity":"medium","description":"신규 규제 도입 가능성"},
+      {"category":"운영 리스크","severity":"low","description":"핵심 인력 이탈 가능성"}
+    ]}
+   * severity: "high"|"medium"|"low"
 
-[Layout Hints]
-- "auto": renderer decides based on element types
-- "single_column": full-width vertical stack
-- "two_column": left/right 50:50 split
-- "three_column": 3 equal columns
-- "kpi_row": callout cards in a horizontal row at top, remaining elements below
-- "chart_with_text": left 60% chart + right 40% text
-- "text_with_chart": left 40% text + right 60% chart
-- "full_image": full-bleed image placeholder + overlay text
-- "process_flow": horizontal flow with arrows between shape elements
-- "timeline": horizontal timeline with events
-- "quote": centered large quote text
-- "grid": N×M grid auto-arranged
+8. timeline_flow (타임라인/프로세스):
+   {"slide_type":"timeline_flow", "title":"추진 일정",
+    "nodes":[
+      {"label":"1","title":"소싱","description":"딜 발굴"},
+      {"label":"2","title":"DD","description":"실사 수행"},
+      {"label":"3","title":"투심위","description":"의사결정"},
+      {"label":"4","title":"집행","description":"계약 체결"}
+    ]}
 
-[Layout Selection Guide]
-- KPI 수치 3-4개 → "kpi_row" + callout elements
-- 비교/대조 → "two_column" + text_box elements
-- 연도별 데이터 → "chart_with_text" + chart + text_box
-- 프로세스/단계 → "process_flow" + shape elements
-- 연혁/마일스톤 → "timeline" + shape elements
-- 핵심 인용/강조 → "quote" + text_box
-- 단일 주제 설명 → "single_column" + text_box
-- 3개 항목 비교 → "three_column" + text_box
-- 숫자 데이터 3개+ → chart element 사용 고려
+9. comparison (비교 분석):
+   {"slide_type":"comparison", "title":"투자 시나리오 비교",
+    "left":{"title":"시나리오 A","items":["높은 수익률","높은 리스크","단기 회수"]},
+    "right":{"title":"시나리오 B","items":["안정적 수익","낮은 리스크","장기 투자"]},
+    "verdict":"시나리오 B가 리스크 대비 수익률에서 우위"}
 
 [Chart Rules]
 - 연도별 추이 → "line"
 - 항목별 비교 → "bar"
 - 비율/구성 → "pie" or "donut"
-- data.series[].values MUST be number[] (never strings like "100억")
+- series[].values MUST be number[] (never strings like "100억")
 - Extract pure numbers (e.g., "500억원" → 500)
 
-[Composite Pattern Examples]
+[Slide Type Selection Guide]
+- 표지 → title
+- 섹션 전환 → divider (section_number 포함)
+- 재무 데이터 표 → data_table
+- 차트 + 보조 테이블 → chart_table
+- 두 주제 병렬 비교/설명 → two_column
+- KPI 수치 강조 → kpi_dashboard (metrics 배열 활용)
+- 리스크/이슈 나열 → risk_matrix (severity별 색상 자동)
+- 일정/프로세스/단계 → timeline_flow
+- A vs B 비교 → comparison (verdict 포함)
 
-Example 1 - KPI Dashboard:
-{"slide_type":"content","title":"2024년 핵심 성과","layout_hint":"kpi_row","elements":[
-  {"kind":"callout","value":"500억","label":"매출액","delta":"+25%","icon":"trending_up"},
-  {"kind":"callout","value":"10.2%","label":"영업이익률","delta":"+3.2%p","icon":"money"},
-  {"kind":"callout","value":"1위","label":"시장점유율","icon":"star"},
-  {"kind":"text_box","text":"전년 대비 매출 25% 성장","role":"body"}
-]}
-
-Example 2 - Chart Analysis:
-{"slide_type":"content","title":"매출 추이","layout_hint":"chart_with_text","elements":[
-  {"kind":"chart","chart_type":"bar","data":{"categories":["2021","2022","2023","2024"],"series":[{"name":"매출","values":[200,300,400,500]}]}},
-  {"kind":"text_box","text":"성장 요인","role":"label","bold":true},
-  {"kind":"text_box","text":"- 신규 고객사 확보\\n- 객단가 상승\\n- 해외 매출 본격화","role":"body"}
-]}
-
-Example 3 - Process Flow:
-{"slide_type":"content","title":"투자 프로세스","layout_hint":"process_flow","elements":[
-  {"kind":"shape","shape_type":"rounded_rect","text":"1. 소싱","fill":"#DBEAFE"},
-  {"kind":"shape","shape_type":"rounded_rect","text":"2. 스크리닝","fill":"#BFDBFE"},
-  {"kind":"shape","shape_type":"rounded_rect","text":"3. DD","fill":"#93C5FD"},
-  {"kind":"shape","shape_type":"rounded_rect","text":"4. 투심위","fill":"#60A5FA"},
-  {"kind":"shape","shape_type":"rounded_rect","text":"5. 집행","fill":"#3B82F6"}
-]}
+[Metrics (KPI Cards) Rules]
+- color: "blue"|"green"|"red"|"purple"|"orange"|"gold"
+- value에 단위 포함 (e.g., "500억", "25%")
+- sub에 증감률 (e.g., "+25%", "-3%p")
 
 [Rules]
-1. Output ONLY valid JSON. No markdown blocks, no intro text.
-2. Vary layout_hint across slides — aim for: ~40% two_column, ~60% other layouts.
-3. Use chart elements when numeric trend data (3+ data points) is available.
-4. callout.value should include units (e.g., "500억", "25%", "1위").
-5. Group related content with section slides.
+1. Output ONLY valid JSON: {"slides":[...]}. No markdown blocks, no intro text.
+2. Vary slide_type across slides — do NOT make all slides the same type.
+3. Use chart_table when numeric trend data (3+ data points) is available.
+4. Use kpi_dashboard when 2-4 key metrics should be highlighted.
+5. Group related content with divider slides.
 6. Language: match the source document (Korean/English).
-7. Do NOT include x, y, w, h coordinates.
-8. Each content slide should have 3-8 elements.
-9. title and section slides need only slide_type and title (+ optional subtitle for title slide).
+7. First slide should be slide_type "title".
+8. Aim for 10-20 slides depending on content volume.
+9. table.rows values can be strings or numbers — renderer handles both.
 """
 
 LOGIC_PROMPTS['ppt_slide_regenerate'] = """
@@ -2177,22 +2173,18 @@ produce a REVISED version of this single slide.
 Previous: {prev_slide}
 Next: {next_slide}
 
-[Available Element Kinds]
-text_box, shape, chart, callout, icon
-(Same schema as the deck generation prompt)
-
-[Available Layout Hints]
-auto, single_column, two_column, three_column, kpi_row, chart_with_text,
-text_with_chart, full_image, process_flow, timeline, quote, grid
+[Available Slide Types]
+title, divider, data_table, chart_table, two_column, kpi_dashboard,
+risk_matrix, timeline_flow, comparison
 
 [User Instruction]
 {instruction}
 
 [Rules]
 1. Return ONLY a single slide JSON object (not an array, not wrapped in "slides").
-2. You MAY change layout_hint and element kinds if the instruction requires it.
+2. You MAY change slide_type if the instruction requires it.
 3. Preserve content the user did NOT ask to change.
-4. If the user asks for a chart, extract numeric data and use chart kind.
-5. Do NOT include x, y, w, h coordinates.
+4. If the user asks for a chart, use chart_table slide_type with chart data.
+5. If the user asks for KPI cards, use kpi_dashboard with metrics array.
 6. Language: match the existing slide language.
 """
