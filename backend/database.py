@@ -203,12 +203,15 @@ def migrate_rag_projects_to_db():
                 (p["name"], owner_id)
             ).fetchone()
             if not existing:
-                conn.execute(
-                    "INSERT INTO projects (name, owner_id, storage_name, created_at) VALUES (?, ?, ?, ?)",
-                    (p["name"], owner_id, p.get("storage_name", p["name"]),
-                     p.get("created", "2026-01-01T00:00:00"))
-                )
-                migrated += 1
+                try:
+                    conn.execute(
+                        "INSERT INTO projects (name, owner_id, storage_name, created_at) VALUES (?, ?, ?, ?)",
+                        (p["name"], owner_id, p.get("storage_name", p["name"]),
+                         p.get("created", "2026-01-01T00:00:00"))
+                    )
+                    migrated += 1
+                except Exception as e:
+                    print(f"[DB] Skipping project '{p.get('name')}': {e}")
     if migrated:
         print(f"[DB] Migrated {migrated} projects from rag_storage to SQLite.")
 
