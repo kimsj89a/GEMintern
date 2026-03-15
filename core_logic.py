@@ -474,47 +474,105 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
 def generate_slide_json(api_key, model_name, file_context="", context_text="",
                         on_slide=None):
     """
-    Generates structured JSON for PPT slides directly from source material.
-    If on_slide callback is provided, streams slides one-by-one as they are parsed.
+    Two-phase PPT generation:
+      Phase 1: Generate outline (sections + slide titles/types)
+      Phase 2: Generate each section's slides in detail (separate LLM call per section)
     """
+    import json as _json
     client = get_client(api_key)
-    system_prompt = prompts.LOGIC_PROMPTS.get('ppt_structure_json', '')
 
-    user_prompt = f"""
-[Context/Goal]
-{context_text}
+    # ── Phase 1: Outline ──
+    outline_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
+    outline_user = f"[Context/Goal]\n{context_text}\n\n[Source Material]\n{file_context}"
+
+    outline_config = types.GenerateContentConfig(
+        max_output_tokens=4096,
+        temperature=0.2,
+        system_instruction=outline_prompt,
+        response_mime_type="application/json"
+    )
+    outline_resp = client.models.generate_content(
+        model=model_name,
+        contents=outline_user,
+        config=outline_config
+    )
+    try:
+        outline = _json.loads(outline_resp.text)
+    except _json.JSONDecodeError:
+        # Fallback: try to extract JSON
+        import re
+        m = re.search(r'\{.*\}', outline_resp.text, re.DOTALL)
+        outline = _json.loads(m.group()) if m else {"sections": []}
+
+    sections = outline.get("sections", [])
+    if not sections:
+        return _json.dumps({"slides": []}, ensure_ascii=False)
+
+    # ── Phase 2: Section-by-section generation ──
+    section_prompt = prompts.LOGIC_PROMPTS.get('ppt_section_detail', '')
+    all_slides = []
+
+    for sec_idx, section in enumerate(sections):
+        sec_title = section.get("title", f"Section {sec_idx + 1}")
+        sec_slides_plan = section.get("slides", [])
+
+        section_user = f"""[Overall Outline]
+{_json.dumps(outline, ensure_ascii=False, indent=2)}
+
+[Current Section to Generate]
+Section {sec_idx + 1}: {sec_title}
+Planned slides: {_json.dumps(sec_slides_plan, ensure_ascii=False)}
 
 [Source Material]
 {file_context}
+
+[Context/Goal]
+{context_text}
 """
 
-    if on_slide:
-        # Streaming mode: parse slides incrementally
-        config = types.GenerateContentConfig(
-            max_output_tokens=65536,
-            temperature=0.3,
-            system_instruction=system_prompt,
-        )
-        stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=user_prompt,
-            config=config
-        )
-        return _parse_streaming_slides(stream, on_slide)
-    else:
-        # Non-streaming mode (legacy)
-        config = types.GenerateContentConfig(
-            max_output_tokens=65536,
-            temperature=0.3,
-            system_instruction=system_prompt,
-            response_mime_type="application/json"
-        )
-        resp = client.models.generate_content(
-            model=model_name,
-            contents=user_prompt,
-            config=config
-        )
-        return resp.text
+        if on_slide:
+            # Streaming mode per section
+            sec_config = types.GenerateContentConfig(
+                max_output_tokens=16384,
+                temperature=0.3,
+                system_instruction=section_prompt,
+            )
+            stream = client.models.generate_content_stream(
+                model=model_name,
+                contents=section_user,
+                config=sec_config
+            )
+            # Parse and emit slides as they stream
+            offset = len(all_slides)
+            section_slides = []
+
+            def _on_section_slide(slide_obj, idx):
+                section_slides.append(slide_obj)
+                on_slide(slide_obj, offset + idx)
+
+            _parse_streaming_slides(stream, _on_section_slide)
+            all_slides.extend(section_slides)
+        else:
+            # Non-streaming mode per section
+            sec_config = types.GenerateContentConfig(
+                max_output_tokens=16384,
+                temperature=0.3,
+                system_instruction=section_prompt,
+                response_mime_type="application/json"
+            )
+            resp = client.models.generate_content(
+                model=model_name,
+                contents=section_user,
+                config=sec_config
+            )
+            try:
+                sec_data = _json.loads(resp.text)
+                sec_slides = sec_data.get("slides", sec_data if isinstance(sec_data, list) else [])
+                all_slides.extend(sec_slides)
+            except _json.JSONDecodeError:
+                pass
+
+    return _json.dumps({"slides": all_slides}, ensure_ascii=False)
 
 
 def _parse_streaming_slides(stream, on_slide):
