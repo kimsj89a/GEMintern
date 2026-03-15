@@ -2069,6 +2069,19 @@ Analyze the source documents and create an **Information Memorandum (IM)** deck 
 Create a data-dense, professional IM deck. Every slide must be packed with actual data from the source documents.
 NO placeholder text, NO generic descriptions, NO filler. If a number exists in the source, it MUST appear in the output.
 
+[SLIDE LAYOUT PATTERN — EVERY SLIDE MUST FOLLOW THIS]
+Each content slide follows a strict 3-layer structure:
+  Layer 1: title + subtitle (auto-rendered by system)
+  Layer 2: "summary" — 1-2줄 인사이트 요약. 해당 장표의 핵심 메시지를 축약. MUST be included.
+  Layer 3: 2-3개 콘텐츠 블록 (테이블, 차트, KPI 카드 등 — 데이터 밀도 높게)
+
+The "summary" field is MANDATORY for every content slide.
+It must be a compelling 1-2 line insight that captures the slide's key message.
+Examples:
+  - "REBEL-Quad 양산('26.2H) 이후 본격 J-curve 성장, FY27 5,388억원 → FY29 2.5조원 목표"
+  - "국내 유일 양산 실적 보유 NPU 기업으로, TOP5 고객사 확보 및 글로벌 확장 가속화"
+  - "Pre-money 2.45조원, Forward PSR 4.5x로 글로벌 경쟁사 평균 9.2x 대비 합리적 밸류"
+
 [DENSITY RULES — CRITICAL]
 These rules override everything else. Violating them makes the output useless.
 
@@ -2125,21 +2138,24 @@ Follow this order. Skip sections only if zero data exists.
 2. divider: {"slide_type":"divider", "title":"...", "subtitle":"...", "section_number":"1", "items":["목차1","목차2"]}
 
 3. data_table: {"slide_type":"data_table", "title":"...", "subtitle":"...",
-    "table":{"headers":["구분","2022","2023","2024","2025"], "rows":[["매출",100,150,200,320],["원가",50,80,120,170],["매출총이익",50,70,80,150],["GPM%","50%","47%","40%","47%"],["영업이익",-100,-200,-300,-180],["OPM%","-100%","-133%","-150%","-56%"]], "has_total_row":false},
-    "metrics":[{"label":"FY25 매출","value":"320억","sub":"+60% YoY","color":"blue"},{"label":"GPM","value":"47%","sub":"+7%p","color":"green"}],
+    "summary":"매출은 '22년 27억에서 '25년 320억으로 급성장, GPM 46%로 원가구조 안정화 달성",
+    "table":{"headers":["구분","2022","2023","2024","2025"], "rows":[["매출",27,156,320,1544],["원가",15,120,170,830],["매출총이익",12,36,150,714],["GPM%","44%","23%","47%","46%"],["영업이익",-297,-1284,-1184,-618],["OPM%","-1100%","-821%","-370%","-40%"]], "has_total_row":false},
+    "metrics":[{"label":"FY25 매출","value":"320억","sub":"+105% YoY","color":"blue"},{"label":"GPM","value":"46%","sub":"+23%p","color":"green"}],
     "source":"출처: 감사보고서"}
-   ↑ NOTE: This example shows proper density — 6+ rows, 5 years, 2+ metrics. THIS is the minimum standard.
+   ↑ NOTE: summary + 6+ rows + 5 years + 2+ metrics. THIS is the minimum standard.
 
 4. chart_table: {"slide_type":"chart_table", "title":"...",
+    "summary":"REBEL-Quad 양산('26.2H) 이후 본격 J-curve 성장 진입, FY27 5,388억 → FY29 2.5조원 목표",
     "chart":{"chart_type":"bar|line|pie|donut", "categories":["2022","2023","2024","2025F","2026F","2027F"], "series":[{"name":"매출","values":[27,156,320,1544,5388,11557]}], "show_legend":true},
     "table":{"headers":["구분","2025F","2026F","2027F"], "rows":[["매출","320","1,544","5,388"],["YoY","+105%","+382%","+249%"],["GPM%","46%","46%","44%"]]},
     "banner":{"label":"핵심:","text":"REBEL-Quad 양산('26.2H) 이후 본격 J-curve 성장"},
     "source":"출처: 사업계획서"}
 
 5. two_column: {"slide_type":"two_column", "title":"...",
+    "summary":"본건은 RCPS 신주 5,500억원 중 당펀드 1,000억원 투자, Entry value 2.45조원 수준",
     "left":{"title":"투자구조", "table":{"headers":["구분","내용"], "rows":[["Pre-money","2.45조원"],["Post-money","3.0조원"],["투자형태","RCPS 신주"],["당펀드 투자금","1,000억원"],["당펀드 지분율","3.3%"],["투자금 사용처","신제품개발, 양산, 운영자금"]]}},
     "right":{"title":"투자전후 주주구성", "table":{"headers":["주주","투자전","투자후"], "rows":[["경영진","20.5%","16.7%"],["Sapeon","18.2%","14.8%"],["한국산업은행","5.0%","5.1%"],["KT","4.9%","4.0%"],["SV인베스트","3.3%","2.7%"],["기타","46.1%","54.7%"]]}}}
-   ↑ NOTE: BOTH columns use tables, not bullets. This is the correct pattern for structured data.
+   ↑ NOTE: summary + BOTH columns use tables. This is the correct pattern.
 
 6. kpi_dashboard: {"slide_type":"kpi_dashboard", "title":"...",
     "table":{"headers":["항목","내용"], "rows":[...]},

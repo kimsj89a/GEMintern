@@ -225,6 +225,27 @@ def add_np_header(slide, title, subtitle=""):
         set_font(ps, Pt(11), color=COLOR_MID_GRAY, font_name=FONT_BODY)
 
 
+def add_np_summary(slide, text, y=None):
+    """Render 1-2 line insight summary between header and content.
+    Returns the Y position where content should start after the summary.
+    """
+    if not text:
+        return CONTENT_START_Y
+    summary_y = y or (SUBTITLE_Y + 0.35)
+    tb = slide.shapes.add_textbox(
+        Inches(MARGIN_LEFT), Inches(summary_y),
+        Inches(FULL_W), Inches(0.55)
+    )
+    tf = tb.text_frame
+    tf.word_wrap = True
+    for idx, line in enumerate(str(text).split('\n')[:2]):
+        p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
+        p.text = clean_text(line)
+        set_font(p, Pt(9.5), bold=True, color=COLOR_DARK_GRAY, font_name=FONT_BODY)
+        p.space_after = Pt(2)
+    return summary_y + 0.55
+
+
 def add_np_footer(slide, page_num, draft=True):
     """Dark navy footer bar with CONFIDENTIAL + page number + optional DRAFT badge."""
     # Footer bar
@@ -1024,6 +1045,7 @@ def render_data_table(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    content_y = add_np_summary(slide, data.get("summary", ""))
 
     # Table
     table_data = data.get("table", {})
@@ -1034,7 +1056,7 @@ def render_data_table(prs, data, page_num):
 
     if headers and rows:
         add_np_table(slide, headers, rows,
-                     x=MARGIN_LEFT, y=CONTENT_START_Y, w=FULL_W,
+                     x=MARGIN_LEFT, y=content_y, w=FULL_W,
                      col_widths=col_widths, has_total_row=has_total)
 
     # KPI cards
@@ -1056,6 +1078,7 @@ def render_chart_table(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    content_y = add_np_summary(slide, data.get("summary", ""))
 
     # Left: chart
     chart_data = data.get("chart", {})
@@ -1064,9 +1087,9 @@ def render_chart_table(prs, data, page_num):
     series_list = chart_data.get("series", [])
 
     chart_x = LEFT_X
-    chart_y = CONTENT_START_Y
+    chart_y = content_y
     chart_w = LEFT_W
-    chart_h = 2.8
+    chart_h = min(2.8, CONTENT_END_Y - content_y - 0.6)
 
     if categories and series_list:
         el = {
@@ -1092,7 +1115,7 @@ def render_chart_table(prs, data, page_num):
 
     if headers and rows:
         add_np_table(slide, headers, rows,
-                     x=RIGHT_X, y=CONTENT_START_Y, w=RIGHT_W,
+                     x=RIGHT_X, y=content_y, w=RIGHT_W,
                      has_total_row=has_total)
 
     # Optional banner
@@ -1116,6 +1139,7 @@ def render_two_column(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    content_y = add_np_summary(slide, data.get("summary", ""))
 
     def _render_column_content(col_data, col_x, col_w, start_y):
         """Render a column's content (text items, elements, or table)."""
@@ -1201,8 +1225,8 @@ def render_two_column(prs, data, page_num):
     left_data = data.get("left", data.get("left_column", {}))
     right_data = data.get("right", data.get("right_column", {}))
 
-    _render_column_content(left_data, LEFT_X, LEFT_W, CONTENT_START_Y)
-    _render_column_content(right_data, RIGHT_X, RIGHT_W, CONTENT_START_Y)
+    _render_column_content(left_data, LEFT_X, LEFT_W, content_y)
+    _render_column_content(right_data, RIGHT_X, RIGHT_W, content_y)
 
     add_np_footer(slide, page_num)
     return slide
@@ -1213,19 +1237,20 @@ def render_kpi_dashboard(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    content_y = add_np_summary(slide, data.get("summary", ""))
 
     # Main content: table or chart
     table_data = data.get("table", {})
     chart_data = data.get("chart", {})
 
-    content_h = 2.5
+    content_h = min(2.5, CONTENT_END_Y - content_y - 1.0)
     if table_data and table_data.get("headers"):
         add_np_table(slide, table_data["headers"], table_data.get("rows", []),
-                     x=MARGIN_LEFT, y=CONTENT_START_Y, w=FULL_W,
+                     x=MARGIN_LEFT, y=content_y, w=FULL_W,
                      has_total_row=table_data.get("has_total_row", False))
     elif chart_data and chart_data.get("categories"):
         el = {
-            "x": MARGIN_LEFT, "y": CONTENT_START_Y, "w": FULL_W, "h": content_h,
+            "x": MARGIN_LEFT, "y": content_y, "w": FULL_W, "h": content_h,
             "kind": "chart",
             "chart_type": chart_data.get("chart_type", "bar"),
             "data": {
@@ -1275,6 +1300,7 @@ def render_risk_matrix(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    add_np_summary(slide, data.get("summary", ""))
 
     risks = data.get("risks", data.get("items", []))
     if not risks:
@@ -1368,6 +1394,7 @@ def render_timeline_flow(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    add_np_summary(slide, data.get("summary", ""))
 
     nodes = data.get("nodes", data.get("items", data.get("steps", [])))
     if not nodes:
@@ -1449,6 +1476,7 @@ def render_comparison(prs, data, page_num):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, COLOR_OFF_WHITE)
     add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    add_np_summary(slide, data.get("summary", ""))
 
     left = data.get("left", {})
     right = data.get("right", {})
