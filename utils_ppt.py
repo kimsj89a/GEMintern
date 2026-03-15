@@ -13,56 +13,69 @@ from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
 
 # ============================================================
-# Design Constants (NP Theme — 16:9)
+# Design Constants (NP Theme — 4:3, 10×7.5 inches)
 # ============================================================
 SLIDE_WIDTH = Inches(10.0)
-SLIDE_HEIGHT = Inches(5.625)
+SLIDE_HEIGHT = Inches(7.5)
 
-# NP Color Palette
-COLOR_NAVY = RGBColor(0x1A, 0x27, 0x44)
-COLOR_DARK_NAVY = RGBColor(0x11, 0x1C, 0x33)
-COLOR_GOLD = RGBColor(0xC5, 0x97, 0x3B)
+# NP Color Palette (from brand guide)
+COLOR_NAVY = RGBColor(0x0C, 0x30, 0x64)       # Navy (12,48,100)
+COLOR_DARK_NAVY = RGBColor(0x08, 0x1E, 0x42)
+COLOR_BLUE = RGBColor(0x00, 0x5D, 0xA2)       # Blue (0,93,162)
+COLOR_SKY_BLUE = RGBColor(0x00, 0xA2, 0xE8)   # Sky blue (0,162,232)
+COLOR_YELLOW = RGBColor(0xCC, 0xA0, 0x00)      # Yellow (204,160,0)
+COLOR_DARK_GRAY = RGBColor(0x40, 0x40, 0x40)   # Dark grey (64,64,64)
+COLOR_RED = RGBColor(0xC0, 0x00, 0x00)         # Red (192,0,0)
+COLOR_GREEN = RGBColor(0x00, 0x80, 0x00)       # Green (0,128,0) — adjusted for readability
 COLOR_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+COLOR_BLACK = RGBColor(0x00, 0x00, 0x00)
 COLOR_OFF_WHITE = RGBColor(0xF5, 0xF6, 0xF8)
-COLOR_LIGHT_GRAY = RGBColor(0xE8, 0xEA, 0xF0)
+COLOR_LIGHT_GRAY = RGBColor(0xD9, 0xDE, 0xE4)
 COLOR_MID_GRAY = RGBColor(0x88, 0x92, 0xA5)
-COLOR_DARK_GRAY = RGBColor(0x4A, 0x55, 0x68)
-COLOR_TEXT = RGBColor(0x2D, 0x37, 0x48)
-COLOR_BLUE = RGBColor(0x25, 0x63, 0xEB)
-COLOR_GREEN = RGBColor(0x05, 0x96, 0x69)
-COLOR_RED = RGBColor(0xDC, 0x26, 0x26)
-COLOR_PURPLE = RGBColor(0x7C, 0x3A, 0xED)
-COLOR_ORANGE = RGBColor(0xD9, 0x77, 0x06)
-COLOR_ROW_EVEN = RGBColor(0xF8, 0xF9, 0xFB)
+COLOR_GOLD = COLOR_YELLOW  # Legacy alias
+COLOR_TEXT = COLOR_BLACK
+COLOR_ROW_EVEN = RGBColor(0xF2, 0xF6, 0xFA)   # Light blue tint for table rows
 COLOR_ROW_ODD = RGBColor(0xFF, 0xFF, 0xFF)
 
 # Legacy aliases
 COLOR_PRIMARY = COLOR_BLUE
 COLOR_HEADER_BG = COLOR_NAVY
 COLOR_GREY = COLOR_MID_GRAY
-COLOR_LIGHT_BLUE = COLOR_LIGHT_GRAY
+COLOR_LIGHT_BLUE = COLOR_SKY_BLUE
 COLOR_LIGHT_GREY = COLOR_OFF_WHITE
 COLOR_DARK_TEXT = COLOR_TEXT
+COLOR_PURPLE = RGBColor(0x5B, 0x2C, 0x8C)
+COLOR_ORANGE = RGBColor(0xD9, 0x77, 0x06)
 
-# Fonts
-FONT_HEADING = "Georgia"
-FONT_BODY = "Calibri"
-DEFAULT_FONT = FONT_BODY
+# Fonts — 맑은 고딕 / Arial
+FONT_KR = "맑은 고딕"
+FONT_EN = "Arial"
+FONT_HEADING = FONT_KR
+FONT_BODY = FONT_KR
+DEFAULT_FONT = FONT_KR
 
-# Layout grid (inches)
-MARGIN_LEFT = 0.5
-MARGIN_RIGHT = 0.5
-HEADER_BAR_Y = 0.35
-TITLE_Y = 0.55
-SUBTITLE_Y = 1.05
-CONTENT_START_Y = 1.5
-CONTENT_END_Y = 5.0
-FOOTER_Y = 5.25
-LEFT_X = 0.5
-LEFT_W = 4.3
+# Font sizes (from style guide)
+FONT_TITLE1 = Pt(12)      # Title 1 — Blue
+FONT_TITLE2 = Pt(25)      # Title 2 — Black
+FONT_HEADER = Pt(15)      # Header — Black
+FONT_BODY_TITLE = Pt(14)  # 본문 소제목 — Navy
+FONT_BODY_TEXT = Pt(11)   # 본문 내용 — Black
+FONT_NOTE = Pt(9)         # Note, Source — Black
+
+# Layout grid (inches) — 4:3 aspect ratio (10×7.5)
+MARGIN_LEFT = 0.4
+MARGIN_RIGHT = 0.4
+HEADER_BAR_Y = 0.25
+TITLE_Y = 0.45
+SUBTITLE_Y = 0.85
+CONTENT_START_Y = 1.55
+CONTENT_END_Y = 6.8
+FOOTER_Y = 7.05
+LEFT_X = 0.4
+LEFT_W = 4.4
 RIGHT_X = 5.2
-RIGHT_W = 4.3
-FULL_W = 9.0
+RIGHT_W = 4.4
+FULL_W = 9.2
 
 # Legacy content area constants (used by compute_layout)
 CONTENT_X = MARGIN_LEFT
@@ -75,11 +88,11 @@ CONTENT_PAD = 0.15
 # Presets & Mappings
 # ============================================================
 ROLE_PRESETS = {
-    "title":      {"font_size": 22, "bold": True,  "color": "#1A2744"},
-    "subtitle":   {"font_size": 11, "bold": False, "color": "#8892A5"},
-    "body":       {"font_size": 11, "bold": False, "color": "#2D3748"},
-    "label":      {"font_size": 13, "bold": True,  "color": "#1A2744"},
-    "kpi_number": {"font_size": 36, "bold": True,  "color": "#C5973B"},
+    "title":      {"font_size": 25, "bold": True,  "color": "#000000"},
+    "subtitle":   {"font_size": 12, "bold": False, "color": "#005DA2"},
+    "body":       {"font_size": 11, "bold": False, "color": "#000000"},
+    "label":      {"font_size": 14, "bold": True,  "color": "#0C3064"},
+    "kpi_number": {"font_size": 36, "bold": True,  "color": "#005DA2"},
 }
 
 SHAPE_TYPE_MAP = {
@@ -129,7 +142,7 @@ _LEGACY_LAYOUT_MAP = {
 _NP_TEMPLATE_TYPES = {
     "title", "divider", "data_table", "chart_table",
     "two_column", "kpi_dashboard", "risk_matrix",
-    "timeline_flow", "comparison",
+    "timeline_flow", "comparison", "numbered_blocks", "grid_cards",
 }
 
 # NP accent color cycle for cards/badges
@@ -161,12 +174,26 @@ def parse_hex_color(hex_str):
 
 
 def set_font(paragraph, size, bold=False, color=None, font_name=DEFAULT_FONT):
-    """폰트 설정 헬퍼"""
+    """폰트 설정 헬퍼 — 한글: 맑은 고딕, 영문: Arial"""
     paragraph.font.name = font_name
     paragraph.font.size = size
     paragraph.font.bold = bold
     if color:
         paragraph.font.color.rgb = color
+    # Set East Asian font for Korean text
+    from pptx.oxml.ns import qn
+    rPr = paragraph.font._element
+    if rPr is not None:
+        ea = rPr.find(qn('a:ea'))
+        if ea is None:
+            ea = rPr.makeelement(qn('a:ea'), {})
+            rPr.append(ea)
+        ea.set('typeface', FONT_KR)
+        latin = rPr.find(qn('a:latin'))
+        if latin is None:
+            latin = rPr.makeelement(qn('a:latin'), {})
+            rPr.append(latin)
+        latin.set('typeface', FONT_EN)
 
 
 def _set_slide_bg(slide, color):
@@ -193,94 +220,96 @@ def _color_for_name(name):
 # NP Component Functions
 # ============================================================
 def add_np_header(slide, title, subtitle=""):
-    """Navy accent bar at top + title + optional subtitle."""
+    """Navy accent bar at top + Title2 (25pt Black) + Title1 subtitle (12pt Blue)."""
     # Navy bar
     bar = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, Inches(HEADER_BAR_Y),
-        SLIDE_WIDTH, Inches(0.15)
+        SLIDE_WIDTH, Inches(0.12)
     )
     bar.fill.solid()
     bar.fill.fore_color.rgb = COLOR_NAVY
     bar.line.fill.background()
 
-    # Title
+    # Subtitle (Title 1 — 12pt Blue, above main title)
+    if subtitle:
+        sb = slide.shapes.add_textbox(
+            Inches(MARGIN_LEFT), Inches(TITLE_Y - 0.05),
+            Inches(FULL_W), Inches(0.25)
+        )
+        sb.text_frame.word_wrap = True
+        ps = sb.text_frame.paragraphs[0]
+        ps.text = clean_text(subtitle)
+        set_font(ps, FONT_TITLE1, color=COLOR_BLUE, font_name=FONT_KR)
+
+    # Title (Title 2 — 25pt Black bold)
+    title_y = TITLE_Y + 0.2 if subtitle else TITLE_Y
     tb = slide.shapes.add_textbox(
-        Inches(MARGIN_LEFT), Inches(TITLE_Y),
+        Inches(MARGIN_LEFT), Inches(title_y),
         Inches(FULL_W), Inches(0.45)
     )
     tb.text_frame.word_wrap = True
     p = tb.text_frame.paragraphs[0]
     p.text = clean_text(title)
-    set_font(p, Pt(22), bold=True, color=COLOR_NAVY, font_name=FONT_HEADING)
-
-    # Subtitle
-    if subtitle:
-        sb = slide.shapes.add_textbox(
-            Inches(MARGIN_LEFT), Inches(SUBTITLE_Y),
-            Inches(FULL_W), Inches(0.35)
-        )
-        sb.text_frame.word_wrap = True
-        ps = sb.text_frame.paragraphs[0]
-        ps.text = clean_text(subtitle)
-        set_font(ps, Pt(11), color=COLOR_MID_GRAY, font_name=FONT_BODY)
+    set_font(p, FONT_TITLE2, bold=True, color=COLOR_BLACK, font_name=FONT_KR)
 
 
 def add_np_summary(slide, text, y=None):
     """Render 1-2 line insight summary between header and content.
     Returns the Y position where content should start after the summary.
+    Style: 본문 소제목 14pt Navy
     """
     if not text:
         return CONTENT_START_Y
-    summary_y = y or (SUBTITLE_Y + 0.35)
+    summary_y = y or (SUBTITLE_Y + 0.45)
     tb = slide.shapes.add_textbox(
         Inches(MARGIN_LEFT), Inches(summary_y),
-        Inches(FULL_W), Inches(0.55)
+        Inches(FULL_W), Inches(0.6)
     )
     tf = tb.text_frame
     tf.word_wrap = True
     for idx, line in enumerate(str(text).split('\n')[:2]):
         p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
         p.text = clean_text(line)
-        set_font(p, Pt(9.5), bold=True, color=COLOR_DARK_GRAY, font_name=FONT_BODY)
+        set_font(p, FONT_BODY_TITLE, bold=False, color=COLOR_NAVY, font_name=FONT_KR)
         p.space_after = Pt(2)
-    return summary_y + 0.55
+    return summary_y + 0.6
 
 
 def add_np_footer(slide, page_num, draft=True):
-    """Dark navy footer bar with CONFIDENTIAL + page number + optional DRAFT badge."""
+    """Footer bar with CONFIDENTIAL + page number + optional DRAFT badge."""
     # Footer bar
     bar = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE, 0, Inches(FOOTER_Y),
-        SLIDE_WIDTH, Inches(0.375)
+        SLIDE_WIDTH, Inches(0.4)
     )
     bar.fill.solid()
-    bar.fill.fore_color.rgb = COLOR_DARK_NAVY
+    bar.fill.fore_color.rgb = COLOR_NAVY
     bar.line.fill.background()
 
     # CONFIDENTIAL label
     conf = slide.shapes.add_textbox(
-        Inches(MARGIN_LEFT), Inches(FOOTER_Y + 0.06),
+        Inches(MARGIN_LEFT), Inches(FOOTER_Y + 0.08),
         Inches(3.0), Inches(0.28)
     )
     pc = conf.text_frame.paragraphs[0]
-    pc.text = "CONFIDENTIAL"
-    set_font(pc, Pt(7), bold=True, color=COLOR_MID_GRAY, font_name=FONT_BODY)
+    pc.text = "Strictly Private and Confidential"
+    set_font(pc, FONT_NOTE, color=COLOR_LIGHT_GRAY, font_name=FONT_EN)
 
     # Page number
     pn = slide.shapes.add_textbox(
-        Inches(8.0), Inches(FOOTER_Y + 0.06),
-        Inches(1.5), Inches(0.28)
+        Inches(8.5), Inches(FOOTER_Y + 0.08),
+        Inches(1.1), Inches(0.28)
     )
     pp = pn.text_frame.paragraphs[0]
     pp.text = str(page_num)
     pp.alignment = PP_ALIGN.RIGHT
-    set_font(pp, Pt(7), color=COLOR_MID_GRAY, font_name=FONT_BODY)
+    set_font(pp, FONT_NOTE, color=COLOR_LIGHT_GRAY, font_name=FONT_EN)
 
     # DRAFT badge
     if draft:
         badge = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
-            Inches(8.8), Inches(0.15),
+            Inches(8.8), Inches(0.12),
             Inches(0.8), Inches(0.25)
         )
         badge.fill.solid()
@@ -291,11 +320,25 @@ def add_np_footer(slide, page_num, draft=True):
         p = tf.paragraphs[0]
         p.text = "DRAFT"
         p.alignment = PP_ALIGN.CENTER
-        set_font(p, Pt(7), bold=True, color=COLOR_WHITE, font_name=FONT_BODY)
+        set_font(p, Pt(7), bold=True, color=COLOR_WHITE, font_name=FONT_EN)
+
+
+def _set_cell_margins(cell, left=Emu(12700), right=Emu(12700), top=Emu(0), bottom=Emu(0)):
+    """Set cell margins (default: 좌우 0.1pt ≈ 12700 EMU, 상하 0)."""
+    from pptx.oxml.ns import qn
+    tc = cell._tc
+    tcPr = tc.find(qn('a:tcPr'))
+    if tcPr is None:
+        tcPr = tc.makeelement(qn('a:tcPr'), {})
+        tc.insert(0, tcPr)
+    tcPr.set('marL', str(int(left)))
+    tcPr.set('marR', str(int(right)))
+    tcPr.set('marT', str(int(top)))
+    tcPr.set('marB', str(int(bottom)))
 
 
 def add_np_table(slide, headers, rows, x, y, w, col_widths=None,
-                 has_total_row=False, row_height=0.24):
+                 has_total_row=False, row_height=0.22):
     """NP-styled table with navy header, alternating rows, optional total row."""
     if not headers:
         return
@@ -323,9 +366,10 @@ def add_np_table(slide, headers, rows, x, y, w, col_widths=None,
         cell.text = clean_text(str(hdr))
         cell.fill.solid()
         cell.fill.fore_color.rgb = COLOR_NAVY
+        _set_cell_margins(cell)
         p = cell.text_frame.paragraphs[0]
         p.alignment = PP_ALIGN.CENTER
-        set_font(p, Pt(8), bold=True, color=COLOR_WHITE, font_name=FONT_BODY)
+        set_font(p, FONT_NOTE, bold=True, color=COLOR_WHITE, font_name=FONT_KR)
 
     # Data rows
     for ri, row_data in enumerate(rows):
@@ -334,20 +378,21 @@ def add_np_table(slide, headers, rows, x, y, w, col_widths=None,
             cell = table.cell(ri + 1, ci)
             cell_text = str(row_data[ci]) if ci < len(row_data) else ""
             cell.text = clean_text(cell_text)
+            _set_cell_margins(cell)
             p = cell.text_frame.paragraphs[0]
             p.alignment = PP_ALIGN.CENTER
 
             if is_total:
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = COLOR_NAVY
-                set_font(p, Pt(7.5), bold=True, color=COLOR_GOLD, font_name=FONT_BODY)
+                set_font(p, FONT_NOTE, bold=True, color=COLOR_YELLOW, font_name=FONT_KR)
             else:
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = COLOR_ROW_EVEN if ri % 2 == 0 else COLOR_ROW_ODD
-                set_font(p, Pt(7.5), color=COLOR_TEXT, font_name=FONT_BODY)
+                set_font(p, FONT_NOTE, color=COLOR_BLACK, font_name=FONT_KR)
 
 
-def add_np_kpi_cards(slide, metrics, y=4.45):
+def add_np_kpi_cards(slide, metrics, y=6.15):
     """Render a row of KPI cards. metrics: list of {label, value, sub, color}."""
     if not metrics:
         return
@@ -435,28 +480,28 @@ def add_np_banner(slide, y, label, text, full_width=True):
     # Gold label + white text in same paragraph via runs
     run_label = p.add_run()
     run_label.text = str(label) + " "
-    run_label.font.name = FONT_BODY
-    run_label.font.size = Pt(8)
+    run_label.font.name = FONT_KR
+    run_label.font.size = FONT_NOTE
     run_label.font.bold = True
-    run_label.font.color.rgb = COLOR_GOLD
+    run_label.font.color.rgb = COLOR_NAVY
 
     run_text = p.add_run()
     run_text.text = str(text)
-    run_text.font.name = FONT_BODY
-    run_text.font.size = Pt(8)
+    run_text.font.name = FONT_KR
+    run_text.font.size = FONT_NOTE
     run_text.font.color.rgb = COLOR_WHITE
 
 
-def add_np_source_line(slide, text, y=5.0):
-    """Small gray italic source attribution line."""
+def add_np_source_line(slide, text, y=None):
+    """Note/Source line — 9pt Black."""
+    source_y = y or (CONTENT_END_Y + 0.05)
     tb = slide.shapes.add_textbox(
-        Inches(MARGIN_LEFT), Inches(y),
+        Inches(MARGIN_LEFT), Inches(source_y),
         Inches(FULL_W), Inches(0.2)
     )
     p = tb.text_frame.paragraphs[0]
     p.text = str(text)
-    set_font(p, Pt(6.5), color=COLOR_MID_GRAY, font_name=FONT_BODY)
-    p.font.italic = True
+    set_font(p, FONT_NOTE, color=COLOR_BLACK, font_name=FONT_KR)
 
 
 # ============================================================
