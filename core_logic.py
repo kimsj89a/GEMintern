@@ -471,9 +471,11 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
     return resp.text
 
 
-def generate_slide_json(api_key, model_name, file_context="", context_text=""):
+def generate_slide_json(api_key, model_name, file_context="", context_text="",
+                        on_slide=None):
     """
     Generates structured JSON for PPT slides directly from source material.
+    If on_slide callback is provided, streams slides one-by-one as they are parsed.
     """
     client = get_client(api_key)
     system_prompt = prompts.LOGIC_PROMPTS.get('ppt_structure_json', '')
@@ -485,21 +487,110 @@ def generate_slide_json(api_key, model_name, file_context="", context_text=""):
 [Source Material]
 {file_context}
 """
-    
-    # Force JSON output
-    config = types.GenerateContentConfig(
-        max_output_tokens=65536,
-        temperature=0.3,
-        system_instruction=system_prompt,
-        response_mime_type="application/json"
-    )
-    
-    resp = client.models.generate_content(
-        model=model_name,
-        contents=user_prompt,
-        config=config
-    )
-    return resp.text
+
+    if on_slide:
+        # Streaming mode: parse slides incrementally
+        config = types.GenerateContentConfig(
+            max_output_tokens=65536,
+            temperature=0.3,
+            system_instruction=system_prompt,
+        )
+        stream = client.models.generate_content_stream(
+            model=model_name,
+            contents=user_prompt,
+            config=config
+        )
+        return _parse_streaming_slides(stream, on_slide)
+    else:
+        # Non-streaming mode (legacy)
+        config = types.GenerateContentConfig(
+            max_output_tokens=65536,
+            temperature=0.3,
+            system_instruction=system_prompt,
+            response_mime_type="application/json"
+        )
+        resp = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=config
+        )
+        return resp.text
+
+
+def _parse_streaming_slides(stream, on_slide):
+    """Parse streaming Gemini output and emit each slide as it completes."""
+    import json as _json
+
+    buffer = ""
+    slides_found = []
+    brace_depth = 0
+    in_slides_array = False
+    slide_start = -1
+
+    for chunk in stream:
+        text = ""
+        if hasattr(chunk, "text"):
+            text = chunk.text or ""
+        elif isinstance(chunk, str):
+            text = chunk
+        if not text:
+            continue
+
+        buffer += text
+
+        # Process buffer character by character to find complete slide objects
+        i = 0
+        while i < len(buffer):
+            c = buffer[i]
+
+            # Detect entry into "slides" array
+            if not in_slides_array:
+                # Look for "slides" key followed by [
+                idx = buffer.find('"slides"', i)
+                if idx >= 0:
+                    arr_start = buffer.find('[', idx + 8)
+                    if arr_start >= 0 and arr_start < len(buffer):
+                        in_slides_array = True
+                        i = arr_start + 1
+                        continue
+                break  # Haven't found slides array yet, wait for more data
+
+            # Inside slides array — look for slide objects
+            if c == '{' and slide_start < 0:
+                slide_start = i
+                brace_depth = 1
+            elif c == '{' and slide_start >= 0:
+                brace_depth += 1
+            elif c == '}' and slide_start >= 0:
+                brace_depth -= 1
+                if brace_depth == 0:
+                    # Complete slide object found
+                    slide_json_str = buffer[slide_start:i + 1]
+                    try:
+                        slide_obj = _json.loads(slide_json_str)
+                        slides_found.append(slide_obj)
+                        on_slide(slide_obj, len(slides_found) - 1)
+                    except _json.JSONDecodeError:
+                        pass  # Malformed, skip
+                    slide_start = -1
+            elif c == ']' and slide_start < 0:
+                # End of slides array
+                in_slides_array = False
+
+            i += 1
+
+        # Keep only unprocessed part of buffer
+        if slide_start >= 0:
+            buffer = buffer[slide_start:]
+            slide_start = 0
+        elif in_slides_array:
+            # Keep last 100 chars for context
+            buffer = buffer[-100:] if len(buffer) > 100 else buffer
+        else:
+            buffer = buffer[-200:] if len(buffer) > 200 else buffer
+
+    # Return final JSON
+    return _json.dumps({"slides": slides_found}, ensure_ascii=False)
 
 
 def regenerate_single_slide(api_key, model_name, current_slide="", prev_slide="null",

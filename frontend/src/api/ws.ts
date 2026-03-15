@@ -1,9 +1,11 @@
 import { useAuthStore } from '../stores/authStore';
 
 type WsMessage = {
-  type: 'chunk' | 'complete' | 'error';
+  type: 'chunk' | 'slide' | 'complete' | 'error';
   task_id: string;
   data?: string;
+  slide?: any;
+  index?: number;
   result?: string;
   error?: string;
 };
@@ -21,7 +23,26 @@ function getWs(): WebSocket {
   ws = new WebSocket(`${protocol}//${window.location.host}/ws/stream?token=${encodeURIComponent(token)}`);
 
   ws.onmessage = (event) => {
-    const msg: WsMessage = JSON.parse(event.data);
+    const raw = JSON.parse(event.data);
+    let msg: WsMessage = raw;
+
+    // Handle slide streaming: chunks contain JSON-encoded slide messages
+    if (raw.type === 'chunk' && raw.data) {
+      try {
+        const parsed = JSON.parse(raw.data);
+        if (parsed.type === 'slide' && parsed.slide) {
+          msg = {
+            type: 'slide',
+            task_id: raw.task_id,
+            slide: parsed.slide,
+            index: parsed.index,
+          };
+        }
+      } catch {
+        // Regular text chunk, pass through
+      }
+    }
+
     const cb = listeners.get(msg.task_id);
     if (cb) cb(msg);
   };

@@ -92,6 +92,7 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
 
     task = _tasks[task_id]
     task["status"] = "generating"
+    task["partial_slides"] = []  # For slide streaming
 
     def _run():
         try:
@@ -110,7 +111,20 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
             fn = fn_map.get(task_type)
             if not fn:
                 raise ValueError(f"Unknown task type: {task_type}")
-            result = fn(api_key, model_name, **kwargs)
+
+            # Slide streaming mode
+            if task_type == "slide_json":
+                def on_slide(slide_obj, index):
+                    task["partial_slides"].append(slide_obj)
+                    # Push via chunks list (WebSocket picks these up)
+                    task["chunks"].append(json.dumps(
+                        {"type": "slide", "slide": slide_obj, "index": index},
+                        ensure_ascii=False
+                    ))
+                result = fn(api_key, model_name, on_slide=on_slide, **kwargs)
+            else:
+                result = fn(api_key, model_name, **kwargs)
+
             task["result"] = result
             task["status"] = "complete"
             result_text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)

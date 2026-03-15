@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { api } from '../api/client';
+import { subscribeTask, unsubscribeTask } from '../api/ws';
 import SlidePreview from '../components/SlidePreview';
 import FolderTree from '../components/FolderTree';
 import { generateFilename } from '../utils/clipboard';
@@ -53,7 +54,9 @@ export default function PptToolsPage() {
 
   const totalDocs = Object.values(tree).flat().length;
 
-  // --- Generate ---
+  // --- Generate (streaming via WebSocket) ---
+  const taskIdRef = useRef<string>('');
+
   const handleGenerate = useCallback(async () => {
     if (!currentProject) {
       setError('사이드바에서 프로젝트를 먼저 선택하세요.');
@@ -78,28 +81,56 @@ export default function PptToolsPage() {
           context_text: context,
         },
       });
+      taskIdRef.current = task_id;
 
-      const poll = async () => {
+      // Subscribe to WebSocket for streaming slides
+      subscribeTask(task_id, (msg) => {
+        if (cancelRef.current) {
+          unsubscribeTask(task_id);
+          return;
+        }
+        if (msg.type === 'slide' && msg.slide) {
+          // Add slide as it arrives
+          setSlides((prev) => [...prev, msg.slide as SlideData]);
+          // Auto-select first slide, then follow latest
+          setSelectedIdx((prev) => prev === 0 ? 0 : prev);
+        } else if (msg.type === 'complete') {
+          // Final result — replace with full set (in case any were missed)
+          try {
+            const raw = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
+            const parsed: SlideData[] = raw?.slides || raw || [];
+            if (parsed.length > 0) setSlides(parsed);
+          } catch { /* keep streamed slides */ }
+          setGenerating(false);
+          unsubscribeTask(task_id);
+        } else if (msg.type === 'error') {
+          setError(msg.error || '생성 오류');
+          setGenerating(false);
+          unsubscribeTask(task_id);
+        }
+      });
+
+      // Fallback polling (in case WebSocket fails)
+      const pollFallback = async () => {
         if (cancelRef.current) return;
         const status = await api.getTaskStatus(task_id);
         if (status.status === 'complete') {
           try {
             const raw = typeof status.result === 'string' ? JSON.parse(status.result) : status.result;
-            const parsed: SlideData[] = raw.slides || raw;
-            setSlides(parsed);
-            setSelectedIdx(0);
-          } catch {
-            setError('JSON 파싱 실패');
-          }
+            const parsed: SlideData[] = raw?.slides || raw || [];
+            if (parsed.length > 0) setSlides(parsed);
+          } catch { /* ignore */ }
           setGenerating(false);
+          unsubscribeTask(task_id);
         } else if (status.status === 'error') {
           setError(status.error || '생성 오류');
           setGenerating(false);
+          unsubscribeTask(task_id);
         } else {
-          setTimeout(poll, 1200);
+          setTimeout(pollFallback, 3000);
         }
       };
-      poll();
+      setTimeout(pollFallback, 5000);  // Start fallback after 5s
     } catch (err: any) {
       setError(err.message);
       setGenerating(false);
@@ -272,8 +303,8 @@ export default function PptToolsPage() {
           {/* Generate / Stop */}
           {generating ? (
             <div className="flex gap-2 mb-4">
-              <div className="flex-1 py-2.5 bg-[#b0b0b0] text-white text-sm font-semibold rounded-xl text-center animate-pulse">
-                슬라이드 구조 생성 중...
+              <div className="flex-1 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl text-center animate-pulse">
+                슬라이드 생성 중... {slides.length > 0 ? `(${slides.length}장 완료)` : '(문서 분석 중)'}
               </div>
               <button onClick={() => { cancelRef.current = true; setGenerating(false); }}
                 className="px-6 py-2.5 bg-[#EB5757] text-white text-sm font-semibold rounded-xl hover:bg-[#d94848] transition-colors">
