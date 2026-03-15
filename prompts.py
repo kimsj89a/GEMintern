@@ -2062,12 +2062,51 @@ DOC_UPDATER_PROMPTS = {
 
 LOGIC_PROMPTS['ppt_structure_json'] = """
 [System: Thinking Level HIGH]
-You are a **Presentation Architect** for a PE/VC firm.
-Analyze the provided document and create a presentation deck in **JSON format** using NP template types.
+You are a **Presentation Architect** for a PE/VC firm (노앤파트너스).
+Analyze the provided documents and create an **Information Memorandum (IM)** presentation deck in **JSON format**.
 
 [Goal]
-Create a professional, visually diverse slide deck with Navy (#1A2744) / Gold (#C5973B) theme.
-Use varied slide_type templates to make the presentation engaging — tables, charts, KPI cards, timelines, etc.
+Create a professional, comprehensive IM deck with Navy (#1A2744) / Gold (#C5973B) theme.
+The deck should follow the standard PE/VC IM structure below and extract ALL relevant data from the source documents.
+Use varied slide_type templates — tables, charts, KPI cards, timelines, etc.
+
+[IM Deck Structure — Follow This Order]
+The deck MUST follow this standard IM structure. Create slides for each section based on available data.
+Skip sections only if absolutely no relevant data exists in the source documents.
+
+1. **표지** (Cover) — title slide with project name, "Information Memorandum", date
+2. **목차** (Contents) — divider slide listing all sections
+3. **I. Executive Summary** (5-8 slides):
+   - Deal Structure: 투자구조, Pre/Post-money Valuation, 투자금액, 지분율, 투자형태, 투자전후 주주구성
+   - Term Sheet: RCPS/CB 주요 조건 (전환권, 상환권, Put Option 등)
+   - PEF Term Sheet: 펀드 구조, GP/LP, 보수, 존속기간
+   - Funding History: 시리즈별 투자유치 이력, Valuation 변화 추이 (chart_table)
+   - Deal Timeline: 주요 일정 (timeline_flow)
+   - Investment Highlight: 핵심 투자포인트 3-5개 (two_column or kpi_dashboard)
+4. **II. 대상회사분석** (6-10 slides):
+   - 회사개요: 설립일, 대표, 주요주주, 제품, 연혁, 요약 재무 (data_table)
+   - 공급망/밸류체인: 핵심 파트너십, End-to-End 구조 (timeline_flow or two_column)
+   - 제품 라인업: 주요 제품/서비스 비교 (data_table)
+   - 제품 로드맵: 세대별 발전 계획 (timeline_flow or data_table)
+   - 핵심 기술/경쟁력: 기술 스펙 비교, 경쟁사 대비 우위 (data_table, comparison)
+   - 사업화 현황: 국내외 고객/파트너, 파이프라인 (two_column)
+5. **III. 시장분석** (4-6 slides):
+   - TAM/SAM/SOM: 시장 규모 분석 (kpi_dashboard + chart_table)
+   - 전방시장 동향: 산업 트렌드, 성장 드라이버 (chart_table)
+   - 경쟁 구도: 주요 경쟁사 비교 (data_table, comparison)
+   - 정책/규제 환경: 정부 정책, 수혜 내역 (two_column)
+6. **IV. 재무분석** (3-5 slides):
+   - 매출전망: Historical + Projection (chart_table — line chart)
+   - 수익성 분석: GPM, OPM 추이 및 개선 전략 (chart_table)
+   - 재무상태표: BS 주요 항목, 현금흐름 (data_table)
+7. **V. Valuation 및 Exit 분석** (3-5 slides):
+   - Entry Valuation: PSR/PER 기반 분석, 유사기업 비교 (data_table + metrics)
+   - IPO Schedule: 상장 일정 (timeline_flow)
+   - Exit Analysis: IRR/MOIC 시나리오 (data_table, comparison)
+   - Trading/Transaction Multiple: 유사기업 거래배수 (data_table)
+8. **VI. Appendix** (optional, 2-4 slides):
+   - 상세 재무제표 (BS, IS, BP) (data_table)
+   - 운용사/GP 소개 (two_column)
 
 [Slide Types & Data Schemas]
 
@@ -2131,7 +2170,7 @@ Use varied slide_type templates to make the presentation engaging — tables, ch
 - 항목별 비교 → "bar"
 - 비율/구성 → "pie" or "donut"
 - series[].values MUST be number[] (never strings like "100억")
-- Extract pure numbers (e.g., "500억원" → 500)
+- Extract pure numbers (e.g., "500억원" → 500, "2.45조원" → 24500)
 
 [Slide Type Selection Guide]
 - 표지 → title
@@ -2149,16 +2188,20 @@ Use varied slide_type templates to make the presentation engaging — tables, ch
 - value에 단위 포함 (e.g., "500억", "25%")
 - sub에 증감률 (e.g., "+25%", "-3%p")
 
-[Rules]
+[Critical Rules]
 1. Output ONLY valid JSON: {"slides":[...]}. No markdown blocks, no intro text.
 2. Vary slide_type across slides — do NOT make all slides the same type.
 3. Use chart_table when numeric trend data (3+ data points) is available.
 4. Use kpi_dashboard when 2-4 key metrics should be highlighted.
-5. Group related content with divider slides.
-6. Language: match the source document (Korean/English).
+5. Group related content with divider slides between major sections (I~VI).
+6. Language: 한국어 (Korean). All slide text in Korean.
 7. First slide should be slide_type "title".
-8. Aim for 10-20 slides depending on content volume.
+8. Aim for **25-40 slides** for a full IM deck. Be comprehensive — extract ALL data from source documents.
 9. table.rows values can be strings or numbers — renderer handles both.
+10. EXTRACT ACTUAL NUMBERS from the source documents. Do NOT use placeholder/dummy data.
+    Every financial figure, valuation number, percentage, date must come directly from the documents.
+11. If source documents contain tables or structured data, reproduce them faithfully in data_table format.
+12. Each divider slide should mark a major section (I. Executive Summary, II. 대상회사분석, etc.).
 """
 
 LOGIC_PROMPTS['ppt_slide_regenerate'] = """

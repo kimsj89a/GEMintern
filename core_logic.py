@@ -488,7 +488,7 @@ def generate_slide_json(api_key, model_name, file_context="", context_text=""):
     
     # Force JSON output
     config = types.GenerateContentConfig(
-        max_output_tokens=8192,
+        max_output_tokens=65536,
         temperature=0.3,
         system_instruction=system_prompt,
         response_mime_type="application/json"

@@ -76,6 +76,17 @@ def _max_chars_for_model(model: str) -> int:
     return MAX_CONTEXT_CHARS_GEMINI
 
 
+def _strip_doc_stem(filename: str) -> str:
+    """Strip .md wrapper and original extension to get bare stem.
+    e.g. '신한벤치PE.txt.md' -> '신한벤치PE', 'report.pdf' -> 'report'
+    """
+    import os as _os
+    name = filename
+    if name.endswith('.md'):
+        name = name[:-3]
+    return _os.path.splitext(name)[0]
+
+
 def _load_context_with_budget(project_name: str, selected_docs: list = None,
                                max_chars: int = MAX_CONTEXT_CHARS, owner_id: int | None = None) -> str:
     """Load project docs with per-document truncation and clear headers."""
@@ -83,10 +94,9 @@ def _load_context_with_budget(project_name: str, selected_docs: list = None,
     docs_dict = core_rag.load_project_docs_dict(project_name, owner_id=owner_id)
 
     if selected_docs:
-        import os as _os
-        sel_stems = {_os.path.splitext(s)[0] for s in selected_docs}
+        sel_stems = {_strip_doc_stem(s) for s in selected_docs}
         docs_dict = {k: v for k, v in docs_dict.items()
-                     if _os.path.splitext(k)[0] in sel_stems or k in selected_docs}
+                     if _strip_doc_stem(k) in sel_stems or k in selected_docs}
 
     if not docs_dict:
         return ""
@@ -133,11 +143,10 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
         return ""
 
     if selected_docs:
-        # 확장자 무관하게 stem 비교 (서버: .md, 프론트: .pdf/.xlsx 등)
-        import os as _os
-        sel_stems = {_os.path.splitext(s)[0] for s in selected_docs}
+        # 확장자 무관하게 stem 비교 (서버: .txt.md, 프론트: .txt/.pdf 등)
+        sel_stems = {_strip_doc_stem(s) for s in selected_docs}
         docs_dict = {k: v for k, v in docs_dict.items()
-                     if _os.path.splitext(k)[0] in sel_stems or k in selected_docs}
+                     if _strip_doc_stem(k) in sel_stems or k in selected_docs}
 
     if not docs_dict:
         return ""
@@ -281,7 +290,7 @@ def _verify_project_ownership(project_name: str, user_id: int):
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok", "version": "2026.03.15T2"}
+    return {"status": "ok", "version": "2026.03.15T3"}
 
 
 # ========================================
