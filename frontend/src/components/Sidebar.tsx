@@ -86,22 +86,22 @@ export default function Sidebar() {
       {/* Logo + Toggle */}
       <div className={`${collapsed ? 'px-2 pt-4 pb-2' : 'px-5 pt-5 pb-3'} relative flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {collapsed ? (
-          <button onClick={toggleCollapsed} className="w-9 h-9 rounded-lg flex items-center justify-center text-sm hover:bg-white/10 transition-colors"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)' }} title="사이드바 펼치기">
+          <button onClick={() => openTab('home')} className="w-9 h-9 rounded-lg flex items-center justify-center text-sm hover:bg-white/10 transition-colors"
+            style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)' }} title="홈으로 이동">
             💎
           </button>
         ) : (
           <>
-            <div className="flex items-center gap-2.5">
+            <button onClick={() => openTab('home')} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity" title="홈으로 이동">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
                 style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)' }}>
                 💎
               </div>
-              <div>
+              <div className="text-left">
                 <div className="text-[13px] font-bold text-white tracking-tight">GEM Intern</div>
                 <div className="text-[10px] text-slate-500 font-medium tracking-wider">{version}</div>
               </div>
-            </div>
+            </button>
             <button onClick={toggleCollapsed}
               className="w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-white/10 transition-colors"
               title="사이드바 접기">

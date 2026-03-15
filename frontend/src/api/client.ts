@@ -247,6 +247,7 @@ export const api = {
     return res.json() as Promise<{ token: string; user: any }>;
   },
   getMe: () => request<any>('/auth/me'),
+  refreshToken: () => request<{ token: string; user: any }>('/auth/refresh', { method: 'POST' }),
 
   // NPS
   npsSearch: (params: URLSearchParams) =>

@@ -84,6 +84,13 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 
+@router.post("/refresh")
+async def refresh_token(user: dict = Depends(get_current_user)):
+    """Refresh JWT token — issues a new token with extended expiry."""
+    token = create_token(user["id"], user["username"], user["is_admin"])
+    return {"token": token, "user": user}
+
+
 # --- Admin endpoints ---
 
 @router.post("/invite-codes")
