@@ -30,13 +30,17 @@ export default function QaSessionPage() {
   const [activeSession, setActiveSession] = useState<number | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(true);
 
-  // Load folder tree from server
+  // Load folder tree from server & select all docs by default
   useEffect(() => {
     if (!currentProject) return;
     api.getProjectDocs(currentProject).then(data => {
-      setTree(data.folder_tree || {});
+      const folderTree = data.folder_tree || {};
+      setTree(folderTree);
       setDocCount(data.count || 0);
-    }).catch(() => { setTree({}); setDocCount(0); });
+      // 기본: 모든 문서 선택
+      const allDocs = Object.values(folderTree).flat() as string[];
+      setSelectedDocs(allDocs);
+    }).catch(() => { setTree({}); setDocCount(0); setSelectedDocs([]); });
   }, [currentProject]);
 
   // Load sessions when project changes
@@ -200,8 +204,7 @@ export default function QaSessionPage() {
           <div>
             <h1 className="text-xl font-bold text-[#37352F] mb-1">자료기반 Q&A</h1>
             <p className="text-sm text-[#787774]">
-              {currentProject} &middot; 문서 {docCount}건
-              {selectedDocs.length > 0 && ` · 선택 ${selectedDocs.length}건`}
+              {currentProject} &middot; 문서 {docCount}건 · 선택 {selectedDocs.length}건
             </p>
           </div>
           <button

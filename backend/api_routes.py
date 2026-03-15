@@ -122,7 +122,7 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
     # 1. 벡터 검색 시도 (유저가 문서를 선택하지 않았을 때만)
     if query and not selected_docs:
         api_key = _get_api_key()
-        vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs)
+        vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs, owner_id=owner_id)
         if vector_ctx and len(vector_ctx.strip()) > 100:
             return _truncate_context(vector_ctx, max_chars)
 
@@ -189,7 +189,7 @@ def _load_context_with_budget_from_dict(docs_dict: dict, max_chars: int) -> str:
 
 
 def _get_vector_context(api_key: str, project_name: str, query: str,
-                        selected_docs: list = None) -> str:
+                        selected_docs: list = None, owner_id: int | None = None) -> str:
     """Vector 검색으로 관련 청크 추출. ChromaDB segfault 방지를 위해 서브프로세스에서 실행."""
     import subprocess, sys, json as _json
     try:
@@ -873,7 +873,7 @@ def start_qa(req: QaRequest, user: dict = Depends(get_current_user)):
     context = ""
     try:
         if req.project_name:
-            context = _select_relevant_docs(req.project_name, req.question, model, req.selected_docs)
+            context = _select_relevant_docs(req.project_name, req.question, model, req.selected_docs, owner_id=user["id"])
         if not context and req.file_context:
             context = _truncate_context(req.file_context.strip(), max_chars)
     except Exception as e:
@@ -905,7 +905,7 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
         sel_docs = kwargs.pop("selected_docs", [])
         query = kwargs.get("question", req.task_type)
         try:
-            server_ctx = _select_relevant_docs(pname, query, model, sel_docs)
+            server_ctx = _select_relevant_docs(pname, query, model, sel_docs, owner_id=user["id"])
             if server_ctx:
                 kwargs["file_context"] = server_ctx
             elif kwargs.get("file_context"):
