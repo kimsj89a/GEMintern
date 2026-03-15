@@ -1549,17 +1549,200 @@ def render_comparison(prs, data, page_num):
     return slide
 
 
+def render_numbered_blocks(prs, data, page_num):
+    """Numbered insight blocks (01, 02, 03...) in a 2-column grid."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _set_slide_bg(slide, COLOR_OFF_WHITE)
+    add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    content_y = add_np_summary(slide, data.get("summary", ""))
+
+    blocks = data.get("blocks", data.get("items", []))
+    if not blocks:
+        add_np_footer(slide, page_num)
+        return slide
+
+    n = len(blocks)
+    cols = 2 if n > 1 else 1
+    rows_count = math.ceil(n / cols)
+
+    col_w = (FULL_W - 0.3) / cols
+    avail_h = CONTENT_END_Y - content_y - 0.15
+    block_h = min(avail_h / rows_count - 0.1, 1.4)
+
+    for idx, block in enumerate(blocks):
+        col = idx % cols
+        row = idx // cols
+        bx = LEFT_X + col * (col_w + 0.3)
+        by = content_y + row * (block_h + 0.1)
+
+        # Number badge
+        badge = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(bx), Inches(by),
+            Inches(0.45), Inches(0.35)
+        )
+        badge.fill.solid()
+        badge.fill.fore_color.rgb = COLOR_NAVY
+        badge.line.fill.background()
+        bp = badge.text_frame.paragraphs[0]
+        bp.text = str(block.get("number", f"{idx + 1:02d}"))
+        bp.alignment = PP_ALIGN.CENTER
+        set_font(bp, Pt(12), bold=True, color=COLOR_WHITE, font_name=FONT_BODY)
+
+        # Title
+        title_tb = slide.shapes.add_textbox(
+            Inches(bx + 0.55), Inches(by),
+            Inches(col_w - 0.55), Inches(0.3)
+        )
+        tp = title_tb.text_frame.paragraphs[0]
+        tp.text = clean_text(block.get("title", ""))
+        set_font(tp, Pt(11), bold=True, color=COLOR_NAVY, font_name=FONT_BODY)
+
+        # Description
+        desc = block.get("description", "")
+        if desc:
+            desc_tb = slide.shapes.add_textbox(
+                Inches(bx + 0.55), Inches(by + 0.32),
+                Inches(col_w - 0.55), Inches(block_h - 0.35)
+            )
+            tf = desc_tb.text_frame
+            tf.word_wrap = True
+            for li, line in enumerate(str(desc).split('\n')):
+                p = tf.paragraphs[0] if li == 0 else tf.add_paragraph()
+                p.text = clean_text(line)
+                set_font(p, Pt(8.5), color=COLOR_DARK_GRAY, font_name=FONT_BODY)
+                p.space_after = Pt(2)
+
+        # Subtle divider line under each block
+        if row < rows_count - 1 or col == 0:
+            slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE,
+                Inches(bx), Inches(by + block_h),
+                Inches(col_w), Inches(0.015)
+            ).fill.solid()
+            slide.shapes[-1].fill.fore_color.rgb = COLOR_LIGHT_GRAY
+            slide.shapes[-1].line.fill.background()
+
+    source = data.get("source", "")
+    if source:
+        add_np_source_line(slide, source)
+    add_np_footer(slide, page_num)
+    return slide
+
+
+def render_grid_cards(prs, data, page_num):
+    """Card grid layout (2-4 cards in a row) for product lineups, use cases, etc."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _set_slide_bg(slide, COLOR_OFF_WHITE)
+    add_np_header(slide, data.get("title", ""), data.get("subtitle", ""))
+    content_y = add_np_summary(slide, data.get("summary", ""))
+
+    cards = data.get("cards", [])
+    if not cards:
+        add_np_footer(slide, page_num)
+        return slide
+
+    n = len(cards)
+    cols = min(n, 4)
+    rows_count = math.ceil(n / cols)
+    gap = 0.2
+    card_w = (FULL_W - gap * (cols - 1)) / cols
+    avail_h = CONTENT_END_Y - content_y - 0.15
+    card_h = min(avail_h / rows_count - 0.1, 2.8)
+
+    for idx, card in enumerate(cards):
+        col = idx % cols
+        row = idx // cols
+        cx = LEFT_X + col * (card_w + gap)
+        cy = content_y + row * (card_h + 0.1)
+
+        # Card background
+        bg = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(cx), Inches(cy),
+            Inches(card_w), Inches(card_h)
+        )
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = COLOR_WHITE
+        bg.line.color.rgb = COLOR_LIGHT_GRAY
+        bg.line.width = Pt(0.75)
+
+        # Card header bar
+        hdr = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(cx), Inches(cy),
+            Inches(card_w), Inches(0.35)
+        )
+        hdr.fill.solid()
+        hdr.fill.fore_color.rgb = COLOR_NAVY
+        hdr.line.fill.background()
+
+        # Card title
+        ttb = slide.shapes.add_textbox(
+            Inches(cx + 0.1), Inches(cy + 0.03),
+            Inches(card_w - 0.2), Inches(0.3)
+        )
+        tp = ttb.text_frame.paragraphs[0]
+        tp.text = clean_text(card.get("title", ""))
+        set_font(tp, Pt(10), bold=True, color=COLOR_WHITE, font_name=FONT_BODY)
+
+        # Card subtitle
+        sub = card.get("subtitle", "")
+        text_y = cy + 0.4
+        if sub:
+            stb = slide.shapes.add_textbox(
+                Inches(cx + 0.1), Inches(text_y),
+                Inches(card_w - 0.2), Inches(0.2)
+            )
+            sp = stb.text_frame.paragraphs[0]
+            sp.text = clean_text(sub)
+            set_font(sp, Pt(8), color=COLOR_MID_GRAY, font_name=FONT_BODY)
+            text_y += 0.22
+
+        # Card items
+        items = card.get("items", [])
+        if items:
+            itb = slide.shapes.add_textbox(
+                Inches(cx + 0.1), Inches(text_y),
+                Inches(card_w - 0.2), Inches(card_h - (text_y - cy) - 0.1)
+            )
+            tf = itb.text_frame
+            tf.word_wrap = True
+            for li, item in enumerate(items):
+                p = tf.paragraphs[0] if li == 0 else tf.add_paragraph()
+                text = clean_text(str(item))
+                p.text = f"\u2022 {text}" if not text.startswith("\u2022") else text
+                set_font(p, Pt(8), color=COLOR_TEXT, font_name=FONT_BODY)
+                p.space_after = Pt(2)
+
+        # Card table (alternative to items)
+        tbl = card.get("table", {})
+        if tbl and tbl.get("headers") and not items:
+            tbl_y = text_y + 0.05
+            add_np_table(slide, tbl["headers"], tbl.get("rows", []),
+                         x=cx + 0.05, y=tbl_y, w=card_w - 0.1,
+                         has_total_row=tbl.get("has_total_row", False))
+
+    source = data.get("source", "")
+    if source:
+        add_np_source_line(slide, source)
+    add_np_footer(slide, page_num)
+    return slide
+
+
 # NP template dispatch
 _NP_RENDERERS = {
-    "title":         render_title,
-    "divider":       render_divider,
-    "data_table":    render_data_table,
-    "chart_table":   render_chart_table,
-    "two_column":    render_two_column,
-    "kpi_dashboard": render_kpi_dashboard,
-    "risk_matrix":   render_risk_matrix,
-    "timeline_flow": render_timeline_flow,
-    "comparison":    render_comparison,
+    "title":            render_title,
+    "divider":          render_divider,
+    "data_table":       render_data_table,
+    "chart_table":      render_chart_table,
+    "two_column":       render_two_column,
+    "kpi_dashboard":    render_kpi_dashboard,
+    "risk_matrix":      render_risk_matrix,
+    "timeline_flow":    render_timeline_flow,
+    "comparison":       render_comparison,
+    "numbered_blocks":  render_numbered_blocks,
+    "grid_cards":       render_grid_cards,
 }
 
 

@@ -2172,6 +2172,40 @@ Follow this order. Skip sections only if zero data exists.
     "left":{"title":"...","items":[...]}, "right":{"title":"...","items":[...]},
     "verdict":"..."}
 
+10. numbered_blocks (Investment Highlight, 핵심기술 등 — 번호 붙은 포인트 블록):
+    {"slide_type":"numbered_blocks", "title":"Investment Highlight", "subtitle":"I. Executive Summary",
+     "summary":"경쟁사 대비 차별화된 기술력 및 제품경쟁력, 확고한 캡티브 시장 및 파트너십, 정부 정책 수혜",
+     "blocks":[
+       {"number":"01","title":"차별화된 기술력 및 제품경쟁력","description":"주력 제품 REBEL-Quad는 NVIDIA H200 대비 연산 1.6배, 전력소모 50% 절감, 전력효율 3배"},
+       {"number":"02","title":"확고한 캡티브 시장 확보","description":"국내 유일 DC용 NPU 양산기업. SKT, KT 등 고객 向 양산 및 실질적 영업 중"},
+       {"number":"03","title":"글로벌 제조 파트너십","description":"삼성전자(Foundry/HBM) + SK하이닉스(HBM) 양날개의 K-반도체 협력 생태계"},
+       {"number":"04","title":"정부 정책 수혜","description":"K-스타게이트 프로젝트, '28년까지 AI 첨단GPU 1.5만장 확보 목표, 국민성장펀드 제1호 과제"}
+     ]}
+    ↑ Use for: 핵심 투자포인트, 기술 차별점, 경쟁 우위 요인 등 3-5개 핵심 메시지를 번호 블록으로 강조
+
+11. grid_cards (제품 라인업, 산업별 적용사례, 서비스 비교 등 — 카드 격자):
+    {"slide_type":"grid_cards", "title":"제품 라인업", "subtitle":"II. 대상회사분석",
+     "summary":"NPU 카드, 서버, 랙 단위까지 다양한 스케일의 AI 서비스를 위한 HW 솔루션 라인업 보유",
+     "cards":[
+       {"title":"AI 카드","subtitle":"Card (1~4x Chip)","items":["소모전력 매우 낮음","카드당 추론비용 저렴","PCIe Gen5 호환"]},
+       {"title":"AI 서버","subtitle":"Server (4~16x Card)","items":["저전력 카드 탑재","제한된 전력 내 조밀한 구성","냉각장치 최소화"]},
+       {"title":"AI 랙","subtitle":"Rack (1~4x Server)","items":["단위면적당 높은 컴퓨팅 성능","데이터센터 Capex 절감","하이퍼스케일 대응"]}
+     ]}
+    ↑ Use for: 제품군 비교, 서비스 라인업, 고객 유형별 사례, 부문별 전략 등 카드형 시각화
+
+[Slide Type Selection Guide — Updated]
+- 표지 → title
+- 섹션 전환 → divider
+- 재무 데이터/스펙 비교표 → data_table (5+ rows)
+- 차트 + 보조 테이블 → chart_table
+- 두 주제 병렬 (양쪽 테이블) → two_column
+- KPI 수치 강조 → kpi_dashboard
+- 리스크 → risk_matrix
+- 일정/프로세스 → timeline_flow
+- A vs B → comparison
+- 핵심 포인트 3-5개 강조 → numbered_blocks ★NEW
+- 제품/서비스 라인업, 카드형 비교 → grid_cards ★NEW
+
 [Chart Rules]
 - series[].values MUST be number[] (never strings). Extract: "500억원" → 500, "2.45조원" → 24500
 - 연도별 추이 → "line", 항목별 비교 → "bar", 비율/구성 → "pie" or "donut"
