@@ -86,10 +86,19 @@ export default function Sidebar() {
       {/* Logo + Toggle */}
       <div className={`${collapsed ? 'px-2 pt-4 pb-2' : 'px-5 pt-5 pb-3'} relative flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {collapsed ? (
-          <button onClick={() => openTab('home')} className="w-9 h-9 rounded-lg flex items-center justify-center text-sm hover:bg-white/10 transition-colors"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)' }} title="홈으로 이동">
-            💎
-          </button>
+          <div className="flex flex-col items-center gap-1.5">
+            <button onClick={() => openTab('home')} className="w-9 h-9 rounded-lg flex items-center justify-center text-sm hover:bg-white/10 transition-colors"
+              style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)' }} title="홈으로 이동">
+              💎
+            </button>
+            <button onClick={toggleCollapsed}
+              className="w-7 h-7 rounded flex items-center justify-center text-slate-500 hover:text-slate-300 hover:bg-white/10 transition-colors"
+              title="사이드바 펼치기">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 17l5-5-5-5" /><path d="M6 17l5-5-5-5" />
+              </svg>
+            </button>
+          </div>
         ) : (
           <>
             <button onClick={() => openTab('home')} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity" title="홈으로 이동">
