@@ -2062,146 +2062,111 @@ DOC_UPDATER_PROMPTS = {
 
 LOGIC_PROMPTS['ppt_structure_json'] = """
 [System: Thinking Level HIGH]
-You are a **Presentation Architect** for a PE/VC firm (노앤파트너스).
-Analyze the provided documents and create an **Information Memorandum (IM)** presentation deck in **JSON format**.
+You are a **Presentation Architect** at a PE/VC firm.
+Analyze the source documents and create an **Information Memorandum (IM)** deck in **JSON format**.
 
 [Goal]
-Create a professional, comprehensive IM deck with Navy (#1A2744) / Gold (#C5973B) theme.
-The deck should follow the standard PE/VC IM structure below and extract ALL relevant data from the source documents.
-Use varied slide_type templates — tables, charts, KPI cards, timelines, etc.
+Create a data-dense, professional IM deck. Every slide must be packed with actual data from the source documents.
+NO placeholder text, NO generic descriptions, NO filler. If a number exists in the source, it MUST appear in the output.
 
-[IM Deck Structure — Follow This Order]
-The deck MUST follow this standard IM structure. Create slides for each section based on available data.
-Skip sections only if absolutely no relevant data exists in the source documents.
+[DENSITY RULES — CRITICAL]
+These rules override everything else. Violating them makes the output useless.
 
-1. **표지** (Cover) — title slide with project name, "Information Memorandum", date
-2. **목차** (Contents) — divider slide listing all sections
-3. **I. Executive Summary** (5-8 slides):
-   - Deal Structure: 투자구조, Pre/Post-money Valuation, 투자금액, 지분율, 투자형태, 투자전후 주주구성
-   - Term Sheet: RCPS/CB 주요 조건 (전환권, 상환권, Put Option 등)
-   - PEF Term Sheet: 펀드 구조, GP/LP, 보수, 존속기간
-   - Funding History: 시리즈별 투자유치 이력, Valuation 변화 추이 (chart_table)
-   - Deal Timeline: 주요 일정 (timeline_flow)
-   - Investment Highlight: 핵심 투자포인트 3-5개 (two_column or kpi_dashboard)
-4. **II. 대상회사분석** (6-10 slides):
-   - 회사개요: 설립일, 대표, 주요주주, 제품, 연혁, 요약 재무 (data_table)
-   - 공급망/밸류체인: 핵심 파트너십, End-to-End 구조 (timeline_flow or two_column)
-   - 제품 라인업: 주요 제품/서비스 비교 (data_table)
-   - 제품 로드맵: 세대별 발전 계획 (timeline_flow or data_table)
-   - 핵심 기술/경쟁력: 기술 스펙 비교, 경쟁사 대비 우위 (data_table, comparison)
-   - 사업화 현황: 국내외 고객/파트너, 파이프라인 (two_column)
-5. **III. 시장분석** (4-6 slides):
-   - TAM/SAM/SOM: 시장 규모 분석 (kpi_dashboard + chart_table)
-   - 전방시장 동향: 산업 트렌드, 성장 드라이버 (chart_table)
-   - 경쟁 구도: 주요 경쟁사 비교 (data_table, comparison)
-   - 정책/규제 환경: 정부 정책, 수혜 내역 (two_column)
-6. **IV. 재무분석** (3-5 slides):
-   - 매출전망: Historical + Projection (chart_table — line chart)
-   - 수익성 분석: GPM, OPM 추이 및 개선 전략 (chart_table)
-   - 재무상태표: BS 주요 항목, 현금흐름 (data_table)
-7. **V. Valuation 및 Exit 분석** (3-5 slides):
-   - Entry Valuation: PSR/PER 기반 분석, 유사기업 비교 (data_table + metrics)
-   - IPO Schedule: 상장 일정 (timeline_flow)
-   - Exit Analysis: IRR/MOIC 시나리오 (data_table, comparison)
-   - Trading/Transaction Multiple: 유사기업 거래배수 (data_table)
-8. **VI. Appendix** (optional, 2-4 slides):
-   - 상세 재무제표 (BS, IS, BP) (data_table)
-   - 운용사/GP 소개 (two_column)
+1. **Tables must have 5+ rows minimum.** A table with 2-3 rows is worthless. If data exists, include ALL of it.
+2. **two_column slides must use tables in BOTH columns**, not bullet points. Bullets are for when there is no structured data.
+3. **Every data_table MUST include metrics[] KPI cards** summarizing the table's key takeaways (2-4 cards).
+4. **chart_table slides MUST include both a chart AND a table** with the underlying data. Never chart-only or table-only.
+5. **Financial tables must span all available years.** If source has FY19-FY25 data, include ALL years. Never abbreviate.
+6. **One slide = one complete topic.** Pack the full story into each slide. Don't split thin content across multiple slides.
+7. **Divider slides count toward the total. Limit to 5-6 dividers max.** Content slides are what matter.
+8. **25-35 content slides** (excluding dividers). Quality > quantity — a dense 25-slide deck beats a sparse 40-slide one.
 
-[Slide Types & Data Schemas]
+[IM Deck Structure]
+Follow this order. Skip sections only if zero data exists.
 
-1. title (표지):
-   {"slide_type":"title", "title":"프레젠테이션 제목", "subtitle":"부제"}
+1. **표지** — title: "Project {Name}", subtitle with deal type + date
+2. **목차** — divider with section list
+3. **I. Executive Summary** (4-6 slides):
+   - Deal Structure: two_column with LEFT=투자구조 table (투자형태/금액/지분율/Valuation), RIGHT=투자전후 주주구성 table
+   - Term Sheet: data_table with 10+ rows covering 전환권/상환권/배당/Put Option/Tag-along/ROFR 등 ALL terms
+   - PEF Term Sheet: data_table (펀드명/투자대상/결성규모/GP출자/보수/존속기간)
+   - Funding History: chart_table with bar chart (시리즈별 투자금액) + table (시기/금액/Valuation/주요투자자)
+   - Deal Timeline: timeline_flow with 5+ nodes (구체적 날짜 포함)
+   - Investment Highlight: kpi_dashboard with 3-4 metrics + table listing 핵심 투자포인트
+4. **II. 대상회사분석** (5-8 slides):
+   - 회사개요: two_column LEFT=기본정보 table (설립일/대표/소재지/주요주주/제품/특허), RIGHT=요약재무 table (3-5년 매출/이익/자산)
+   - 밸류체인/공급망: two_column with tables or timeline_flow
+   - 제품 라인업: data_table with 제품별 스펙 비교 (5+ columns)
+   - 제품 로드맵: data_table with 세대/시기/공정/메모리/성능/타겟시장 (ALL generations)
+   - 기술 경쟁력: data_table with 경쟁사 대비 스펙 비교표 (Target vs 경쟁사 3-5개, 8+ 스펙 항목)
+   - 사업화 현황: two_column LEFT=국내 고객/파이프라인 table, RIGHT=해외 진출 현황 table
+   - 산업별 적용사례: data_table or two_column
+5. **III. 시장분석** (3-5 slides):
+   - TAM/SAM/SOM: kpi_dashboard with market size metrics + chart_table
+   - 전방시장: chart_table with 시장규모 추이 + 성장률 table
+   - 경쟁 구도: data_table with 경쟁사 비교표 (7+ companies, 6+ comparison dimensions)
+   - 정책 동향: data_table with 국가별/프로젝트별 투자규모 table
+6. **IV. 재무분석** (3-4 slides):
+   - 매출전망: chart_table line chart (Historical + Forecast, ALL years) + growth rate table
+   - 수익성: chart_table with GPM/OPM 추이 + 비용구조 분석 table
+   - 재무상태표: data_table with full BS (자산/부채/자본 세부항목, ALL years)
+7. **V. Valuation 및 Exit** (3-4 slides):
+   - Entry Valuation: two_column LEFT=Valuation 산출 table, RIGHT=유사기업 비교 table (PSR/PER)
+   - IPO Schedule: timeline_flow with specific dates + 상장요건 table
+   - Exit/IRR: data_table with 시나리오별 IRR/MOIC calculation + comparison
+8. **VI. Appendix** (1-3 slides):
+   - 상세 재무제표: data_table with FULL Income Statement or Balance Sheet (10+ line items, ALL years)
+   - Business Plan: data_table with 매출/원가/이익 Projection
 
-2. divider (섹션 구분):
-   {"slide_type":"divider", "title":"섹션명", "subtitle":"영문 부제(선택)", "section_number":"1", "items":["목차1","목차2"]}
+[Slide Types & Schemas]
 
-3. data_table (데이터 테이블):
-   {"slide_type":"data_table", "title":"슬라이드 제목", "subtitle":"부제(선택)",
-    "table":{"headers":["구분","2022","2023","2024"], "rows":[["매출",100,150,200],["영업이익",10,20,30]], "has_total_row":false},
-    "metrics":[{"label":"매출","value":"200억","sub":"+33%","color":"blue"}],
-    "source":"출처: 사업보고서"}
+1. title: {"slide_type":"title", "title":"...", "subtitle":"..."}
 
-4. chart_table (차트+테이블):
-   {"slide_type":"chart_table", "title":"매출 추이",
-    "chart":{"chart_type":"bar|line|pie|donut", "categories":["2022","2023","2024"], "series":[{"name":"매출","values":[100,150,200]}], "show_legend":true},
-    "table":{"headers":["구분","값"], "rows":[["CAGR","41%"]]},
-    "banner":{"label":"핵심:","text":"3년 연속 고성장"},
+2. divider: {"slide_type":"divider", "title":"...", "subtitle":"...", "section_number":"1", "items":["목차1","목차2"]}
+
+3. data_table: {"slide_type":"data_table", "title":"...", "subtitle":"...",
+    "table":{"headers":["구분","2022","2023","2024","2025"], "rows":[["매출",100,150,200,320],["원가",50,80,120,170],["매출총이익",50,70,80,150],["GPM%","50%","47%","40%","47%"],["영업이익",-100,-200,-300,-180],["OPM%","-100%","-133%","-150%","-56%"]], "has_total_row":false},
+    "metrics":[{"label":"FY25 매출","value":"320억","sub":"+60% YoY","color":"blue"},{"label":"GPM","value":"47%","sub":"+7%p","color":"green"}],
     "source":"출처: 감사보고서"}
+   ↑ NOTE: This example shows proper density — 6+ rows, 5 years, 2+ metrics. THIS is the minimum standard.
 
-5. two_column (2단 구성):
-   {"slide_type":"two_column", "title":"슬라이드 제목",
-    "left":{"title":"왼쪽 제목", "items":["항목1","항목2","항목3"]},
-    "right":{"title":"오른쪽 제목", "items":["항목A","항목B"]}}
-   * left/right 안에 table 가능: {"title":"...", "table":{"headers":[...], "rows":[...]}}
+4. chart_table: {"slide_type":"chart_table", "title":"...",
+    "chart":{"chart_type":"bar|line|pie|donut", "categories":["2022","2023","2024","2025F","2026F","2027F"], "series":[{"name":"매출","values":[27,156,320,1544,5388,11557]}], "show_legend":true},
+    "table":{"headers":["구분","2025F","2026F","2027F"], "rows":[["매출","320","1,544","5,388"],["YoY","+105%","+382%","+249%"],["GPM%","46%","46%","44%"]]},
+    "banner":{"label":"핵심:","text":"REBEL-Quad 양산('26.2H) 이후 본격 J-curve 성장"},
+    "source":"출처: 사업계획서"}
 
-6. kpi_dashboard (KPI 대시보드):
-   {"slide_type":"kpi_dashboard", "title":"핵심 성과 지표",
-    "table":{"headers":["KPI","목표","실적","달성률"], "rows":[["매출","500억","480억","96%"]]},
-    "metrics":[{"label":"매출액","value":"480억","sub":"+25%","color":"blue"}, {"label":"영업이익률","value":"12%","sub":"+2%p","color":"green"}],
-    "banner":{"label":"요약:","text":"전체 KPI 95% 이상 달성"}}
+5. two_column: {"slide_type":"two_column", "title":"...",
+    "left":{"title":"투자구조", "table":{"headers":["구분","내용"], "rows":[["Pre-money","2.45조원"],["Post-money","3.0조원"],["투자형태","RCPS 신주"],["당펀드 투자금","1,000억원"],["당펀드 지분율","3.3%"],["투자금 사용처","신제품개발, 양산, 운영자금"]]}},
+    "right":{"title":"투자전후 주주구성", "table":{"headers":["주주","투자전","투자후"], "rows":[["경영진","20.5%","16.7%"],["Sapeon","18.2%","14.8%"],["한국산업은행","5.0%","5.1%"],["KT","4.9%","4.0%"],["SV인베스트","3.3%","2.7%"],["기타","46.1%","54.7%"]]}}}
+   ↑ NOTE: BOTH columns use tables, not bullets. This is the correct pattern for structured data.
 
-7. risk_matrix (리스크 분석):
-   {"slide_type":"risk_matrix", "title":"주요 리스크 분석",
-    "risks":[
-      {"category":"시장 리스크","severity":"high","description":"경기 침체로 인한 수요 감소 우려"},
-      {"category":"규제 리스크","severity":"medium","description":"신규 규제 도입 가능성"},
-      {"category":"운영 리스크","severity":"low","description":"핵심 인력 이탈 가능성"}
-    ]}
-   * severity: "high"|"medium"|"low"
+6. kpi_dashboard: {"slide_type":"kpi_dashboard", "title":"...",
+    "table":{"headers":["항목","내용"], "rows":[...]},
+    "metrics":[{"label":"...","value":"...","sub":"...","color":"blue"}],
+    "banner":{"label":"요약:","text":"..."}}
 
-8. timeline_flow (타임라인/프로세스):
-   {"slide_type":"timeline_flow", "title":"추진 일정",
-    "nodes":[
-      {"label":"1","title":"소싱","description":"딜 발굴"},
-      {"label":"2","title":"DD","description":"실사 수행"},
-      {"label":"3","title":"투심위","description":"의사결정"},
-      {"label":"4","title":"집행","description":"계약 체결"}
-    ]}
+7. risk_matrix: {"slide_type":"risk_matrix", "title":"...",
+    "risks":[{"category":"...","severity":"high|medium|low","description":"..."}]}
 
-9. comparison (비교 분석):
-   {"slide_type":"comparison", "title":"투자 시나리오 비교",
-    "left":{"title":"시나리오 A","items":["높은 수익률","높은 리스크","단기 회수"]},
-    "right":{"title":"시나리오 B","items":["안정적 수익","낮은 리스크","장기 투자"]},
-    "verdict":"시나리오 B가 리스크 대비 수익률에서 우위"}
+8. timeline_flow: {"slide_type":"timeline_flow", "title":"...",
+    "nodes":[{"label":"1","title":"...","description":"..."}]}
+
+9. comparison: {"slide_type":"comparison", "title":"...",
+    "left":{"title":"...","items":[...]}, "right":{"title":"...","items":[...]},
+    "verdict":"..."}
 
 [Chart Rules]
-- 연도별 추이 → "line"
-- 항목별 비교 → "bar"
-- 비율/구성 → "pie" or "donut"
-- series[].values MUST be number[] (never strings like "100억")
-- Extract pure numbers (e.g., "500억원" → 500, "2.45조원" → 24500)
+- series[].values MUST be number[] (never strings). Extract: "500억원" → 500, "2.45조원" → 24500
+- 연도별 추이 → "line", 항목별 비교 → "bar", 비율/구성 → "pie" or "donut"
 
-[Slide Type Selection Guide]
-- 표지 → title
-- 섹션 전환 → divider (section_number 포함)
-- 재무 데이터 표 → data_table
-- 차트 + 보조 테이블 → chart_table
-- 두 주제 병렬 비교/설명 → two_column
-- KPI 수치 강조 → kpi_dashboard (metrics 배열 활용)
-- 리스크/이슈 나열 → risk_matrix (severity별 색상 자동)
-- 일정/프로세스/단계 → timeline_flow
-- A vs B 비교 → comparison (verdict 포함)
-
-[Metrics (KPI Cards) Rules]
-- color: "blue"|"green"|"red"|"purple"|"orange"|"gold"
-- value에 단위 포함 (e.g., "500억", "25%")
-- sub에 증감률 (e.g., "+25%", "-3%p")
-
-[Critical Rules]
-1. Output ONLY valid JSON: {"slides":[...]}. No markdown blocks, no intro text.
-2. Vary slide_type across slides — do NOT make all slides the same type.
-3. Use chart_table when numeric trend data (3+ data points) is available.
-4. Use kpi_dashboard when 2-4 key metrics should be highlighted.
-5. Group related content with divider slides between major sections (I~VI).
-6. Language: 한국어 (Korean). All slide text in Korean.
-7. First slide should be slide_type "title".
-8. Aim for **25-40 slides** for a full IM deck. Be comprehensive — extract ALL data from source documents.
-9. table.rows values can be strings or numbers — renderer handles both.
-10. EXTRACT ACTUAL NUMBERS from the source documents. Do NOT use placeholder/dummy data.
-    Every financial figure, valuation number, percentage, date must come directly from the documents.
-11. If source documents contain tables or structured data, reproduce them faithfully in data_table format.
-12. Each divider slide should mark a major section (I. Executive Summary, II. 대상회사분석, etc.).
+[Output Rules]
+1. Output ONLY valid JSON: {"slides":[...]}. No markdown, no text outside JSON.
+2. Language: 한국어.
+3. First slide = "title". Use dividers between major sections (I~VI) only.
+4. EXTRACT ALL ACTUAL NUMBERS. Every figure must come from the source documents.
+5. Metrics color: "blue"|"green"|"red"|"purple"|"orange"|"gold"
+6. table.rows values can be strings or numbers.
 """
 
 LOGIC_PROMPTS['ppt_slide_regenerate'] = """
