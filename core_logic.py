@@ -518,14 +518,16 @@ def generate_slide_json(api_key, model_name, file_context="", context_text="",
 
 
 def _parse_streaming_slides(stream, on_slide):
-    """Parse streaming Gemini output and emit each slide as it completes."""
+    """Parse streaming Gemini output and emit each slide as it completes.
+
+    Accumulates all streamed text, then after each chunk scans the full
+    buffer for complete slide JSON objects using brace-depth counting.
+    """
     import json as _json
 
     buffer = ""
     slides_found = []
-    brace_depth = 0
-    in_slides_array = False
-    slide_start = -1
+    scan_pos = 0  # Where to resume scanning in the buffer
 
     for chunk in stream:
         text = ""
@@ -538,56 +540,65 @@ def _parse_streaming_slides(stream, on_slide):
 
         buffer += text
 
-        # Process buffer character by character to find complete slide objects
-        i = 0
-        while i < len(buffer):
-            c = buffer[i]
+        # Scan from last position for complete slide objects
+        while scan_pos < len(buffer):
+            # Find the start of a slides array if not yet found
+            if not slides_found and scan_pos == 0:
+                arr_idx = buffer.find('"slides"')
+                if arr_idx < 0:
+                    break  # Haven't seen "slides" key yet
+                bracket = buffer.find('[', arr_idx)
+                if bracket < 0:
+                    break
+                scan_pos = bracket + 1
 
-            # Detect entry into "slides" array
-            if not in_slides_array:
-                # Look for "slides" key followed by [
-                idx = buffer.find('"slides"', i)
-                if idx >= 0:
-                    arr_start = buffer.find('[', idx + 8)
-                    if arr_start >= 0 and arr_start < len(buffer):
-                        in_slides_array = True
-                        i = arr_start + 1
-                        continue
-                break  # Haven't found slides array yet, wait for more data
+            # Find next '{' from scan_pos
+            obj_start = buffer.find('{', scan_pos)
+            if obj_start < 0:
+                break
 
-            # Inside slides array — look for slide objects
-            if c == '{' and slide_start < 0:
-                slide_start = i
-                brace_depth = 1
-            elif c == '{' and slide_start >= 0:
-                brace_depth += 1
-            elif c == '}' and slide_start >= 0:
-                brace_depth -= 1
-                if brace_depth == 0:
-                    # Complete slide object found
-                    slide_json_str = buffer[slide_start:i + 1]
-                    try:
-                        slide_obj = _json.loads(slide_json_str)
-                        slides_found.append(slide_obj)
-                        on_slide(slide_obj, len(slides_found) - 1)
-                    except _json.JSONDecodeError:
-                        pass  # Malformed, skip
-                    slide_start = -1
-            elif c == ']' and slide_start < 0:
-                # End of slides array
-                in_slides_array = False
+            # Count braces to find matching '}'
+            depth = 0
+            in_string = False
+            escape_next = False
+            found_end = -1
 
-            i += 1
+            for i in range(obj_start, len(buffer)):
+                c = buffer[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if c == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if c == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                    if depth == 0:
+                        found_end = i
+                        break
 
-        # Keep only unprocessed part of buffer
-        if slide_start >= 0:
-            buffer = buffer[slide_start:]
-            slide_start = 0
-        elif in_slides_array:
-            # Keep last 100 chars for context
-            buffer = buffer[-100:] if len(buffer) > 100 else buffer
-        else:
-            buffer = buffer[-200:] if len(buffer) > 200 else buffer
+            if found_end < 0:
+                break  # Incomplete object, wait for more data
+
+            # Extract and parse the slide object
+            slide_str = buffer[obj_start:found_end + 1]
+            scan_pos = found_end + 1
+
+            try:
+                slide_obj = _json.loads(slide_str)
+                # Only emit if it looks like a slide (has slide_type or type)
+                if isinstance(slide_obj, dict) and (slide_obj.get("slide_type") or slide_obj.get("type") or slide_obj.get("title")):
+                    slides_found.append(slide_obj)
+                    on_slide(slide_obj, len(slides_found) - 1)
+            except _json.JSONDecodeError:
+                pass  # Malformed JSON, skip
 
     # Return final JSON
     return _json.dumps({"slides": slides_found}, ensure_ascii=False)
