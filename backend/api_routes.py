@@ -1249,7 +1249,7 @@ def sync_selected_docs(name: str, req: SyncDocsRequest, user: dict = Depends(get
 
 @router.post("/ocr")
 async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini", user: dict = Depends(get_current_user)):
-    """이미지/PDF에서 텍스트 추출 (Gemini Vision 또는 Document AI)."""
+    """이미지/PDF에서 텍스트 추출 (Gemini Vision / Claude Vision / Document AI)."""
     import fitz
     api_key = _get_api_key()
     log_usage(user["id"], "/ocr")
@@ -1263,7 +1263,9 @@ async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini",
         try:
             if ext == '.pdf':
                 doc = fitz.open(stream=data, filetype="pdf")
-                if engine == "gemini" and api_key:
+                if engine == "claude":
+                    text = _ocr_pdf_with_claude(doc)
+                elif engine == "gemini" and api_key:
                     import ocr as ocr_module
                     text = ocr_module.extract_pdf_with_gemini_ocr(doc, api_key)
                 elif engine == "docai":
@@ -1271,18 +1273,22 @@ async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini",
                         import utils_docai
                         text = utils_docai.process_document(data)
                     except Exception:
-                        text = ocr_module.extract_pdf_with_ocr(doc) if 'ocr_module' in dir() else ""
+                        import ocr as ocr_module
+                        text = ocr_module.extract_pdf_with_ocr(doc)
                 else:
                     import ocr as ocr_module
                     text = ocr_module.extract_pdf_with_ocr(doc)
                 doc.close()
-            elif ext in ('.png', '.jpg', '.jpeg', '.tiff', '.bmp'):
-                if engine == "gemini" and api_key:
+            elif ext in ('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.webp'):
+                if engine == "claude":
+                    text = _ocr_image_with_claude(data, ext)
+                elif engine == "gemini" and api_key:
                     from google import genai
                     from google.genai import types
                     client = genai.Client(api_key=api_key)
                     mime_map = {'.png': 'image/png', '.jpg': 'image/jpeg',
-                                '.jpeg': 'image/jpeg', '.tiff': 'image/tiff', '.bmp': 'image/bmp'}
+                                '.jpeg': 'image/jpeg', '.tiff': 'image/tiff',
+                                '.bmp': 'image/bmp', '.webp': 'image/webp'}
                     mime = mime_map.get(ext, 'image/png')
                     response = client.models.generate_content(
                         model="gemini-3-pro-preview",
@@ -1309,6 +1315,106 @@ async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini",
         results.append({"filename": f.filename, "text": text})
 
     return {"results": results}
+
+
+def _ocr_image_with_claude(data: bytes, ext: str) -> str:
+    """Claude Vision으로 이미지 OCR."""
+    import anthropic
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        # Fallback to Gemini
+        return _ocr_image_with_gemini_fallback(data, ext)
+    client = anthropic.Anthropic(api_key=api_key)
+    mime_map = {'.png': 'image/png', '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg', '.tiff': 'image/png',
+                '.bmp': 'image/png', '.webp': 'image/webp'}
+    import base64
+    b64 = base64.standard_b64encode(data).decode("utf-8")
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=16384,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": mime_map.get(ext, "image/png"), "data": b64}},
+                {"type": "text", "text": "이 이미지의 내용을 텍스트로 정확히 추출해줘. 표는 Markdown 표 문법으로 변환해줘. 레이아웃 구조를 유지해줘. 서론 없이 결과만 출력해."},
+            ],
+        }],
+    )
+    return response.content[0].text.strip() if response.content else ""
+
+
+def _ocr_image_with_gemini_fallback(data: bytes, ext: str) -> str:
+    """Claude 키 없을 때 Gemini로 fallback."""
+    api_key = _get_api_key()
+    if not api_key:
+        return "API 키가 설정되지 않았습니다. (ANTHROPIC_API_KEY 또는 GOOGLE_API_KEY)"
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=api_key)
+    mime_map = {'.png': 'image/png', '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg', '.tiff': 'image/tiff',
+                '.bmp': 'image/bmp', '.webp': 'image/webp'}
+    response = client.models.generate_content(
+        model="gemini-3-pro-preview",
+        contents=[
+            types.Part.from_bytes(data=data, mime_type=mime_map.get(ext, 'image/png')),
+            "이 이미지의 내용을 텍스트로 추출해줘. 표는 Markdown 표 문법으로 변환해줘. 서론 없이 결과만 출력해."
+        ],
+        config=types.GenerateContentConfig(temperature=0.0)
+    )
+    return response.text.strip() if response.text else ""
+
+
+def _ocr_pdf_with_claude(doc) -> str:
+    """Claude Vision으로 PDF OCR (페이지별 이미지 변환 후 처리)."""
+    import anthropic
+    import fitz
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        # Fallback to Gemini
+        gemini_key = _get_api_key()
+        if gemini_key:
+            import ocr as ocr_module
+            return ocr_module.extract_pdf_with_gemini_ocr(doc, gemini_key)
+        return "API 키가 설정되지 않았습니다."
+
+    client = anthropic.Anthropic(api_key=api_key)
+    import base64
+    page_results = []
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        page_text = page.get_text().strip()
+
+        # 텍스트가 충분하면 OCR 건너뜀
+        if len(page_text) >= 50:
+            page_results.append(f"[Page {page_num + 1}]\n{page_text}")
+            continue
+
+        # 이미지로 변환 (2x 해상도)
+        pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+        img_bytes = pix.tobytes("png")
+        b64 = base64.standard_b64encode(img_bytes).decode("utf-8")
+
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=8192,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
+                        {"type": "text", "text": "이 페이지의 내용을 텍스트로 정확히 추출해줘. 표는 Markdown 표 문법으로 변환해줘. 서론 없이 결과만 출력해."},
+                    ],
+                }],
+            )
+            ocr_text = response.content[0].text.strip() if response.content else ""
+            page_results.append(f"[Page {page_num + 1} - Claude Vision]\n{ocr_text}")
+        except Exception as e:
+            page_results.append(f"[Page {page_num + 1} - Error: {e}]\n{page_text}")
+
+    return "\n\n".join(page_results)
 
 
 # ========================================
