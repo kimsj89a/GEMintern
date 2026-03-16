@@ -250,6 +250,31 @@ def generate_material_summary(api_key, model_name, file_context):
     return resp.text
 
 
+def generate_material_summary_batch(api_key, model_name, docs_dict, on_doc_complete=None):
+    """Phase 1: 각 문서별 개별 분석 (batch mode)"""
+    import json
+    client = get_client(api_key)
+    system_prompt = prompts.LOGIC_PROMPTS.get('material_summary_single', '')
+    results = []
+    total = len(docs_dict)
+    for i, (doc_name, content) in enumerate(docs_dict.items()):
+        display_name = doc_name.replace('.txt.md', '').replace('.md', '')
+        # Truncate very long docs
+        truncated = content[:50000] if len(content) > 50000 else content
+        prompt = f"[문서: {display_name}]\n{truncated}"
+        config = types.GenerateContentConfig(
+            max_output_tokens=8192,
+            temperature=0.3,
+            system_instruction=system_prompt,
+        )
+        resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
+        entry = {"filename": display_name, "result": resp.text}
+        results.append(entry)
+        if on_doc_complete:
+            on_doc_complete(entry, i, total)
+    return json.dumps(results, ensure_ascii=False)
+
+
 def generate_followup_analysis(api_key, model_name, file_context, existing_analysis, user_input):
     """사용자 요청 기반 후속 분석 - 기존 분석 결과에 추가 심화 분석 수행"""
     client = get_client(api_key)

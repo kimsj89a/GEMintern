@@ -909,7 +909,20 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
 
     kwargs = dict(req.kwargs)
     max_chars = _max_chars_for_model(model)
-    if "project_name" in kwargs:
+
+    # Batch mode: pass individual docs_dict instead of combined file_context
+    if req.task_type == 'material_summary_batch' and "project_name" in kwargs:
+        import core_rag
+        pname = kwargs.pop("project_name")
+        sel_docs = kwargs.pop("selected_docs", [])
+        docs_dict = core_rag.load_project_docs_dict(pname, owner_id=user["id"])
+        if sel_docs and docs_dict:
+            sel_stems = {_strip_doc_stem(s) for s in sel_docs}
+            docs_dict = {k: v for k, v in docs_dict.items()
+                         if _strip_doc_stem(k) in sel_stems or k in sel_docs}
+        kwargs.pop("file_context", None)
+        kwargs["docs_dict"] = docs_dict or {}
+    elif "project_name" in kwargs:
         pname = kwargs.pop("project_name")
         sel_docs = kwargs.pop("selected_docs", [])
         query = kwargs.get("question", req.task_type)
@@ -1004,12 +1017,15 @@ def get_task_status(task_id: str, user: dict = Depends(get_current_user)):
     task = get_task(task_id)
     if not task:
         return {"error": "Task not found"}
-    return {
+    resp = {
         "task_id": task_id,
         "status": task["status"],
         "result": task["result"],
         "error": task["error"],
     }
+    if task.get("batch_progress"):
+        resp["batch_progress"] = task["batch_progress"]
+    return resp
 
 
 # ========================================

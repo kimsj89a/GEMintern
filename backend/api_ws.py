@@ -98,6 +98,7 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
         try:
             fn_map = {
                 "material_summary": core_logic.generate_material_summary,
+                "material_summary_batch": core_logic.generate_material_summary_batch,
                 "qa_answer": core_logic.generate_qa_answer,
                 "followup_questions": core_logic.generate_followup_questions,
                 "additional_questions": core_logic.generate_additional_questions,
@@ -122,6 +123,14 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
                         ensure_ascii=False
                     ))
                 result = fn(api_key, model_name, on_slide=on_slide, **kwargs)
+            # Batch document analysis mode
+            elif task_type == "material_summary_batch":
+                task["batch_progress"] = {"completed": 0, "total": 0, "partial_results": []}
+                def on_doc_complete(entry, index, total):
+                    task["batch_progress"]["completed"] = index + 1
+                    task["batch_progress"]["total"] = total
+                    task["batch_progress"]["partial_results"].append(entry)
+                result = fn(api_key, model_name, on_doc_complete=on_doc_complete, **kwargs)
             else:
                 result = fn(api_key, model_name, **kwargs)
 

@@ -352,6 +352,9 @@ export default function WorkflowPage() {
   const [uploadStatus, setUploadStatus] = useState('');
   const [genStartTime, setGenStartTime] = useState(0);
   const [analysisResult, setAnalysisResult] = useState('');
+  const [batchResults, setBatchResults] = useState<{ filename: string; result: string }[]>([]);
+  const [batchProgress, setBatchProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [expandedBatchIdx, setExpandedBatchIdx] = useState<number | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -396,19 +399,45 @@ export default function WorkflowPage() {
     if (!currentProject) return;
     setAnalyzing(true);
     setAnalysisResult('');
+    setBatchResults([]);
+    setBatchProgress(null);
+    setExpandedBatchIdx(null);
     setStep(2);
     cancelAnalyzeRef.current = false;
     try {
       const { task_id } = await api.startAnalysis({
-        task_type: 'material_summary',
+        task_type: 'material_summary_batch',
         kwargs: { project_name: currentProject, selected_docs: selectedDocs },
       });
       const check = async () => {
         if (cancelAnalyzeRef.current) return;
         const status = await api.getTaskStatus(task_id);
-        if (status.status === 'complete') { setAnalysisResult(status.result || ''); setAnalyzing(false); }
-        else if (status.status === 'error') { setAnalysisResult(`오류: ${status.error}`); setAnalyzing(false); }
-        else setTimeout(check, 1000);
+        if (status.status === 'complete') {
+          try {
+            const parsed = JSON.parse(status.result || '[]');
+            setBatchResults(parsed);
+            if (parsed.length > 0) setExpandedBatchIdx(0);
+            const combined = parsed.map((r: any) => `# 📄 ${r.filename}\n\n${r.result}`).join('\n\n---\n\n');
+            setAnalysisResult(combined);
+          } catch {
+            setAnalysisResult(status.result || '');
+          }
+          setBatchProgress(null);
+          setAnalyzing(false);
+        } else if (status.status === 'error') {
+          setAnalysisResult(`오류: ${status.error}`);
+          setAnalyzing(false);
+        } else {
+          // Update batch progress from task status
+          if (status.batch_progress) {
+            setBatchProgress({ completed: status.batch_progress.completed, total: status.batch_progress.total });
+            if (status.batch_progress.partial_results?.length) {
+              setBatchResults(status.batch_progress.partial_results);
+              setExpandedBatchIdx(prev => prev === null && status.batch_progress.partial_results.length > 0 ? 0 : prev);
+            }
+          }
+          setTimeout(check, 2000);
+        }
       };
       check();
     } catch (err: any) {
@@ -417,7 +446,16 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleStopAnalyze = () => { cancelAnalyzeRef.current = true; setAnalyzing(false); };
+  const handleStopAnalyze = () => {
+    cancelAnalyzeRef.current = true;
+    setAnalyzing(false);
+    setBatchProgress(null);
+    // Keep partial batch results already received
+    if (batchResults.length > 0) {
+      const combined = batchResults.map(r => `# 📄 ${r.filename}\n\n${r.result}`).join('\n\n---\n\n');
+      setAnalysisResult(combined);
+    }
+  };
 
   const handlePhase1Chat = async (question: string) => {
     setChatMessages((prev) => [...prev, { role: 'user', content: question }]);
@@ -607,25 +645,73 @@ export default function WorkflowPage() {
       )}
 
       {isPhase1 && step === 2 && (
-        <div className="glass-card-elevated p-6 animate-fade-in-up">
+        <div className="animate-fade-in-up space-y-3">
+          {/* Progress header */}
           {analyzing && (
-            <div className="flex items-center gap-3 mb-3">
+            <div className="glass-card p-4 flex items-center gap-3">
               <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-slate-500">분석 중...</span>
+              <span className="text-sm text-slate-500">
+                {batchProgress
+                  ? `분석 중... (${batchProgress.completed}/${batchProgress.total}건 완료)`
+                  : '분석 준비 중...'}
+              </span>
               <button onClick={handleStopAnalyze}
                 className="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition-all">
                 중지
               </button>
             </div>
           )}
-          <div className="max-h-[60vh] overflow-y-auto">
-            <MarkdownViewer content={analysisResult} />
-          </div>
-          {!analyzing && analysisResult && (
-            <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+
+          {/* Per-file results as accordion cards */}
+          {batchResults.length > 0 && (
+            <div className="space-y-2">
+              {batchResults.map((item, idx) => (
+                <div key={idx} className="glass-card-elevated overflow-hidden">
+                  <button
+                    onClick={() => setExpandedBatchIdx(expandedBatchIdx === idx ? null : idx)}
+                    className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">📄</span>
+                      <span className="text-sm font-semibold text-slate-700">{item.filename}</span>
+                      {analyzing && idx === batchResults.length - 1 && batchProgress && batchProgress.completed < batchProgress.total && (
+                        <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-medium">방금 완료</span>
+                      )}
+                    </div>
+                    <svg className={`w-4 h-4 text-slate-400 transition-transform ${expandedBatchIdx === idx ? 'rotate-180' : ''}`}
+                      viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  </button>
+                  {expandedBatchIdx === idx && (
+                    <div className="px-5 pb-5 border-t border-slate-100">
+                      <div className="max-h-[50vh] overflow-y-auto pt-4">
+                        <MarkdownViewer content={item.result} />
+                      </div>
+                      <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                        <button onClick={() => copyRichText(item.result)} className="px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors">서식 복사</button>
+                        <button onClick={() => downloadAsWord(item.result, generateFilename(item.filename, 'docx', currentProject))} className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors">Word</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Fallback: non-batch result */}
+          {batchResults.length === 0 && analysisResult && !analyzing && (
+            <div className="glass-card-elevated p-6">
+              <div className="max-h-[60vh] overflow-y-auto">
+                <MarkdownViewer content={analysisResult} />
+              </div>
+            </div>
+          )}
+
+          {/* Bottom actions */}
+          {!analyzing && (batchResults.length > 0 || analysisResult) && (
+            <div className="flex gap-2 pt-2">
               <button onClick={() => setStep(3)} className="px-4 py-2 btn-primary text-sm rounded-lg">자료 Q&A</button>
-              <button onClick={() => downloadAsWord(analysisResult, generateFilename('자료분석', 'docx', currentProject))} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Word 저장</button>
-              <button onClick={downloadMarkdown} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">MD 저장</button>
+              <button onClick={() => downloadAsWord(analysisResult, generateFilename('자료분석', 'docx', currentProject))} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">전체 Word 저장</button>
+              <button onClick={downloadMarkdown} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">전체 MD 저장</button>
             </div>
           )}
         </div>
