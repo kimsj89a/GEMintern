@@ -471,6 +471,40 @@ def analyze_dd_issues(api_key, model_name, file_context, context_text=""):
     return resp.text
 
 
+def _safe_parse_json(text):
+    """Parse JSON with repair for truncated/malformed output."""
+    import json as _json, re
+    if not text or not text.strip():
+        return {"sections": []}
+    try:
+        return _json.loads(text)
+    except _json.JSONDecodeError:
+        pass
+    # Try to fix common issues: trailing commas, truncated arrays
+    cleaned = text.strip()
+    # Remove markdown code blocks
+    cleaned = re.sub(r'^```\w*\n?', '', cleaned)
+    cleaned = re.sub(r'\n?```$', '', cleaned)
+    # Close unclosed brackets/braces
+    open_braces = cleaned.count('{') - cleaned.count('}')
+    open_brackets = cleaned.count('[') - cleaned.count(']')
+    # Remove trailing comma before closing
+    cleaned = re.sub(r',\s*$', '', cleaned)
+    cleaned += ']' * max(0, open_brackets)
+    cleaned += '}' * max(0, open_braces)
+    try:
+        return _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        # Last resort: extract the largest valid JSON object
+        m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if m:
+            try:
+                return _json.loads(m.group())
+            except _json.JSONDecodeError:
+                pass
+    return {"sections": []}
+
+
 def generate_slide_json(api_key, model_name, file_context="", context_text="",
                         on_slide=None):
     """
@@ -486,7 +520,7 @@ def generate_slide_json(api_key, model_name, file_context="", context_text="",
     outline_user = f"[Context/Goal]\n{context_text}\n\n[Source Material]\n{file_context}"
 
     outline_config = types.GenerateContentConfig(
-        max_output_tokens=4096,
+        max_output_tokens=8192,
         temperature=0.2,
         system_instruction=outline_prompt,
         response_mime_type="application/json"
@@ -496,13 +530,7 @@ def generate_slide_json(api_key, model_name, file_context="", context_text="",
         contents=outline_user,
         config=outline_config
     )
-    try:
-        outline = _json.loads(outline_resp.text)
-    except _json.JSONDecodeError:
-        # Fallback: try to extract JSON
-        import re
-        m = re.search(r'\{.*\}', outline_resp.text, re.DOTALL)
-        outline = _json.loads(m.group()) if m else {"sections": []}
+    outline = _safe_parse_json(outline_resp.text)
 
     sections = outline.get("sections", [])
     if not sections:
@@ -565,12 +593,10 @@ Planned slides: {_json.dumps(sec_slides_plan, ensure_ascii=False)}
                 contents=section_user,
                 config=sec_config
             )
-            try:
-                sec_data = _json.loads(resp.text)
-                sec_slides = sec_data.get("slides", sec_data if isinstance(sec_data, list) else [])
+            sec_data = _safe_parse_json(resp.text)
+            sec_slides = sec_data.get("slides", sec_data if isinstance(sec_data, list) else [])
+            if isinstance(sec_slides, list):
                 all_slides.extend(sec_slides)
-            except _json.JSONDecodeError:
-                pass
 
     return _json.dumps({"slides": all_slides}, ensure_ascii=False)
 
