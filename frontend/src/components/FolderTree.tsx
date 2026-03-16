@@ -5,6 +5,7 @@ interface FolderTreeProps {
   projectName?: string;
   onDocClick?: (doc: string) => void;
   onDocDelete?: (doc: string) => void;
+  onDocDownload?: (doc: string) => void;
   onFolderDelete?: (folder: string) => void;
   onDocMove?: (doc: string, targetFolder: string) => void;
   selectable?: boolean;
@@ -13,7 +14,7 @@ interface FolderTreeProps {
 }
 
 export default function FolderTree({
-  tree, projectName, onDocClick, onDocDelete, onFolderDelete, onDocMove,
+  tree, projectName, onDocClick, onDocDelete, onDocDownload, onFolderDelete, onDocMove,
   selectable, selectedDocs = [], onSelectionChange,
 }: FolderTreeProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
@@ -153,6 +154,10 @@ export default function FolderTree({
           )}
           {contextMenu.type === 'doc' && (
             <>
+              <button className="w-full text-left px-4 py-1.5 hover:bg-[#F7F6F3]"
+                onClick={() => { onDocDownload?.(contextMenu.name); setContextMenu(null); }}>
+                ⬇ 다운로드
+              </button>
               <button className="w-full text-left px-4 py-1.5 hover:bg-[#F7F6F3]"
                 onClick={() => { onDocDelete?.(contextMenu.name); setContextMenu(null); }}>
                 🗑 문서 삭제

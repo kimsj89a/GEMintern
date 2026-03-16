@@ -947,6 +947,26 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
 
 
 # ========================================
+# Document Download
+# ========================================
+
+@router.get("/projects/{name}/docs/{doc_name}/download")
+def download_doc(name: str, doc_name: str, user: dict = Depends(get_current_user)):
+    """프로젝트 문서를 마크다운 파일로 다운로드."""
+    import core_rag
+    storage = core_rag._get_storage_name(name, owner_id=user["id"])
+    content = core_rag._load_doc_file(storage, doc_name)
+    if not content:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다")
+    filename = f"{doc_name}.md" if not doc_name.endswith('.md') else doc_name
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ========================================
 # Web Research — Save to Project
 # ========================================
 

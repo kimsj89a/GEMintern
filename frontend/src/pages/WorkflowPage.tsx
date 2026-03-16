@@ -683,7 +683,7 @@ export default function WorkflowPage() {
             {/* Left: Project docs */}
             <div className="w-64 shrink-0 glass-card p-3 max-h-[calc(100vh-320px)] overflow-y-auto">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">프로젝트 문서</div>
-              <FolderTree tree={tree} projectName={currentProject} selectable selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs} />
+              <FolderTree tree={tree} projectName={currentProject} selectable selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs} onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)} />
             </div>
 
             {/* Right: Upload + Web Research + Analyze */}
@@ -971,7 +971,7 @@ export default function WorkflowPage() {
                 </button>
                 {!docsCollapsed && (
                   <div className="px-3.5 pb-3 max-h-48 overflow-y-auto border-t border-slate-100">
-                    <FolderTree tree={tree} projectName={currentProject} selectable selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs} />
+                    <FolderTree tree={tree} projectName={currentProject} selectable selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs} onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)} />
                   </div>
                 )}
               </div>

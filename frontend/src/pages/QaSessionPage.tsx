@@ -251,6 +251,7 @@ export default function QaSessionPage() {
                   selectable
                   selectedDocs={selectedDocs}
                   onSelectionChange={setSelectedDocs}
+                  onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)}
                 />
               ) : (
                 <div className="text-xs text-[#9B9A97] py-4 text-center">문서가 없습니다.</div>

@@ -283,6 +283,7 @@ export default function PptToolsPage() {
                         selectable
                         selectedDocs={selectedDocs}
                         onSelectionChange={setSelectedDocs}
+                        onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)}
                       />
                     </div>
                   </>

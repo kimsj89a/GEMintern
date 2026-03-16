@@ -302,7 +302,7 @@ export default function ProjectPage() {
               <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 mb-4 max-h-96 overflow-y-auto">
                 {Object.keys(tree).length > 0 ? (
                   <FolderTree tree={tree} projectName={currentProject}
-                    onDocDelete={handleDocDelete} onFolderDelete={handleFolderDelete} onDocMove={handleDocMove} />
+                    onDocDelete={handleDocDelete} onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)} onFolderDelete={handleFolderDelete} onDocMove={handleDocMove} />
                 ) : (
                   <div className="text-sm text-[#9B9A97] py-8 text-center">문서가 없습니다. 파일을 업로드하세요.</div>
                 )}

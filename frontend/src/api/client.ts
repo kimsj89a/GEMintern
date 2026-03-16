@@ -128,6 +128,19 @@ export const api = {
   getTaskStatus: (taskId: string) => request<any>(`/tasks/${taskId}`),
   saveResearch: (data: { project_name: string; doc_name: string; content: string }) =>
     request<any>('/save-research', { method: 'POST', body: JSON.stringify(data) }),
+  downloadDoc: async (project: string, docName: string) => {
+    const res = await fetchWithAuth(
+      `${BASE}/projects/${encodeURIComponent(project)}/docs/${encodeURIComponent(docName)}/download`
+    );
+    if (!res.ok) throw new Error(`다운로드 실패: ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${docName}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 
   // PPT
   createPptx: async (slideJson: any) => {
