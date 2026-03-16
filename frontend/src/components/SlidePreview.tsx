@@ -5,36 +5,40 @@
  */
 import { useMemo } from 'react';
 
-// Layout constants (16:9 ratio scaled to viewBox 400x225)
+// Layout constants (4:3 ratio scaled to viewBox 400x300)
 const VB_W = 400;
-const VB_H = 225;
+const VB_H = 300;
 const PAD = 10;
 const HEADER_BAR_H = 4;
 const HEADER_Y = HEADER_BAR_H + 2;
 const TITLE_H = 18;
 const CX = PAD;
-const CY = HEADER_Y + TITLE_H + 6;
+const CY = HEADER_Y + TITLE_H + 12;
 const CW = VB_W - PAD * 2;
-const CH = VB_H - CY - 16; // leave room for footer
+const CH = VB_H - CY - 16;
 const FOOTER_Y = VB_H - 12;
 
-// NP Color palette
-const NAVY = '#1A2744';
-const GOLD = '#C5973B';
+// NP Color palette (updated brand guide)
+const NAVY = '#0C3064';
+const BLUE = '#005DA2';
+const SKY_BLUE = '#00A2E8';
+const YELLOW = '#CCA000';
+const GOLD = YELLOW;
+const DARK_GRAY = '#404040';
+const RED = '#C00000';
+const GREEN = '#008000';
 const OFF_WHITE = '#F5F6F8';
-const LIGHT_GRAY = '#E8EAF0';
+const LIGHT_GRAY = '#D9DEE4';
 const MID_GRAY = '#8892A5';
-const DARK_TEXT = '#2D3748';
-const BLUE = '#2563EB';
-const GREEN = '#059669';
-const RED = '#DC2626';
-const PURPLE = '#7C3AED';
-const ORANGE = '#D97706';
+const DARK_TEXT = '#000000';
 const WHITE = '#FFFFFF';
+const PURPLE = '#5B2C8C';
+const ORANGE = '#D97706';
 
 const NP_TEMPLATE_TYPES = new Set([
   'title', 'divider', 'data_table', 'chart_table', 'two_column',
   'kpi_dashboard', 'risk_matrix', 'timeline_flow', 'comparison',
+  'numbered_blocks', 'grid_cards',
 ]);
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -71,6 +75,8 @@ interface SlideData {
   verdict?: string;
   conclusion?: string;
   content?: string;
+  blocks?: any[];
+  cards?: any[];
 }
 
 interface Props {
@@ -91,16 +97,16 @@ function NpHeader({ title, subtitle }: { title: string; subtitle?: string }) {
     <g>
       {/* Navy accent bar */}
       <rect x={0} y={0} width={VB_W} height={HEADER_BAR_H} fill={NAVY} />
-      {/* Title */}
-      <text x={PAD} y={HEADER_Y + 14} fontSize={9} fontWeight="bold" fill={NAVY} fontFamily="Georgia,serif">
-        {truncate(title, 50)}
-      </text>
-      {/* Subtitle */}
+      {/* Subtitle (section name) — above title */}
       {subtitle && (
-        <text x={PAD} y={HEADER_Y + TITLE_H + 2} fontSize={5} fill={MID_GRAY}>
+        <text x={PAD} y={HEADER_Y + 8} fontSize={5} fill={BLUE}>
           {truncate(subtitle, 60)}
         </text>
       )}
+      {/* Title — main heading */}
+      <text x={PAD} y={HEADER_Y + (subtitle ? 22 : 14)} fontSize={10} fontWeight="bold" fill={DARK_TEXT}>
+        {truncate(title, 45)}
+      </text>
     </g>
   );
 }
@@ -514,6 +520,83 @@ function RenderComparison({ slide }: { slide: SlideData }) {
   );
 }
 
+function RenderNumberedBlocks({ slide }: { slide: SlideData }) {
+  const blocks = (slide as any).blocks || slide.items || [];
+  const n = Math.min(blocks.length, 6);
+  const cols = n > 1 ? 2 : 1;
+  const rows = Math.ceil(n / cols);
+  const gap = 4;
+  const blockW = (CW - gap * (cols - 1)) / cols;
+  const blockH = Math.min((CH - gap * (rows - 1)) / rows, 50);
+
+  return (
+    <>
+      <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
+      <NpHeader title={slide.title || ''} subtitle={slide.subtitle} />
+      {blocks.slice(0, n).map((b: any, i: number) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const bx = CX + col * (blockW + gap);
+        const by = CY + row * (blockH + gap);
+        return (
+          <g key={i}>
+            <rect x={bx} y={by} width={18} height={14} fill={NAVY} rx={2} />
+            <text x={bx + 9} y={by + 10} textAnchor="middle" fontSize={6} fontWeight="bold" fill={WHITE}>
+              {b.number || `${i + 1}`.padStart(2, '0')}
+            </text>
+            <text x={bx + 22} y={by + 10} fontSize={4.5} fontWeight="bold" fill={NAVY}>
+              {truncate(b.title || '', 22)}
+            </text>
+            <text x={bx + 22} y={by + 20} fontSize={3} fill={DARK_GRAY}>
+              {truncate(b.description || '', 35)}
+            </text>
+            <rect x={bx} y={by + blockH - 1} width={blockW} height={0.5} fill={LIGHT_GRAY} />
+          </g>
+        );
+      })}
+      <NpFooter />
+    </>
+  );
+}
+
+function RenderGridCards({ slide }: { slide: SlideData }) {
+  const cards = (slide as any).cards || [];
+  const n = Math.min(cards.length, 4);
+  const gap = 4;
+  const cardW = (CW - gap * (n - 1)) / n;
+  const cardH = CH - 4;
+
+  return (
+    <>
+      <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
+      <NpHeader title={slide.title || ''} subtitle={slide.subtitle} />
+      {cards.slice(0, n).map((c: any, i: number) => {
+        const cx = CX + i * (cardW + gap);
+        const items = c.items || [];
+        return (
+          <g key={i}>
+            <rect x={cx} y={CY} width={cardW} height={cardH} fill={WHITE} stroke={LIGHT_GRAY} strokeWidth={0.5} rx={2} />
+            <rect x={cx} y={CY} width={cardW} height={12} fill={NAVY} rx={2} />
+            <rect x={cx} y={CY + 10} width={cardW} height={4} fill={NAVY} />
+            <text x={cx + cardW / 2} y={CY + 8} textAnchor="middle" fontSize={4} fontWeight="bold" fill={WHITE}>
+              {truncate(c.title || '', 12)}
+            </text>
+            {c.subtitle && (
+              <text x={cx + 3} y={CY + 20} fontSize={3} fill={MID_GRAY}>{truncate(c.subtitle, 15)}</text>
+            )}
+            {items.slice(0, 5).map((item: string, j: number) => (
+              <text key={j} x={cx + 3} y={CY + (c.subtitle ? 28 : 20) + j * 7} fontSize={3} fill={DARK_TEXT}>
+                {'\u2022 ' + truncate(String(item), 18)}
+              </text>
+            ))}
+          </g>
+        );
+      })}
+      <NpFooter />
+    </>
+  );
+}
+
 /* ===== Legacy Element Renderers ===== */
 function computeLayout(elements: any[], hint: string) {
   if (!elements?.length) return [];
@@ -640,7 +723,7 @@ function ElementRect({ el }: { el: any }) {
 /* ===== Main Component ===== */
 export default function SlidePreview({ slide, selected, onClick, width = 280 }: Props) {
   const sType = slide.slide_type || slide.type || 'content';
-  const height = width * (9 / 16); // 16:9 ratio
+  const height = width * (3 / 4); // 4:3 ratio
   const isNpTemplate = NP_TEMPLATE_TYPES.has(sType);
 
   const layoutElements = useMemo(() => {
@@ -669,6 +752,8 @@ export default function SlidePreview({ slide, selected, onClick, width = 280 }: 
             {sType === 'risk_matrix' && <RenderRiskMatrix slide={slide} />}
             {sType === 'timeline_flow' && <RenderTimelineFlow slide={slide} />}
             {sType === 'comparison' && <RenderComparison slide={slide} />}
+            {sType === 'numbered_blocks' && <RenderNumberedBlocks slide={slide} />}
+            {sType === 'grid_cards' && <RenderGridCards slide={slide} />}
           </>
         ) : (
           <>
