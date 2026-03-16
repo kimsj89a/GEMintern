@@ -250,6 +250,75 @@ def generate_material_summary(api_key, model_name, file_context):
     return resp.text
 
 
+def web_research(api_key, model_name, query, existing_context=""):
+    """웹 검색 기반 리서치 — Gemini google_search grounding 활용."""
+    from google import genai as _genai
+    gemini_client = _genai.Client(api_key=api_key)
+
+    context_section = ""
+    if existing_context:
+        context_section = f"\n[기존 프로젝트 자료 요약]\n{existing_context[:5000]}\n"
+
+    prompt = f"""당신은 PE/VC 투자 분석 전문가이자 리서치 애널리스트입니다.
+아래 주제에 대해 웹 검색을 수행하고, 투자 분석에 유용한 정보를 구조화하여 정리하십시오.
+{context_section}
+[리서치 주제]
+{query}
+
+[출력 규칙]
+1. 서문 없이 바로 # 헤딩으로 시작
+2. 모든 정보에 출처 URL 또는 출처명을 표기
+3. 수치, 날짜, 고유명사는 정확히 인용
+4. 투자 분석 관점에서 유의미한 정보 위주로 정리
+
+[출력 형식]
+
+# {{주제}} 리서치 결과
+
+## 핵심 요약
+> 3-5문장 요약
+
+---
+
+## 주요 발견사항
+(카테고리별로 구분하여 정리. 출처 표기 필수.)
+
+---
+
+## 핵심 데이터
+
+| 항목 | 수치/데이터 | 출처 |
+| :--- | :--- | :--- |
+| ... | ... | ... |
+
+---
+
+## 시사점 및 투자 관점
+- ...
+
+---
+
+## 추가 리서치 키워드
+(이 주제를 더 깊이 조사하기 위해 검색해볼 만한 키워드 3-5개)
+- ...
+
+---
+*웹 검색 기반 리서치 결과 | 검색일: 오늘*
+"""
+
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        max_output_tokens=65536,
+        temperature=0.3,
+    )
+    resp = gemini_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=config,
+    )
+    return resp.text
+
+
 def generate_material_summary_batch(api_key, model_name, docs_dict, on_doc_complete=None):
     """Phase 1: 각 문서별 개별 분석 (batch mode)"""
     import json

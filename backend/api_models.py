@@ -55,3 +55,9 @@ class SlideRegenerateRequest(BaseModel):
     prev_slide: Any = None
     next_slide: Any = None
     instruction: str
+
+
+class SaveResearchRequest(BaseModel):
+    project_name: str
+    doc_name: str
+    content: str

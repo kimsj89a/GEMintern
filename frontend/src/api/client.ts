@@ -126,6 +126,8 @@ export const api = {
   startAnalysis: (data: any) =>
     request<{ task_id: string }>('/analyze', { method: 'POST', body: JSON.stringify(data) }),
   getTaskStatus: (taskId: string) => request<any>(`/tasks/${taskId}`),
+  saveResearch: (data: { project_name: string; doc_name: string; content: string }) =>
+    request<any>('/save-research', { method: 'POST', body: JSON.stringify(data) }),
 
   // PPT
   createPptx: async (slideJson: any) => {

@@ -99,6 +99,7 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
             fn_map = {
                 "material_summary": core_logic.generate_material_summary,
                 "material_summary_batch": core_logic.generate_material_summary_batch,
+                "web_research": core_logic.web_research,
                 "qa_answer": core_logic.generate_qa_answer,
                 "followup_questions": core_logic.generate_followup_questions,
                 "additional_questions": core_logic.generate_additional_questions,

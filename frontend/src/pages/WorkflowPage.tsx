@@ -367,7 +367,15 @@ export default function WorkflowPage() {
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [docsCollapsed, setDocsCollapsed] = useState(true);
 
+  // Web Research state
+  const [researchQuery, setResearchQuery] = useState('');
+  const [researchResult, setResearchResult] = useState('');
+  const [researching, setResearching] = useState(false);
+  const [researchSaved, setResearchSaved] = useState(false);
+  const [researchHistory, setResearchHistory] = useState<{ query: string; result: string; saved: boolean }[]>([]);
+
   const cancelAnalyzeRef = useRef(false);
+  const cancelResearchRef = useRef(false);
   const cancelGenerateRef = useRef(false);
   const cancelChatRef = useRef(false);
   const activeTaskRef = useRef<string | null>(null);
@@ -394,6 +402,53 @@ export default function WorkflowPage() {
     }
     setUploading(false);
   };
+
+  const handleWebResearch = async () => {
+    if (!currentProject || !researchQuery.trim()) return;
+    setResearching(true);
+    setResearchResult('');
+    setResearchSaved(false);
+    cancelResearchRef.current = false;
+    try {
+      const { task_id } = await api.startAnalysis({
+        task_type: 'web_research',
+        kwargs: { query: researchQuery.trim() },
+      });
+      const check = async () => {
+        if (cancelResearchRef.current) return;
+        const status = await api.getTaskStatus(task_id);
+        if (status.status === 'complete') {
+          setResearchResult(status.result || '');
+          setResearching(false);
+        } else if (status.status === 'error') {
+          setResearchResult(`오류: ${status.error}`);
+          setResearching(false);
+        } else setTimeout(check, 1500);
+      };
+      check();
+    } catch (err: any) {
+      setResearchResult(`오류: ${err.message}`);
+      setResearching(false);
+    }
+  };
+
+  const handleSaveResearch = async () => {
+    if (!currentProject || !researchResult || researchSaved) return;
+    const docName = `웹리서치_${researchQuery.trim().slice(0, 30).replace(/[/\\?%*:|"<>]/g, '_')}`;
+    try {
+      await api.saveResearch({ project_name: currentProject, doc_name: docName, content: researchResult });
+      setResearchSaved(true);
+      // Add to history
+      setResearchHistory(prev => [...prev, { query: researchQuery, result: researchResult, saved: true }]);
+      // Refresh folder tree
+      const data = await api.getProjectDocs(currentProject);
+      setTree(data.folder_tree || {});
+    } catch (err: any) {
+      alert(`저장 실패: ${err.message}`);
+    }
+  };
+
+  const handleStopResearch = () => { cancelResearchRef.current = true; setResearching(false); };
 
   const handleAnalyze = async () => {
     if (!currentProject) return;
@@ -625,16 +680,104 @@ export default function WorkflowPage() {
       {isPhase1 && step === 1 && (
         <div className="space-y-4 animate-fade-in-up">
           <div className="flex gap-4">
-            <div className="w-64 shrink-0 glass-card p-3 max-h-80 overflow-y-auto">
+            {/* Left: Project docs */}
+            <div className="w-64 shrink-0 glass-card p-3 max-h-[calc(100vh-320px)] overflow-y-auto">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">프로젝트 문서</div>
               <FolderTree tree={tree} projectName={currentProject} selectable selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs} />
             </div>
+
+            {/* Right: Upload + Web Research + Analyze */}
             <div className="flex-1 space-y-4">
+              {/* File Upload */}
               <div className="glass-card p-4">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">추가 자료 업로드</label>
                 <FilePicker onFilesSelected={handleUpload} loading={uploading} />
                 {uploadStatus && <div className="mt-2 text-sm text-slate-500">{uploadStatus}</div>}
               </div>
+
+              {/* Web Research */}
+              <div className="glass-card p-4">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  웹 리서치
+                  <span className="ml-2 text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full">AI 검색</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={researchQuery}
+                    onChange={(e) => setResearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !researching && handleWebResearch()}
+                    placeholder="검색할 주제를 입력하세요 (예: 반도체 시장 전망 2026)"
+                    className="flex-1 px-3 py-2 text-sm input-ring"
+                    disabled={researching}
+                  />
+                  {researching ? (
+                    <button onClick={handleStopResearch}
+                      className="px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-lg hover:bg-red-600 transition-all shrink-0">
+                      중지
+                    </button>
+                  ) : (
+                    <button onClick={handleWebResearch}
+                      disabled={!researchQuery.trim()}
+                      className={`px-4 py-2 text-sm font-semibold rounded-lg shrink-0 transition-all ${
+                        researchQuery.trim() ? 'btn-primary' : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}>
+                      검색
+                    </button>
+                  )}
+                </div>
+
+                {/* Research result */}
+                {(researching || researchResult) && (
+                  <div className="mt-3 border border-slate-100 rounded-xl overflow-hidden">
+                    {researching && (
+                      <div className="flex items-center gap-2 p-3 bg-slate-50">
+                        <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs text-slate-500">웹 검색 및 분석 중...</span>
+                      </div>
+                    )}
+                    {researchResult && (
+                      <>
+                        <div className="max-h-64 overflow-y-auto p-3">
+                          <MarkdownViewer content={researchResult} />
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-100 bg-slate-50/50">
+                          <button
+                            onClick={handleSaveResearch}
+                            disabled={researchSaved}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                              researchSaved
+                                ? 'bg-green-50 text-green-600 border border-green-200'
+                                : 'btn-primary'
+                            }`}>
+                            {researchSaved ? '프로젝트에 저장됨' : '프로젝트에 저장'}
+                          </button>
+                          <button onClick={() => copyRichText(researchResult)}
+                            className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                            서식 복사
+                          </button>
+                          {researchSaved && (
+                            <span className="text-[10px] text-slate-400 ml-auto">자료 분석에서 활용 가능</span>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Research history */}
+                {researchHistory.length > 0 && !researchResult && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {researchHistory.map((h, i) => (
+                      <button key={i} onClick={() => { setResearchQuery(h.query); setResearchResult(h.result); setResearchSaved(h.saved); }}
+                        className="px-2 py-1 text-[11px] text-slate-500 bg-slate-50 border border-slate-100 rounded-md hover:bg-slate-100 transition-colors truncate max-w-[200px]">
+                        {h.saved && <span className="text-green-500 mr-1">✓</span>}{h.query}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button onClick={handleAnalyze}
                 className="w-full py-3 btn-primary rounded-xl text-sm">
                 자료 분석 시작

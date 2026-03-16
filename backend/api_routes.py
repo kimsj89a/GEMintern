@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from backend.api_models import (
     ProjectCreate, ProjectRename, FolderCreate, DocMoveRequest,
     GenerateRequest, QaRequest, AnalysisRequest,
-    CreatePptxRequest, SlideRegenerateRequest,
+    CreatePptxRequest, SlideRegenerateRequest, SaveResearchRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -944,6 +944,20 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
     run_analysis_task(task_id, req.task_type, api_key, model, **kwargs)
     log_usage(user["id"], f"/analyze/{req.task_type}", model)
     return {"task_id": task_id}
+
+
+# ========================================
+# Web Research — Save to Project
+# ========================================
+
+@router.post("/save-research")
+def save_research(req: SaveResearchRequest, user: dict = Depends(get_current_user)):
+    """웹 리서치 결과를 프로젝트 문서로 저장."""
+    import core_rag
+    api_key = _get_api_key()
+    texts = {req.doc_name: req.content}
+    result = core_rag.index_texts(api_key, texts, req.project_name, owner_id=user["id"])
+    return result
 
 
 # ========================================
