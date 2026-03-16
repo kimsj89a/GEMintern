@@ -21,7 +21,6 @@ const FOOTER_Y = VB_H - 12;
 // NP Color palette (updated brand guide)
 const NAVY = '#0C3064';
 const BLUE = '#005DA2';
-const SKY_BLUE = '#00A2E8';
 const YELLOW = '#CCA000';
 const GOLD = YELLOW;
 const DARK_GRAY = '#404040';
