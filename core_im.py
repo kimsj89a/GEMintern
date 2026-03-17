@@ -56,12 +56,12 @@ def generate_im_chained_stream(api_key, model_name, inputs, thinking_level,
         status_text = f"\n\n---\n\n**[{part_title}] 생성 중...**\n\n"
         yield make_status_chunk(status_text)
 
-        # 이전 파트 결과를 컨텍스트로 포함 (25K chars)
+        # 이전 파트 결과를 컨텍스트로 포함
         prev_context = ""
         if accumulated_result:
             prev_context = f"""
 [이전 작성 내용 - 참고용, 중복 작성 금지]
-{accumulated_result[-25000:]}
+{accumulated_result[-80000:]}
 """
 
         # 파트별 프롬프트 가져오기 & investment_type 치환
@@ -88,7 +88,7 @@ def generate_im_chained_stream(api_key, model_name, inputs, thinking_level,
 {inputs.get('context_text', '')}
 
 [분석 데이터]
-{file_context[:45000]}
+{file_context}
 """
 
         # 웹 검색 도구 설정

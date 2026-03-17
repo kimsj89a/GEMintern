@@ -76,7 +76,7 @@ def generate_chained_stream(api_key, model_name, inputs, thinking_level, file_co
         if accumulated_result:
             prev_context = f"""
 [이전 작성 내용 - 참고용, 중복 작성 금지]
-{accumulated_result[-20000:]}
+{accumulated_result[-80000:]}
 """
 
         # 파트별 프롬프트 가져오기
@@ -94,7 +94,7 @@ def generate_chained_stream(api_key, model_name, inputs, thinking_level, file_co
 {inputs.get('context_text', '')}
 
 [분석 데이터]
-{file_context[:45000]}
+{file_context}
 """
 
         # 웹 검색 도구 설정

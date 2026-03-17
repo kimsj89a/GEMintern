@@ -122,7 +122,7 @@ def _truncate_context(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
     """Simple truncation fallback for pre-loaded text."""
     if len(text) <= max_chars:
         return text
-    return text[:max_chars] + "\n\n[... 컨텍스트 길이 제한으로 잘림]"
+    return text[:max_chars] + "\n\n[... 이하 생략 — 전체 자료의 일부만 제공됨]"
 
 
 def _select_relevant_docs(project_name: str, query: str, model: str = "",
