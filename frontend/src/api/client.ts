@@ -47,7 +47,7 @@ export const api = {
   updateSettings: (data: SettingsData) =>
     request<SettingsData>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   applySettings: () =>
-    request<{ ok: boolean }>('/settings/apply', { method: 'POST' }),
+    request<{ ok?: boolean; success?: boolean; error?: string }>('/settings/apply', { method: 'POST' }),
 
   // Projects
   listProjects: () => request<any[]>('/projects'),

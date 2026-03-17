@@ -32,6 +32,9 @@ export interface SettingsData {
   api_key?: string;
   model_name?: string;
   anthropic_api_key?: string;
+  thinking_level?: string;
+  api_key_configured?: boolean;
+  anthropic_api_key_configured?: boolean;
   [key: string]: unknown;
 }
 

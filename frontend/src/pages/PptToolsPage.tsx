@@ -254,7 +254,7 @@ export default function PptToolsPage() {
   // --- Download PPTX ---
   const handleDownload = useCallback(async () => {
     try {
-      const blob = await api.createPptx({ slides });
+      const blob = await api.createPptx(slides);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -273,8 +273,8 @@ export default function PptToolsPage() {
     setError('');
 
     const current = slides[selectedIdx];
-    const prev = selectedIdx > 0 ? slides[selectedIdx - 1] : null;
-    const next = selectedIdx < slides.length - 1 ? slides[selectedIdx + 1] : null;
+    const prev = selectedIdx > 0 ? slides[selectedIdx - 1] : undefined;
+    const next = selectedIdx < slides.length - 1 ? slides[selectedIdx + 1] : undefined;
 
     try {
       const { task_id } = await api.slideRegenerate({

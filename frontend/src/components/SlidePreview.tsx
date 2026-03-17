@@ -240,7 +240,7 @@ function RenderDivider({ slide }: { slide: SlideData }) {
 }
 
 function RenderDataTable({ slide }: { slide: SlideData }) {
-  const table = slide.table || {};
+  const table = slide.table;
   const metrics = slide.metrics || slide.kpi_cards || [];
   const tableH = metrics.length > 0 ? CH - 28 : CH;
 
@@ -248,7 +248,7 @@ function RenderDataTable({ slide }: { slide: SlideData }) {
     <>
       <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
       <NpHeader title={slide.title || ''} subtitle={slide.subtitle} />
-      {table.headers && (
+      {table?.headers && (
         <MiniTable headers={table.headers} rows={table.rows || []} x={CX} y={CY} w={CW} h={tableH} />
       )}
       {metrics.length > 0 && (
@@ -260,8 +260,8 @@ function RenderDataTable({ slide }: { slide: SlideData }) {
 }
 
 function RenderChartTable({ slide }: { slide: SlideData }) {
-  const chart = slide.chart || {};
-  const table = slide.table || {};
+  const chart = slide.chart;
+  const table = slide.table;
   const leftW = CW * 0.58;
   const rightW = CW - leftW - 4;
 
@@ -270,7 +270,7 @@ function RenderChartTable({ slide }: { slide: SlideData }) {
       <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
       <NpHeader title={slide.title || ''} subtitle={slide.subtitle} />
       <MiniChart chart={chart} x={CX} y={CY} w={leftW} h={CH} />
-      {table.headers && (
+      {table?.headers && (
         <MiniTable headers={table.headers} rows={table.rows || []} x={CX + leftW + 4} y={CY} w={rightW} h={CH} />
       )}
       {slide.banner && (
@@ -336,8 +336,8 @@ function RenderKpiDashboard({ slide }: { slide: SlideData }) {
   const metrics = slide.metrics || slide.kpi_cards || [];
   const table = slide.table || {};
   const chart = slide.chart || {};
-  const hasTable = table.headers?.length;
-  const hasChart = chart.categories?.length;
+  const hasTable = table?.headers?.length;
+  const hasChart = chart?.categories?.length;
   const mainH = CH - (metrics.length > 0 ? 28 : 0);
 
   return (
@@ -345,7 +345,7 @@ function RenderKpiDashboard({ slide }: { slide: SlideData }) {
       <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
       <NpHeader title={slide.title || ''} subtitle={slide.subtitle} />
       {hasTable ? (
-        <MiniTable headers={table.headers} rows={table.rows || []} x={CX} y={CY} w={CW} h={mainH} />
+        <MiniTable headers={table!.headers} rows={table!.rows || []} x={CX} y={CY} w={CW} h={mainH} />
       ) : hasChart ? (
         <MiniChart chart={chart} x={CX} y={CY} w={CW} h={mainH} />
       ) : slide.content ? (
