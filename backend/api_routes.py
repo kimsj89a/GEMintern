@@ -14,7 +14,8 @@ from pydantic import BaseModel
 from backend.api_models import (
     ProjectCreate, ProjectRename, FolderCreate, DocMoveRequest,
     GenerateRequest, QaRequest, AnalysisRequest,
-    CreatePptxRequest, SlideRegenerateRequest, SaveResearchRequest,
+    CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
+    SaveResearchRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -499,8 +500,9 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
     from backend.database import get_db
-    tree = core_rag.get_folder_tree(name, owner_id=user["id"])
+    # Auto-sync FIRST (may fix _folders.json), then read tree
     doc_names = core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or []
+    tree = core_rag.get_folder_tree(name, owner_id=user["id"])
 
     # Fallback: also check SQLite documents table (for Railway ephemeral FS)
     if not doc_names:
@@ -994,7 +996,8 @@ def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
     import utils_ppt
 
     slide_json = req.slide_json
-    pptx_bytes = utils_ppt.create_deck_from_json(slide_json)
+    template_path = getattr(req, 'template_path', None)
+    pptx_bytes = utils_ppt.create_deck_from_json(slide_json, template_path=template_path)
     if not pptx_bytes:
         raise HTTPException(status_code=400, detail="PPTX 생성 실패: 유효하지 않은 슬라이드 데이터")
 
@@ -1023,6 +1026,51 @@ def slide_regenerate(req: SlideRegenerateRequest, user: dict = Depends(get_curre
                       current_slide=current_str, prev_slide=prev_str,
                       next_slide=next_str, instruction=req.instruction)
     log_usage(user["id"], "/slide-regenerate", model)
+    return {"task_id": task_id}
+
+
+@router.post("/slide-outline")
+def slide_outline(req: AnalysisRequest, user: dict = Depends(get_current_user)):
+    """PPT 아웃라인만 생성 (Phase 1). 사용자가 편집 후 /slides-from-outline으로 상세 생성."""
+    api_key = _get_api_key()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+
+    task_id = create_task(
+        user_id=user["id"], endpoint="/slide-outline", model=model,
+        title="PPT 아웃라인 생성",
+    )
+    run_analysis_task(task_id, "slide_outline", api_key, model, **req.kwargs)
+    log_usage(user["id"], "/slide-outline", model)
+    return {"task_id": task_id}
+
+
+@router.post("/slides-from-outline")
+def slides_from_outline(req: SlidesFromOutlineRequest, user: dict = Depends(get_current_user)):
+    """편집된 아웃라인에서 상세 슬라이드 생성 (Phase 2)."""
+    api_key = _get_api_key()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+
+    # Load project docs for file_context
+    file_context = ""
+    if req.project_name:
+        try:
+            import core_logic
+            file_context, _ = core_logic.parse_all_files(
+                [], saved_files=req.selected_docs,
+                api_key=api_key
+            ) if req.selected_docs else ("", "")
+        except Exception:
+            pass
+
+    task_id = create_task(
+        user_id=user["id"], endpoint="/slides-from-outline", model=model,
+        title="슬라이드 상세 생성",
+    )
+    run_analysis_task(task_id, "slides_from_outline", api_key, model,
+                      outline=req.outline,
+                      file_context=file_context,
+                      context_text=req.context_text)
+    log_usage(user["id"], "/slides-from-outline", model)
     return {"task_id": task_id}
 
 

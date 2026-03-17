@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { api } from '../api/client';
 import { subscribeTask, unsubscribeTask } from '../api/ws';
 import SlidePreview from '../components/SlidePreview';
+import OutlineEditor from '../components/OutlineEditor';
 import FolderTree from '../components/FolderTree';
 import { generateFilename } from '../utils/clipboard';
 import { useAppStore } from '../stores/appStore';
@@ -35,6 +36,10 @@ export default function PptToolsPage() {
   const [error, setError] = useState('');
   const cancelRef = useRef(false);
 
+  // Outline editing
+  const [outline, setOutline] = useState<any>(null);
+  const [outlineGenerating, setOutlineGenerating] = useState(false);
+
   // Edit panel
   const [editInstruction, setEditInstruction] = useState('');
   const [regenerating, setRegenerating] = useState(false);
@@ -54,9 +59,54 @@ export default function PptToolsPage() {
 
   const totalDocs = Object.values(tree).flat().length;
 
-  // --- Generate (streaming via WebSocket) ---
+  // --- Outline Generation (Phase 1) ---
   const taskIdRef = useRef<string>('');
 
+  const handleGenerateOutline = useCallback(async () => {
+    if (!currentProject) {
+      setError('사이드바에서 프로젝트를 먼저 선택하세요.');
+      return;
+    }
+    if (totalDocs === 0) {
+      setError('프로젝트에 문서가 없습니다. 프로젝트 페이지에서 문서를 업로드하세요.');
+      return;
+    }
+    setOutlineGenerating(true);
+    setError('');
+    setOutline(null);
+    setSlides([]);
+
+    try {
+      const { task_id } = await api.slideOutline({
+        task_type: 'slide_outline',
+        kwargs: {
+          project_name: currentProject,
+          selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
+          context_text: context,
+        },
+      });
+
+      const poll = async () => {
+        const status = await api.getTaskStatus(task_id);
+        if (status.status === 'complete') {
+          const result = typeof status.result === 'string' ? JSON.parse(status.result) : status.result;
+          setOutline(result);
+          setOutlineGenerating(false);
+        } else if (status.status === 'error') {
+          setError(status.error || '아웃라인 생성 오류');
+          setOutlineGenerating(false);
+        } else {
+          setTimeout(poll, 2000);
+        }
+      };
+      poll();
+    } catch (err: any) {
+      setError(err.message);
+      setOutlineGenerating(false);
+    }
+  }, [currentProject, context, selectedDocs, totalDocs]);
+
+  // --- Direct Generate (skip outline editing) ---
   const handleGenerate = useCallback(async () => {
     if (!currentProject) {
       setError('사이드바에서 프로젝트를 먼저 선택하세요.');
@@ -70,6 +120,7 @@ export default function PptToolsPage() {
     setError('');
     setSlides([]);
     setSelectedIdx(0);
+    setOutline(null);
     cancelRef.current = false;
 
     try {
@@ -90,12 +141,9 @@ export default function PptToolsPage() {
           return;
         }
         if (msg.type === 'slide' && msg.slide) {
-          // Add slide as it arrives
           setSlides((prev) => [...prev, msg.slide as SlideData]);
-          // Auto-select first slide, then follow latest
           setSelectedIdx((prev) => prev === 0 ? 0 : prev);
         } else if (msg.type === 'complete') {
-          // Final result — replace with full set (in case any were missed)
           try {
             const raw = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
             const parsed: SlideData[] = raw?.slides || raw || [];
@@ -110,7 +158,7 @@ export default function PptToolsPage() {
         }
       });
 
-      // Fallback polling (in case WebSocket fails)
+      // Fallback polling
       const pollFallback = async () => {
         if (cancelRef.current) return;
         const status = await api.getTaskStatus(task_id);
@@ -130,12 +178,78 @@ export default function PptToolsPage() {
           setTimeout(pollFallback, 3000);
         }
       };
-      setTimeout(pollFallback, 5000);  // Start fallback after 5s
+      setTimeout(pollFallback, 5000);
     } catch (err: any) {
       setError(err.message);
       setGenerating(false);
     }
   }, [currentProject, context, selectedDocs, totalDocs]);
+
+  // --- Generate from edited outline (Phase 2) ---
+  const handleConfirmOutline = useCallback(async (editedOutline: any) => {
+    setGenerating(true);
+    setError('');
+    setSlides([]);
+    setSelectedIdx(0);
+    setOutline(null);
+    cancelRef.current = false;
+
+    try {
+      const { task_id } = await api.slidesFromOutline({
+        outline: editedOutline,
+        project_name: currentProject || '',
+        selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
+        context_text: context,
+      });
+      taskIdRef.current = task_id;
+
+      subscribeTask(task_id, (msg) => {
+        if (cancelRef.current) {
+          unsubscribeTask(task_id);
+          return;
+        }
+        if (msg.type === 'slide' && msg.slide) {
+          setSlides((prev) => [...prev, msg.slide as SlideData]);
+        } else if (msg.type === 'complete') {
+          try {
+            const raw = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
+            const parsed: SlideData[] = raw?.slides || raw || [];
+            if (parsed.length > 0) setSlides(parsed);
+          } catch { /* keep streamed slides */ }
+          setGenerating(false);
+          unsubscribeTask(task_id);
+        } else if (msg.type === 'error') {
+          setError(msg.error || '생성 오류');
+          setGenerating(false);
+          unsubscribeTask(task_id);
+        }
+      });
+
+      const pollFallback = async () => {
+        if (cancelRef.current) return;
+        const status = await api.getTaskStatus(task_id);
+        if (status.status === 'complete') {
+          try {
+            const raw = typeof status.result === 'string' ? JSON.parse(status.result) : status.result;
+            const parsed: SlideData[] = raw?.slides || raw || [];
+            if (parsed.length > 0) setSlides(parsed);
+          } catch { /* ignore */ }
+          setGenerating(false);
+          unsubscribeTask(task_id);
+        } else if (status.status === 'error') {
+          setError(status.error || '생성 오류');
+          setGenerating(false);
+          unsubscribeTask(task_id);
+        } else {
+          setTimeout(pollFallback, 3000);
+        }
+      };
+      setTimeout(pollFallback, 5000);
+    } catch (err: any) {
+      setError(err.message);
+      setGenerating(false);
+    }
+  }, [currentProject, context, selectedDocs]);
 
   // --- Download PPTX ---
   const handleDownload = useCallback(async () => {
@@ -301,7 +415,7 @@ export default function PptToolsPage() {
               className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm focus:outline-none focus:border-[#2383E2] resize-none" />
           </div>
 
-          {/* Generate / Stop */}
+          {/* Generate / Outline / Stop */}
           {generating ? (
             <div className="flex gap-2 mb-4">
               <div className="flex-1 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl text-center animate-pulse">
@@ -312,11 +426,34 @@ export default function PptToolsPage() {
                 중지
               </button>
             </div>
+          ) : outlineGenerating ? (
+            <div className="flex gap-2 mb-4">
+              <div className="flex-1 py-2.5 bg-[#37352F] text-white text-sm font-semibold rounded-xl text-center animate-pulse">
+                아웃라인 생성 중...
+              </div>
+            </div>
           ) : (
-            <button onClick={handleGenerate} disabled={!currentProject || totalDocs === 0}
-              className="w-full py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors mb-4">
-              PPT 생성 {currentProject ? `(${currentProject})` : '(프로젝트 미선택)'}
-            </button>
+            <div className="flex gap-2 mb-4">
+              <button onClick={handleGenerateOutline} disabled={!currentProject || totalDocs === 0}
+                className="flex-1 py-2.5 bg-[#37352F] text-white text-sm font-semibold rounded-xl hover:bg-[#2b2a28] disabled:bg-[#b0b0b0] transition-colors">
+                아웃라인 먼저 생성
+              </button>
+              <button onClick={handleGenerate} disabled={!currentProject || totalDocs === 0}
+                className="flex-1 py-2.5 bg-[#2383E2] text-white text-sm font-semibold rounded-xl hover:bg-[#1b6ec2] disabled:bg-[#b0b0b0] transition-colors">
+                바로 PPT 생성
+              </button>
+            </div>
+          )}
+
+          {/* Outline Editor */}
+          {outline && !generating && (
+            <div className="mb-4">
+              <OutlineEditor
+                outline={outline}
+                onConfirm={handleConfirmOutline}
+                onCancel={() => setOutline(null)}
+              />
+            </div>
           )}
 
           {/* Slide workspace */}

@@ -48,6 +48,7 @@ class AnalysisRequest(BaseModel):
 
 class CreatePptxRequest(BaseModel):
     slide_json: Any  # JSON string or dict
+    template_path: Optional[str] = None  # optional .pptx template file path
 
 
 class SlideRegenerateRequest(BaseModel):
@@ -55,6 +56,13 @@ class SlideRegenerateRequest(BaseModel):
     prev_slide: Any = None
     next_slide: Any = None
     instruction: str
+
+
+class SlidesFromOutlineRequest(BaseModel):
+    outline: Any  # edited outline JSON
+    project_name: str = ""
+    selected_docs: Optional[List[str]] = None
+    context_text: str = ""
 
 
 class SaveResearchRequest(BaseModel):

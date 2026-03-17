@@ -670,16 +670,18 @@ def index_texts(api_key: str, texts: Dict[str, str], project_name: str, owner_id
 
     # Merge with existing, normalizing all to stems
     all_stems = already_indexed_stems | set(indexed)
-    _save_indexed_docs(storage, list(all_stems))
 
-    # Add new docs to root folder in folder structure
-    if indexed:
-        folders = _load_folders(storage)
-        root_docs = folders.setdefault(ROOT_FOLDER, [])
-        for doc_stem in indexed:
-            if not any(doc_stem in doc_list for doc_list in folders.values()):
-                root_docs.append(doc_stem)
-        _save_folders(storage, folders)
+    # Update folder structure — ensure ALL stems are in some folder
+    # (_save_folders internally syncs _indexed_docs.json, so no separate save needed)
+    folders = _load_folders(storage)
+    root_docs = folders.setdefault(ROOT_FOLDER, [])
+    all_in_folders = set()
+    for doc_list in folders.values():
+        all_in_folders.update(doc_list)
+    for stem in all_stems:
+        if stem not in all_in_folders:
+            root_docs.append(stem)
+    _save_folders(storage, folders)
 
     if _sync_manager and indexed:
         try:

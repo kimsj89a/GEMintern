@@ -107,6 +107,8 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
                 "checklist_eval": core_logic.evaluate_checklist_item,
                 "dd_issues": core_logic.analyze_dd_issues,
                 "slide_json": core_logic.generate_slide_json,
+                "slide_outline": core_logic.generate_slide_outline,
+                "slides_from_outline": core_logic.generate_slides_from_outline,
                 "slide_regenerate": core_logic.regenerate_single_slide,
                 "refine": core_logic.refine_report_with_context,
             }
@@ -115,7 +117,7 @@ def run_analysis_task(task_id: str, task_type: str, api_key: str,
                 raise ValueError(f"Unknown task type: {task_type}")
 
             # Slide streaming mode
-            if task_type == "slide_json":
+            if task_type in ("slide_json", "slides_from_outline"):
                 def on_slide(slide_obj, index):
                     task["partial_slides"].append(slide_obj)
                     # Push via chunks list (WebSocket picks these up)

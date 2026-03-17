@@ -11,6 +11,8 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 
 # --- 디자인 상수 (IM Theme) ---
 COLOR_PRIMARY = RGBColor(30, 58, 138)      # Dark Navy
@@ -401,10 +403,32 @@ def _create_table_slide(prs, title, table_data, section_label="", page_num=0):
     return slide
 
 
-def _create_chart_placeholder(prs, title, chart_desc, section_label="", page_num=0):
-    """차트 placeholder 슬라이드."""
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
+def _detect_chart_type(chart_desc):
+    """차트 설명에서 차트 타입 추론."""
+    desc_lower = chart_desc.lower()
+    if any(k in desc_lower for k in ['pie', '파이', '비중', '구성비', '비율']):
+        return 'pie'
+    if any(k in desc_lower for k in ['line', '추이', '추세', '변화', '성장', 'trend', 'growth']):
+        return 'line'
+    return 'bar'
 
+
+_CHART_TYPE_MAP = {
+    'bar': XL_CHART_TYPE.COLUMN_CLUSTERED,
+    'line': XL_CHART_TYPE.LINE_MARKERS,
+    'pie': XL_CHART_TYPE.PIE,
+}
+
+_CHART_COLORS = [
+    RGBColor(30, 58, 138), RGBColor(204, 160, 0), RGBColor(0, 104, 201),
+    RGBColor(0, 128, 0), RGBColor(91, 44, 140), RGBColor(217, 119, 6),
+]
+
+
+def _create_chart_slide(prs, title, chart_desc, table_data=None,
+                        section_label="", page_num=0):
+    """차트 슬라이드 — 선행 테이블 데이터가 있으면 실제 차트, 없으면 스타일 플레이스홀더."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
     _add_section_label(slide, section_label)
 
     # Title
@@ -414,7 +438,64 @@ def _create_chart_placeholder(prs, title, chart_desc, section_label="", page_num
     run.text = clean_text(title)
     _set_font(run, Pt(20), bold=True, color=COLOR_PRIMARY)
 
-    # Chart placeholder box
+    # Line under title
+    line = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Inches(0.5), Inches(1.1), Inches(12.333), Emu(19050)
+    )
+    line.fill.solid()
+    line.fill.fore_color.rgb = COLOR_ACCENT
+    line.line.fill.background()
+
+    chart_type = _detect_chart_type(chart_desc)
+
+    # Try to create a real chart from preceding table data
+    if table_data and len(table_data) >= 2:
+        categories, series_list = _table_to_chart_data(table_data, chart_type)
+        if categories and series_list:
+            xl_type = _CHART_TYPE_MAP.get(chart_type, XL_CHART_TYPE.COLUMN_CLUSTERED)
+            chart_data = CategoryChartData()
+            chart_data.categories = categories
+            for s in series_list:
+                chart_data.add_series(s['name'], s['values'])
+
+            chart_frame = slide.shapes.add_chart(
+                xl_type,
+                Inches(1.0), Inches(1.3), Inches(11.333), Inches(4.8),
+                chart_data
+            )
+            chart = chart_frame.chart
+            chart.has_legend = len(series_list) > 1
+            if chart.has_legend:
+                chart.legend.include_in_layout = False
+                chart.legend.font.size = Pt(9)
+                chart.legend.font.name = DEFAULT_FONT
+            chart.font.name = DEFAULT_FONT
+            chart.font.size = Pt(9)
+
+            # Apply IM theme colors
+            try:
+                plot = chart.plots[0]
+                for idx, series in enumerate(plot.series):
+                    fill = series.format.fill
+                    fill.solid()
+                    fill.fore_color.rgb = _CHART_COLORS[idx % len(_CHART_COLORS)]
+            except Exception:
+                pass
+
+            # Chart description as subtitle
+            if chart_desc:
+                tb2 = slide.shapes.add_textbox(
+                    Inches(1.0), Inches(6.3), Inches(11.333), Inches(0.4))
+                p2 = tb2.text_frame.paragraphs[0]
+                run2 = p2.add_run()
+                run2.text = clean_text(chart_desc)
+                _set_font(run2, Pt(9), color=COLOR_MID_GREY)
+
+            _add_footer(slide, section_label, page_num)
+            return slide
+
+    # Fallback: styled placeholder
     box = slide.shapes.add_shape(
         MSO_SHAPE.ROUNDED_RECTANGLE,
         Inches(1.5), Inches(1.5), Inches(10.333), Inches(4.5)
@@ -424,18 +505,64 @@ def _create_chart_placeholder(prs, title, chart_desc, section_label="", page_num
     box.line.color.rgb = COLOR_MID_GREY
     box.line.width = Pt(1)
 
-    # Chart description text
     tb2 = slide.shapes.add_textbox(Inches(2.5), Inches(3.0), Inches(8), Inches(1.5))
     tf = tb2.text_frame
     tf.word_wrap = True
     p2 = tf.paragraphs[0]
     p2.alignment = PP_ALIGN.CENTER
     run2 = p2.add_run()
-    run2.text = f"[Chart Placeholder]\n{clean_text(chart_desc)}"
+    run2.text = f"[Chart: {chart_type.upper()}]\n{clean_text(chart_desc)}"
     _set_font(run2, Pt(14), color=COLOR_MID_GREY)
 
     _add_footer(slide, section_label, page_num)
     return slide
+
+
+def _table_to_chart_data(table_data, chart_type='bar'):
+    """테이블 데이터(2D 배열)를 차트 데이터로 변환.
+    첫 행=헤더, 첫 열=카테고리, 나머지=숫자 시리즈.
+    """
+    if not table_data or len(table_data) < 2:
+        return None, None
+
+    headers = table_data[0]
+    rows = table_data[1:]
+
+    # 숫자 컬럼 찾기
+    numeric_cols = []
+    for ci in range(1, len(headers)):
+        numeric_count = 0
+        for row in rows:
+            if ci < len(row):
+                val = re.sub(r'[,%원$₩억만]', '', str(row[ci]).strip())
+                try:
+                    float(val)
+                    numeric_count += 1
+                except ValueError:
+                    pass
+        if numeric_count >= len(rows) * 0.5:
+            numeric_cols.append(ci)
+
+    if not numeric_cols:
+        return None, None
+
+    categories = [str(row[0]).strip() for row in rows if row]
+
+    series_list = []
+    for ci in numeric_cols:
+        values = []
+        for row in rows:
+            if ci < len(row):
+                val = re.sub(r'[,%원$₩억만]', '', str(row[ci]).strip())
+                try:
+                    values.append(float(val))
+                except ValueError:
+                    values.append(0)
+            else:
+                values.append(0)
+        series_list.append({'name': str(headers[ci]).strip(), 'values': values})
+
+    return categories, series_list
 
 
 def _parse_table(lines):
@@ -462,7 +589,8 @@ def _extract_section_num(title):
     return ""
 
 
-def create_im_ppt(markdown_text, project_name="", gp_name="", date_str=""):
+def create_im_ppt(markdown_text, project_name="", gp_name="", date_str="",
+                  template_path=None):
     """
     IM 마크다운을 PPT로 변환하는 메인 함수.
 
@@ -471,13 +599,18 @@ def create_im_ppt(markdown_text, project_name="", gp_name="", date_str=""):
         project_name: 프로젝트명 (표지용)
         gp_name: GP사명 (표지용)
         date_str: 날짜 (표지용)
+        template_path: .pptx 템플릿 파일 경로 (선택)
 
     Returns:
         bytes: PPT 파일 바이트
     """
-    prs = Presentation()
-    prs.slide_width = SLIDE_WIDTH
-    prs.slide_height = SLIDE_HEIGHT
+    import os
+    if template_path and os.path.exists(template_path):
+        prs = Presentation(template_path)
+    else:
+        prs = Presentation()
+        prs.slide_width = SLIDE_WIDTH
+        prs.slide_height = SLIDE_HEIGHT
 
     # Cover slide
     _create_cover_slide(prs, project_name, gp_name, date_str)
@@ -490,6 +623,7 @@ def create_im_ppt(markdown_text, project_name="", gp_name="", date_str=""):
     current_slide_title = ""
     current_items = []
     is_first_h1 = True
+    last_table_data = None  # 차트 생성에 사용할 직전 테이블 데이터
 
     lines = markdown_text.split('\n')
     i = 0
@@ -561,6 +695,7 @@ def create_im_ppt(markdown_text, project_name="", gp_name="", date_str=""):
                 page_num += 1
                 _create_table_slide(prs, current_slide_title, table_data,
                                    current_section_label, page_num)
+                last_table_data = table_data  # 차트 생성용으로 보관
                 current_slide_title = ""  # Reset after table
             continue
 
@@ -574,8 +709,10 @@ def create_im_ppt(markdown_text, project_name="", gp_name="", date_str=""):
                 current_items = []
 
             page_num += 1
-            _create_chart_placeholder(prs, current_slide_title, chart_match.group(1),
-                                     current_section_label, page_num)
+            _create_chart_slide(prs, current_slide_title, chart_match.group(1),
+                               table_data=last_table_data,
+                               section_label=current_section_label, page_num=page_num)
+            last_table_data = None  # 사용 후 초기화
             i += 1
             continue
 
@@ -593,3 +730,143 @@ def create_im_ppt(markdown_text, project_name="", gp_name="", date_str=""):
     output = io.BytesIO()
     prs.save(output)
     return output.getvalue()
+
+
+def im_markdown_to_slide_json(markdown_text, project_name="", gp_name="", date_str=""):
+    """IM 마크다운을 NP 렌더러 호환 JSON 슬라이드 배열로 변환.
+
+    이 함수를 통해 IM 마크다운 데이터를 utils_ppt.create_deck_from_json()에
+    전달하여 NP 테마로 렌더링할 수 있습니다.
+
+    Returns:
+        dict: {"slides": [...]} NP 렌더러 호환 JSON
+    """
+    slides = []
+
+    # Cover slide
+    slides.append({
+        "slide_type": "title",
+        "title": project_name or "Information Memorandum",
+        "subtitle": gp_name or "Information Memorandum",
+    })
+
+    current_section_label = ""
+    current_slide_title = ""
+    current_items = []
+    is_first_h1 = True
+    section_num_counter = 0
+    last_table_data = None
+
+    def _flush_content():
+        nonlocal current_items, current_slide_title
+        if current_slide_title and current_items:
+            slide = {
+                "slide_type": "two_column",
+                "title": clean_text(current_slide_title),
+                "subtitle": current_section_label,
+                "left": {"items": [clean_text(item) for item in current_items]},
+            }
+            slides.append(slide)
+            current_items = []
+            current_slide_title = ""
+
+    lines = markdown_text.split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if not stripped or stripped == '---':
+            i += 1
+            continue
+
+        # H1: Section divider
+        if stripped.startswith('# ') and not stripped.startswith('## '):
+            _flush_content()
+            h1_text = stripped[2:].strip()
+
+            if is_first_h1:
+                is_first_h1 = False
+            else:
+                section_num_counter += 1
+                section_num = _extract_section_num(h1_text)
+                section_title = re.sub(r'^[IVX]+\.?\s*|^[0-9]+\.?\s*', '', h1_text).strip()
+                slides.append({
+                    "slide_type": "divider",
+                    "title": section_title or h1_text,
+                    "section_number": section_num or str(section_num_counter),
+                })
+
+            current_section_label = h1_text
+            i += 1
+            continue
+
+        # H2: New slide
+        if stripped.startswith('## '):
+            _flush_content()
+            current_slide_title = stripped[3:].strip()
+            i += 1
+            continue
+
+        # Table
+        if stripped.startswith('|'):
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                table_lines.append(lines[i])
+                i += 1
+
+            table_data = _parse_table(table_lines)
+            if table_data and len(table_data) >= 2:
+                _flush_content()
+                headers = table_data[0]
+                rows = table_data[1:]
+                slides.append({
+                    "slide_type": "data_table",
+                    "title": clean_text(current_slide_title) if current_slide_title else "",
+                    "subtitle": current_section_label,
+                    "table": {"headers": headers, "rows": rows},
+                })
+                last_table_data = table_data
+                current_slide_title = ""
+            continue
+
+        # Chart
+        chart_match = re.match(r'\[차트:\s*(.+?)\]', stripped)
+        if chart_match:
+            _flush_content()
+            chart_desc = chart_match.group(1)
+            chart_type = _detect_chart_type(chart_desc)
+
+            chart_slide = {
+                "slide_type": "chart_table",
+                "title": clean_text(current_slide_title) if current_slide_title else chart_desc,
+                "subtitle": current_section_label,
+            }
+
+            # Use preceding table data for chart
+            if last_table_data:
+                categories, series_list = _table_to_chart_data(last_table_data, chart_type)
+                if categories and series_list:
+                    chart_slide["chart"] = {
+                        "chart_type": chart_type,
+                        "categories": categories,
+                        "series": series_list,
+                    }
+                    # Also include table
+                    chart_slide["table"] = {
+                        "headers": last_table_data[0],
+                        "rows": last_table_data[1:],
+                    }
+                last_table_data = None
+
+            slides.append(chart_slide)
+            i += 1
+            continue
+
+        current_items.append(stripped)
+        i += 1
+
+    _flush_content()
+
+    return {"slides": slides}

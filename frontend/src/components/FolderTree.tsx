@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface FolderTreeProps {
   tree: Record<string, string[]>; // folder_name -> [doc_name, ...]
@@ -23,6 +24,18 @@ export default function FolderTree({
     return init;
   });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; name: string } | null>(null);
+
+  // Close context menu on outside click or scroll
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [contextMenu]);
 
   const toggleFolder = (folder: string) => {
     setExpanded((prev) => ({ ...prev, [folder]: !prev[folder] }));
@@ -60,7 +73,7 @@ export default function FolderTree({
   });
 
   return (
-    <div className="text-sm" onClick={() => setContextMenu(null)}>
+    <div className="text-sm">
       {folders.map((folder) => {
         const docs = tree[folder] || [];
         const isRoot = folder === '__root__';
@@ -138,11 +151,12 @@ export default function FolderTree({
         );
       })}
 
-      {/* Context Menu */}
-      {contextMenu && (
+      {/* Context Menu — rendered via portal to avoid parent transform issues */}
+      {contextMenu && createPortal(
         <div
-          className="fixed bg-white border border-[#E9E9E7] rounded-lg shadow-lg py-1 z-50 text-sm"
+          className="fixed bg-white border border-[#E9E9E7] rounded-lg shadow-lg py-1 z-[9999] text-sm"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.type === 'folder' && (
             <>
@@ -170,7 +184,8 @@ export default function FolderTree({
               ))}
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

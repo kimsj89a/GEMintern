@@ -1974,8 +1974,48 @@ def _render_legacy_two_column(prs, slide_title, summary_text,
 # ============================================================
 # Main Entry Point
 # ============================================================
-def create_deck_from_json(json_data):
+def _load_template(template_path=None, aspect="4:3"):
+    """Create a Presentation from template file or blank.
+
+    Args:
+        template_path: .pptx template file path (uses its masters/layouts)
+        aspect: "4:3" or "16:9" (ignored if template_path provided)
+
+    Returns:
+        Presentation object with correct dimensions
+    """
+    import os
+    if template_path and os.path.exists(template_path):
+        prs = Presentation(template_path)
+    else:
+        prs = Presentation()
+        if aspect == "16:9":
+            prs.slide_width = Inches(13.333)
+            prs.slide_height = Inches(7.5)
+        else:
+            prs.slide_width = SLIDE_WIDTH
+            prs.slide_height = SLIDE_HEIGHT
+    return prs
+
+
+def _get_blank_layout(prs):
+    """Get the blank slide layout from a presentation.
+    Tries layout index 6 (Blank) first, falls back to last layout.
+    """
+    layouts = prs.slide_layouts
+    # Try standard blank layout (index 6)
+    if len(layouts) > 6:
+        return layouts[6]
+    # Fall back to last layout (often blank in custom templates)
+    return layouts[-1]
+
+
+def create_deck_from_json(json_data, template_path=None):
     """JSON -> PPTX bytes.
+
+    Args:
+        json_data: dict or JSON string with slides array
+        template_path: optional .pptx template file to use as base
 
     Supports:
       - New NP schema (slide_type in NP template types)
@@ -1999,9 +2039,7 @@ def create_deck_from_json(json_data):
     if not slides:
         return None
 
-    prs = Presentation()
-    prs.slide_width = SLIDE_WIDTH
-    prs.slide_height = SLIDE_HEIGHT
+    prs = _load_template(template_path, aspect="4:3")
 
     page_num = 0
 
@@ -2066,3 +2104,26 @@ def create_deck_from_json(json_data):
     bio = io.BytesIO()
     prs.save(bio)
     return bio.getvalue()
+
+
+def create_im_ppt_unified(markdown_text, project_name="", gp_name="", date_str="",
+                          template_path=None, theme="np"):
+    """IM 마크다운을 NP 렌더러를 통해 PPT로 변환하는 통합 함수.
+
+    IM 마크다운을 JSON 슬라이드 포맷으로 변환 후 create_deck_from_json으로 렌더링.
+    기존 core_im_ppt.create_im_ppt()의 대안으로, NP 테마 컴포넌트를 재사용합니다.
+
+    Args:
+        markdown_text: IM 마크다운 텍스트
+        project_name: 프로젝트명
+        gp_name: GP사명
+        date_str: 날짜
+        template_path: .pptx 템플릿 경로 (선택)
+        theme: "np" or "im" (테마 선택)
+
+    Returns:
+        bytes: PPT 파일 바이트
+    """
+    from core_im_ppt import im_markdown_to_slide_json
+    slide_json = im_markdown_to_slide_json(markdown_text, project_name, gp_name, date_str)
+    return create_deck_from_json(slide_json, template_path=template_path)
