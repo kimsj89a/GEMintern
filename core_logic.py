@@ -1,14 +1,11 @@
 ﻿from google.genai import types
-from ai_client import AIClient
+from ai_client import AIClient, get_client
 import utils
 import core_rfi
 import core_chained
 import core_im
 import core_rag
 import prompts
-
-def get_client(api_key):
-    return AIClient(api_key=api_key)
 
 def extract_structure(api_key, structure_file):
     try:

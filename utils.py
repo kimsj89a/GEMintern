@@ -8,7 +8,6 @@ from docx import Document
 from docx.shared import Inches, Pt
 from docx.oxml.ns import qn
 from pptx import Presentation
-from openai import OpenAI
 import ocr
 
 # MarkItDown 지원 확인

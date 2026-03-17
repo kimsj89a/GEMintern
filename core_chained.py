@@ -5,12 +5,8 @@ Chained Prompting 모듈
 """
 
 from google.genai import types
-from ai_client import AIClient, make_status_chunk
+from ai_client import AIClient, make_status_chunk, get_client
 import prompts
-
-
-def get_client(api_key):
-    return AIClient(api_key=api_key)
 
 
 # 템플릿별 파트 정의

@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/authStore';
+import type { GenerateRequest, QaRequest, AnalysisRequest, SettingsData, SlideData } from '../types/api';
 
 const BASE = '/api';
 
@@ -42,11 +43,11 @@ export const api = {
   health: () => request<{ status: string; version?: string }>('/health'),
 
   // Settings
-  getSettings: () => request<any>('/settings'),
-  updateSettings: (data: any) =>
-    request<any>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getSettings: () => request<SettingsData>('/settings'),
+  updateSettings: (data: SettingsData) =>
+    request<SettingsData>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   applySettings: () =>
-    request<any>('/settings/apply', { method: 'POST' }),
+    request<{ ok: boolean }>('/settings/apply', { method: 'POST' }),
 
   // Projects
   listProjects: () => request<any[]>('/projects'),
@@ -119,11 +120,11 @@ export const api = {
   },
 
   // AI
-  startGenerate: (data: any) =>
+  startGenerate: (data: GenerateRequest) =>
     request<{ task_id: string }>('/generate', { method: 'POST', body: JSON.stringify(data) }),
-  startQa: (data: any) =>
+  startQa: (data: QaRequest) =>
     request<{ task_id: string }>('/qa', { method: 'POST', body: JSON.stringify(data) }),
-  startAnalysis: (data: any) =>
+  startAnalysis: (data: AnalysisRequest) =>
     request<{ task_id: string }>('/analyze', { method: 'POST', body: JSON.stringify(data) }),
   getTaskStatus: (taskId: string) => request<any>(`/tasks/${taskId}`),
   saveResearch: (data: { project_name: string; doc_name: string; content: string }) =>
@@ -143,7 +144,7 @@ export const api = {
   },
 
   // PPT
-  createPptx: async (slideJson: any) => {
+  createPptx: async (slideJson: SlideData[]) => {
     const res = await fetchWithAuth(`${BASE}/create-pptx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -155,7 +156,7 @@ export const api = {
     }
     return res.blob();
   },
-  slideRegenerate: (data: { current_slide: any; prev_slide?: any; next_slide?: any; instruction: string }) =>
+  slideRegenerate: (data: { current_slide: SlideData; prev_slide?: SlideData; next_slide?: SlideData; instruction: string }) =>
     request<{ task_id: string }>('/slide-regenerate', { method: 'POST', body: JSON.stringify(data) }),
   updatePptxHistory: async (file: File) => {
     const formData = new FormData();

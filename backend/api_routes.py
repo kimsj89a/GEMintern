@@ -1,6 +1,7 @@
 """FastAPI REST API routes for GEMintern."""
 import io
 import json
+import logging
 import os
 import uuid
 import tempfile
@@ -18,6 +19,9 @@ from backend.api_models import (
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
 from backend.database import log_usage, save_generation
+from ai_client import AIClient
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -40,28 +44,28 @@ def _save_inline_task_history(task: dict, result_text: str):
         print(f"[history] save error: {e}")
 
 
+def _get_config(settings_key: str, env_var: str = None) -> str:
+    """Generic config getter: env var first, then settings.json fallback."""
+    if env_var:
+        env_val = os.environ.get(env_var, "")
+        if env_val:
+            return env_val
+    return _load_settings().get(settings_key, "")
+
+
 def _get_api_key() -> str:
     """Return Gemini API key: env var first, then settings.json fallback."""
-    env_key = os.environ.get("GEMINI_API_KEY", "")
-    if env_key:
-        return env_key
-    return _load_settings().get("api_key", "")
+    return _get_config("api_key", "GEMINI_API_KEY")
 
 
 def _get_model_name() -> str:
     """Return model name: env var first, then settings.json fallback."""
-    env_model = os.environ.get("MODEL_NAME", "")
-    if env_model:
-        return env_model
-    return _load_settings().get("model_name", "gemini-2.5-flash")
+    return _get_config("model_name", "MODEL_NAME") or "gemini-2.5-flash"
 
 
 def _get_anthropic_api_key() -> str:
     """Return Anthropic API key: env var first, then settings.json fallback."""
-    env_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if env_key:
-        return env_key
-    return _load_settings().get("anthropic_api_key", "")
+    return _get_config("anthropic_api_key", "ANTHROPIC_API_KEY")
 
 # Max context size per model family
 MAX_CONTEXT_CHARS_GEMINI = 800_000   # ~200K tokens
@@ -230,7 +234,7 @@ else:
             if context.strip():
                 return context
     except Exception:
-        pass
+        logger.debug("Vector search subprocess failed, falling back to full doc load")
     # Fallback: 전체 문서 로드 + 예산 분배
     return _load_context_with_budget(project_name, selected_docs, owner_id=owner_id)
 
@@ -388,7 +392,7 @@ def list_projects(user: dict = Depends(get_current_user)):
         try:
             doc_count = len(core_rag.get_indexed_doc_names(r["name"], owner_id=user["id"]))
         except Exception:
-            pass
+            logger.debug("Failed to get indexed doc count for project %s", r["name"])
         # Fallback: check SQLite documents table (for Railway ephemeral FS)
         if doc_count == 0:
             with get_db() as conn2:
@@ -748,9 +752,9 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
                 try:
                     os.unlink(tmp_path)
                 except Exception:
-                    pass
+                    logger.debug("Failed to remove temp file %s", tmp_path)
     except Exception:
-        pass
+        logger.debug("MarkItDown conversion failed for %s", filename)
 
     # PDF fallback: PyMuPDF → OCR if scanned
     if ext == '.pdf':
@@ -777,7 +781,7 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
                     except Exception as ocr_err:
                         print(f"[parse] OCR failed for {filename}: {ocr_err}")
         except Exception:
-            pass
+            logger.debug("PDF fallback parsing failed for %s", filename)
 
     # DOCX fallback: python-docx
     if ext in ('.docx', '.doc'):
@@ -788,7 +792,7 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
             if text.strip():
                 return f"### [파일명: {filename}]\n{text}"
         except Exception:
-            pass
+            logger.debug("DOCX fallback parsing failed for %s", filename)
 
     # PPTX fallback: python-pptx
     if ext in ('.pptx', '.ppt'):
@@ -804,7 +808,7 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
             if text.strip():
                 return f"### [파일명: {filename}]\n{text}"
         except Exception:
-            pass
+            logger.debug("PPTX fallback parsing failed for %s", filename)
 
     # XLSX fallback: openpyxl
     if ext in ('.xlsx', '.xls'):
@@ -818,7 +822,7 @@ def _parse_file_bytes(filename: str, data: bytes, api_key: str = "") -> str:
             if text.strip():
                 return f"### [파일명: {filename}]\n{text}"
         except Exception:
-            pass
+            logger.debug("Excel fallback parsing failed for %s", filename)
 
     # 최종 fallback: UTF-8 디코드
     return data.decode("utf-8", errors="replace")
@@ -1283,9 +1287,8 @@ async def ocr_files(files: List[UploadFile] = File(...), engine: str = "gemini",
                 if engine == "claude":
                     text = _ocr_image_with_claude(data, ext)
                 elif engine == "gemini" and api_key:
-                    from google import genai
                     from google.genai import types
-                    client = genai.Client(api_key=api_key)
+                    client = AIClient(api_key=api_key)
                     mime_map = {'.png': 'image/png', '.jpg': 'image/jpeg',
                                 '.jpeg': 'image/jpeg', '.tiff': 'image/tiff',
                                 '.bmp': 'image/bmp', '.webp': 'image/webp'}
@@ -1349,9 +1352,8 @@ def _ocr_image_with_gemini_fallback(data: bytes, ext: str) -> str:
     api_key = _get_api_key()
     if not api_key:
         return "API 키가 설정되지 않았습니다. (ANTHROPIC_API_KEY 또는 GOOGLE_API_KEY)"
-    from google import genai
     from google.genai import types
-    client = genai.Client(api_key=api_key)
+    client = AIClient(api_key=api_key)
     mime_map = {'.png': 'image/png', '.jpg': 'image/jpeg',
                 '.jpeg': 'image/jpeg', '.tiff': 'image/tiff',
                 '.bmp': 'image/bmp', '.webp': 'image/webp'}
@@ -1935,8 +1937,8 @@ def nps_search(name: str = "", year: int = None, month: int = None,
                     resp = fut.result()
                     all_data.extend(resp.get("data", []))
                     total += resp.get("matchCount", 0)
-                except:
-                    pass
+                except Exception:
+                    logger.debug("NPS parallel fetch failed for one endpoint")
         all_data.sort(key=lambda r: r.get("자료생성년월", ""))
         return {
             "data": all_data,

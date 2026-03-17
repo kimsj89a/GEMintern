@@ -4,6 +4,7 @@
  * and legacy atomic elements (text_box, shape, chart, callout, icon).
  */
 import { useMemo } from 'react';
+import type { SlideData } from '../types/api';
 
 // Layout constants (4:3 ratio scaled to viewBox 400x300)
 const VB_W = 400;
@@ -48,35 +49,7 @@ const METRIC_COLORS: Record<string, string> = {
   blue: BLUE, green: GREEN, red: RED, purple: PURPLE, orange: ORANGE, gold: GOLD, navy: NAVY,
 };
 
-interface SlideData {
-  slide_type?: string;
-  type?: string;
-  title?: string;
-  subtitle?: string;
-  layout_hint?: string;
-  elements?: any[];
-  // NP template fields
-  table?: any;
-  chart?: any;
-  metrics?: any[];
-  kpi_cards?: any[];
-  risks?: any[];
-  items?: any[];
-  nodes?: any[];
-  steps?: any[];
-  left?: any;
-  right?: any;
-  left_column?: any;
-  right_column?: any;
-  banner?: any;
-  source?: string;
-  section_number?: string;
-  verdict?: string;
-  conclusion?: string;
-  content?: string;
-  blocks?: any[];
-  cards?: any[];
-}
+// SlideData imported from '../types/api'
 
 interface Props {
   slide: SlideData;
@@ -520,7 +493,7 @@ function RenderComparison({ slide }: { slide: SlideData }) {
 }
 
 function RenderNumberedBlocks({ slide }: { slide: SlideData }) {
-  const blocks = (slide as any).blocks || slide.items || [];
+  const blocks = slide.blocks || slide.items || [];
   const n = Math.min(blocks.length, 6);
   const cols = n > 1 ? 2 : 1;
   const rows = Math.ceil(n / cols);
@@ -559,7 +532,7 @@ function RenderNumberedBlocks({ slide }: { slide: SlideData }) {
 }
 
 function RenderGridCards({ slide }: { slide: SlideData }) {
-  const cards = (slide as any).cards || [];
+  const cards = slide.cards || [];
   const n = Math.min(cards.length, 4);
   const gap = 4;
   const cardW = (CW - gap * (n - 1)) / n;

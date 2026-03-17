@@ -35,7 +35,7 @@ def _get_anthropic_key() -> str:
             with open(settings_path, "r", encoding="utf-8") as f:
                 return json.load(f).get("anthropic_api_key", "")
     except Exception:
-        pass
+        logger.debug("Failed to load anthropic_api_key from settings.json")
     return ""
 
 
@@ -229,6 +229,11 @@ class AIClient:
         self.models = _ModelsNamespace(self._gemini_client, anthropic_key)
 
 
+def get_client(api_key: str) -> AIClient:
+    """Convenience factory — centralised so callers don't duplicate this."""
+    return AIClient(api_key=api_key)
+
+
 # ── 헬퍼: 상태 메시지 청크 생성 ──
 
 def make_status_chunk(text: str):
@@ -240,4 +245,5 @@ def make_status_chunk(text: str):
             )]
         )
     except Exception:
+        logger.debug("Failed to create GenerateContentResponse for status chunk, using fallback")
         return _AnthropicStreamChunk(text)
