@@ -334,8 +334,8 @@ function RenderTwoColumn({ slide }: { slide: SlideData }) {
 
 function RenderKpiDashboard({ slide }: { slide: SlideData }) {
   const metrics = slide.metrics || slide.kpi_cards || [];
-  const table = slide.table || {};
-  const chart = slide.chart || {};
+  const table = slide.table;
+  const chart = slide.chart;
   const hasTable = table?.headers?.length;
   const hasChart = chart?.categories?.length;
   const mainH = CH - (metrics.length > 0 ? 28 : 0);
