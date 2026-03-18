@@ -212,10 +212,15 @@ export default function ProjectPage() {
 
   const handleDocDelete = async (doc: string) => {
     if (!currentProject) return;
+    if (!confirm(`'${doc}' 문서를 삭제하시겠습니까?`)) return;
     try {
-      await api.trashDoc(currentProject, doc);
-      loadDocs();
-    } catch { setStatus('문서 삭제 실패'); }
+      const result = await api.trashDoc(currentProject, doc);
+      if (result?.success === false) {
+        setStatus(result.error || '문서 삭제 실패');
+      } else {
+        loadDocs();
+      }
+    } catch (err: any) { setStatus(`문서 삭제 실패: ${err.message}`); }
   };
 
   const handleFolderDelete = async (folder: string) => {
@@ -236,89 +241,114 @@ export default function ProjectPage() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-xl font-bold text-[#37352F] mb-1">프로젝트 관리</h1>
-      <p className="text-sm text-[#787774] mb-6">프로젝트별 문서를 관리합니다. 파일은 서버에 저장되어 어디서든 접근 가능합니다.</p>
+      <h1 className="text-lg font-semibold text-[#37352F] tracking-tight mb-0.5">프로젝트 관리</h1>
+      <p className="text-[13px] text-[#787774] mb-6">프로젝트별 문서를 관리합니다</p>
       <IdbMigrationBanner onDone={loadProjects} />
       {status && (
-        <div className="mb-4 px-4 py-2 rounded-lg text-sm bg-blue-50 text-blue-700 border border-blue-200">
-          {status}
-          <button className="ml-2 text-blue-400" onClick={() => setStatus('')}>x</button>
+        <div className="mb-4 px-4 py-2.5 rounded-lg text-[13px] bg-blue-50/80 text-blue-700 border border-blue-100 flex items-center justify-between">
+          <span>{status}</span>
+          <button className="text-blue-400 hover:text-blue-600 text-xs font-medium ml-3" onClick={() => setStatus('')}>닫기</button>
         </div>
       )}
       <div className="flex gap-6">
-        <div className="w-72 shrink-0">
-          <div className="flex gap-2 mb-4">
+        {/* Sidebar — Project List */}
+        <div className="w-64 shrink-0">
+          <div className="flex gap-1.5 mb-3">
             <input value={newProject} onChange={(e) => setNewProject(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
               placeholder="새 프로젝트명"
-              className="flex-1 px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-sm focus:outline-none focus:border-[#2383E2]" />
+              className="flex-1 px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-[13px] focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
             <button onClick={handleCreateProject}
-              className="px-3 py-1.5 bg-[#2383E2] text-white text-sm rounded-lg hover:bg-[#1b6ec2]">+ 생성</button>
+              className="px-3 py-1.5 bg-[#2383E2] text-white text-[13px] font-medium rounded-lg hover:bg-[#1b6ec2] transition-colors whitespace-nowrap">생성</button>
           </div>
-          <div className="mb-4">
+          <div className="mb-3 space-y-0.5">
             {projects.map((p) => {
               const name = p.name || p;
+              const isActive = currentProject === name;
               return (
                 <button key={name} onClick={() => setCurrentProject(name)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${currentProject === name ? 'bg-[#E8F3FC] text-[#2383E2] font-medium' : 'hover:bg-[#F7F6F3] text-[#37352F]'}`}>
-                  {name}
-                  {p.doc_count != null && <span className="ml-1 text-[#9B9A97] text-xs">({p.doc_count})</span>}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all flex items-center justify-between group ${isActive
+                    ? 'bg-[#2383E2]/10 text-[#2383E2] font-medium shadow-sm shadow-[#2383E2]/5'
+                    : 'hover:bg-[#F7F6F3] text-[#37352F]'}`}>
+                  <span className="truncate">{name}</span>
+                  {p.doc_count != null && (
+                    <span className={`text-[11px] tabular-nums px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#2383E2]/15 text-[#2383E2]' : 'bg-[#F0F0EE] text-[#9B9A97]'}`}>
+                      {p.doc_count}
+                    </span>
+                  )}
                 </button>
               );
             })}
             {projects.length === 0 && (
-              <div className="text-sm text-[#9B9A97] py-4 text-center">프로젝트가 없습니다.</div>
+              <div className="text-[13px] text-[#9B9A97] py-6 text-center">프로젝트를 생성하세요</div>
             )}
           </div>
           {currentProject && (
-            <div className="flex flex-col gap-1">
+            <div className="flex gap-1 border-t border-[#E9E9E7] pt-2">
               <button onClick={handleRenameProject}
-                className="w-full text-left px-3 py-1.5 text-sm text-[#37352F] hover:bg-[#F7F6F3] rounded-lg">이름 변경</button>
+                className="flex-1 px-2 py-1.5 text-[12px] text-[#787774] hover:bg-[#F7F6F3] hover:text-[#37352F] rounded-lg transition-colors">이름 변경</button>
               <button onClick={handleDeleteProject}
-                className="w-full text-left px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 rounded-lg">프로젝트 삭제</button>
+                className="flex-1 px-2 py-1.5 text-[12px] text-[#787774] hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors">삭제</button>
             </div>
           )}
           <button onClick={handleSyncAll} disabled={syncing}
-            className="w-full mt-2 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 disabled:opacity-50">
-            {syncing ? '동기화 중...' : '🔄 전체 IndexedDB → 서버 동기화'}
+            className="w-full mt-3 px-3 py-1.5 text-[11px] text-[#787774] hover:text-blue-600 hover:bg-blue-50/50 rounded-lg border border-[#E9E9E7] disabled:opacity-40 transition-colors">
+            {syncing ? '동기화 중...' : '전체 IndexedDB → 서버 동기화'}
           </button>
         </div>
-        <div className="flex-1">
+
+        {/* Main Content */}
+        <div className="flex-1 min-w-0">
           {currentProject ? (
             <>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-[#37352F]">
-                  {currentProject} <span className="text-[#9B9A97] font-normal">({docCount}건)</span>
+                <h2 className="text-[14px] font-semibold text-[#37352F] tracking-tight flex items-center gap-2">
+                  {currentProject}
+                  <span className="text-[12px] font-normal text-[#9B9A97] tabular-nums">{docCount}개 문서</span>
                 </h2>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
                     placeholder="폴더명"
-                    className="px-2 py-1 border border-[#E9E9E7] rounded text-xs w-28 focus:outline-none focus:border-[#2383E2]" />
+                    className="px-2.5 py-1 border border-[#E9E9E7] rounded-lg text-[12px] w-28 focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
                   <button onClick={handleCreateFolder}
-                    className="px-2 py-1 text-xs border border-[#E9E9E7] rounded hover:bg-[#F7F6F3]">+ 폴더</button>
+                    className="px-2.5 py-1 text-[12px] text-[#787774] border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] hover:text-[#37352F] transition-colors">+ 폴더</button>
                 </div>
               </div>
-              <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 mb-4 max-h-96 overflow-y-auto">
+
+              {/* File Tree */}
+              <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 mb-4 max-h-[420px] overflow-y-auto shadow-sm shadow-black/[0.03]">
                 {Object.keys(tree).length > 0 ? (
                   <FolderTree tree={tree} projectName={currentProject}
-                    onDocDelete={handleDocDelete} onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)} onFolderDelete={handleFolderDelete} onDocMove={handleDocMove} />
+                    onDocDelete={handleDocDelete}
+                    onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)}
+                    onFolderDelete={handleFolderDelete}
+                    onDocMove={handleDocMove} />
                 ) : (
-                  <div className="text-sm text-[#9B9A97] py-8 text-center">문서가 없습니다. 파일을 업로드하세요.</div>
+                  <div className="text-[13px] text-[#9B9A97] py-10 text-center">
+                    <div className="text-2xl mb-2 opacity-40">📂</div>
+                    문서가 없습니다. 아래에서 파일을 업로드하세요.
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-3 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg text-xs text-[#787774]">
-                <span>서버 저장: {docCount}개 문서</span>
+
+              {/* Sync bar */}
+              <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#FAFAF9] rounded-lg text-[12px] text-[#787774] border border-[#F0F0EE]">
+                <span className="tabular-nums">서버 저장: {docCount}개</span>
+                <span className="text-[#E0E0DE]">|</span>
                 <button onClick={handleForceSync} disabled={syncing}
-                  className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-blue-300">
-                  {syncing ? '동기화 중...' : 'IndexedDB → 서버 동기화'}
+                  className="text-[12px] text-blue-600 hover:text-blue-700 font-medium disabled:opacity-40 transition-colors">
+                  {syncing ? '동기화 중...' : 'IndexedDB 동기화'}
                 </button>
               </div>
+
+              {/* Upload */}
               <FilePicker onFilesSelected={handleUpload} loading={uploading} />
             </>
           ) : (
-            <div className="flex items-center justify-center h-64 text-[#9B9A97] text-sm">
-              프로젝트를 선택하거나 새로 생성하세요.
+            <div className="flex flex-col items-center justify-center h-72 text-[#9B9A97]">
+              <div className="text-3xl mb-3 opacity-30">📋</div>
+              <div className="text-[13px]">프로젝트를 선택하거나 새로 생성하세요</div>
             </div>
           )}
         </div>

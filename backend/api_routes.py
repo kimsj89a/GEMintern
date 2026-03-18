@@ -572,7 +572,26 @@ def move_doc(name: str, doc: str, req: DocMoveRequest, user: dict = Depends(get_
 def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    return core_rag.trash_document(name, doc, owner_id=user["id"])
+    from backend.database import get_db
+    result = core_rag.trash_document(name, doc, owner_id=user["id"])
+
+    # Also delete from SQLite documents table (Railway ephemeral FS 대응)
+    try:
+        with get_db() as conn:
+            project = conn.execute(
+                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                (name, user["id"])
+            ).fetchone()
+            if project:
+                doc_stem = os.path.splitext(doc)[0] if '.' in doc else doc
+                conn.execute(
+                    "DELETE FROM documents WHERE project_id = ? AND (filename = ? OR filename = ?)",
+                    (project["id"], doc, doc_stem)
+                )
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/projects/{name}/sync-texts")
