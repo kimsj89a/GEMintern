@@ -179,9 +179,39 @@ def _repair_truncated_json(raw: str) -> dict:
     return None
 
 
+def _extract_response_text(response) -> tuple[str, str | None]:
+    """응답 객체에서 텍스트와 finish_reason을 추출.
+    Returns: (text, finish_reason) — finish_reason은 None일 수 있음.
+    """
+    text = ""
+    finish_reason = None
+
+    # Gemini 응답: candidates[0].finish_reason 확인
+    try:
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            fr = getattr(candidate, 'finish_reason', None)
+            if fr is not None:
+                finish_reason = str(fr)
+    except Exception:
+        pass
+
+    # 텍스트 추출
+    try:
+        raw = response.text
+        if raw:
+            text = raw.strip()
+    except Exception:
+        pass
+
+    return text, finish_reason
+
+
 def call_update_ai(document_map: str, supplementary: str, instruction: str,
                    mode: str, api_key: str, model: str) -> dict:
     """Gemini API를 호출하여 업데이트 지시 JSON을 받는다."""
+    import logging
+    logger = logging.getLogger(__name__)
     client = AIClient(api_key=api_key)
 
     if mode == "full":
@@ -204,22 +234,60 @@ def call_update_ai(document_map: str, supplementary: str, instruction: str,
         max_output_tokens=65536,
     )
 
-    response = client.models.generate_content(
-        model=model, contents=user_prompt, config=config
-    )
+    max_retries = 3
+    last_error = None
 
-    raw = response.text.strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        # 잘린 JSON 복구 시도
-        repaired = _repair_truncated_json(raw)
-        if repaired is not None:
-            return repaired
-        raise ValueError(
-            f"AI 응답이 불완전한 JSON입니다 (출력이 잘렸을 수 있습니다). "
-            f"문서 크기를 줄이거나 부분 수정 모드를 사용해 보세요. 원본 오류: {e}"
+    for attempt in range(max_retries):
+        response = client.models.generate_content(
+            model=model, contents=user_prompt, config=config
         )
+
+        raw, finish_reason = _extract_response_text(response)
+
+        # 빈 응답 → 재시도
+        if not raw:
+            logger.warning(
+                f"AI 빈 응답 (attempt {attempt + 1}/{max_retries}, "
+                f"finish_reason={finish_reason})"
+            )
+            last_error = ValueError(
+                f"AI가 빈 응답을 반환했습니다 (finish_reason={finish_reason}). "
+                f"모델이 응답을 거부했거나 입력이 너무 클 수 있습니다."
+            )
+            continue
+
+        # JSON 파싱 시도
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            # 잘린 JSON 복구 시도
+            repaired = _repair_truncated_json(raw)
+            if repaired is not None:
+                logger.info(f"잘린 JSON 복구 성공 (finish_reason={finish_reason})")
+                return repaired
+
+            # MAX_TOKENS로 잘린 경우 → 재시도
+            if finish_reason and 'MAX_TOKENS' in finish_reason.upper():
+                logger.warning(
+                    f"출력 토큰 한도 초과로 JSON 잘림 "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                last_error = e
+                continue
+
+            # 다른 JSON 오류 → 재시도
+            logger.warning(
+                f"JSON 파싱 실패 (attempt {attempt + 1}/{max_retries}): {e}"
+            )
+            last_error = e
+            continue
+
+    # 모든 재시도 실패
+    raise ValueError(
+        f"AI 응답을 {max_retries}회 시도했으나 유효한 JSON을 받지 못했습니다. "
+        f"문서 크기를 줄이거나 부분 수정 모드를 사용해 보세요. "
+        f"마지막 오류: {last_error}"
+    )
 
 
 # ── 4. 원본 파일 직접 수정 ──
