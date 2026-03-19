@@ -596,7 +596,7 @@ def _safe_parse_json(text):
     return {"sections": []}
 
 
-def generate_slide_outline(api_key, model_name, file_context="", context_text=""):
+def generate_slide_outline(api_key, model_name, file_context="", context_text="", **_kwargs):
     """Phase 1 only: Generate PPT outline (sections + slide plans).
     Returns outline JSON for user editing before detail generation.
     """

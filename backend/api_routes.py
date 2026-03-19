@@ -130,27 +130,42 @@ def _truncate_context(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
 def _select_relevant_docs(project_name: str, query: str, model: str = "",
                            selected_docs: list = None, owner_id: int | None = None) -> str:
     """질문과 관련된 문서만 선별하여 컨텍스트 구성.
-    1순위: 벡터 검색 (인덱싱 되어 있으면)
-    2순위: 파일명/내용 키워드 매칭
-    3순위: 전체 문서 로드 + 예산 분배
+    1순위: 하이브리드 검색 (BM25 + 벡터 + RRF + 리랭킹)
+    2순위: 기존 벡터 검색 폴백
+    3순위: 키워드 매칭 + 예산 분배
+    4순위: 전체 문서 로드
     """
     max_chars = _max_chars_for_model(model)
+    api_key = _get_api_key()
 
-    # 1. 벡터 검색 시도 (유저가 문서를 선택하지 않았을 때만)
+    # 1. 하이브리드 검색 (query가 있고 문서 미선택 시)
     if query and not selected_docs:
-        api_key = _get_api_key()
+        try:
+            import core_rag_hybrid
+            hybrid_ctx = core_rag_hybrid.search_and_build_context(
+                api_key, project_name, query,
+                top_k=15, max_chars=max_chars,
+                selected_docs=selected_docs,
+            )
+            if hybrid_ctx and len(hybrid_ctx.strip()) > 100:
+                logger.info(f"RAG: hybrid search OK for '{project_name}'")
+                return _truncate_context(hybrid_ctx, max_chars)
+        except Exception as e:
+            logger.debug(f"RAG: hybrid search failed, falling back: {e}")
+
+    # 2. 기존 벡터 검색 폴백
+    if query and not selected_docs:
         vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs, owner_id=owner_id)
         if vector_ctx and len(vector_ctx.strip()) > 100:
             return _truncate_context(vector_ctx, max_chars)
 
-    # 2. 키워드 기반 문서 선별
+    # 3. 문서 로드 + 키워드 스코어링
     import core_rag
     docs_dict = core_rag.load_project_docs_dict(project_name, owner_id=owner_id)
     if not docs_dict:
         return ""
 
     if selected_docs:
-        # 확장자 무관하게 stem 비교 (서버: .txt.md, 프론트: .txt/.pdf 등)
         sel_stems = {_strip_doc_stem(s) for s in selected_docs}
         docs_dict = {k: v for k, v in docs_dict.items()
                      if _strip_doc_stem(k) in sel_stems or k in selected_docs}
@@ -158,8 +173,6 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
     if not docs_dict:
         return ""
 
-    # 유저가 명시적으로 문서를 선택했으면 키워드 스코어링 건너뜀
-    # 질문이 있고, 선택이 없을 때만 관련 문서 스코어링
     if query and not selected_docs and len(docs_dict) > 3:
         import re as _re
         query_lower = query.lower()
@@ -169,13 +182,11 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
         for name, content in docs_dict.items():
             doc_lower = (name + " " + content[:2000]).lower()
             score = sum(1 for kw in keywords if kw in doc_lower)
-            # 파일명 매치 가중치
             name_lower = name.lower()
             score += sum(3 for kw in keywords if kw in name_lower)
             scored.append((name, content, score))
 
         scored.sort(key=lambda x: -x[2])
-        # 상위 문서만 선별 (예산 내, 최소 1개 보장)
         selected = []
         total = 0
         for name, content, score in scored:
@@ -185,7 +196,6 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
             total += len(content)
         docs_dict = dict(selected)
 
-    # 예산 분배
     return _load_context_with_budget_from_dict(docs_dict, max_chars)
 
 
@@ -676,6 +686,20 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
                          parsed_text = excluded.parsed_text, size = excluded.size""",
                     (project["id"], "__root__", fn, parsed_text, size),
                 )
+
+    # 자동 BM25 인덱싱 (백그라운드)
+    if texts:
+        import threading
+        def _auto_index():
+            try:
+                all_docs = core_rag.load_project_docs_dict(name, owner_id=user["id"])
+                if all_docs:
+                    import core_rag_bm25
+                    core_rag_bm25.build_index(name, all_docs)
+                    logger.info(f"Auto BM25 index built for '{name}'")
+            except Exception as e:
+                logger.warning(f"Auto BM25 index failed for '{name}': {e}")
+        threading.Thread(target=_auto_index, daemon=True).start()
 
     return result
 
@@ -1360,14 +1384,40 @@ def delete_history(gen_id: int, user: dict = Depends(get_current_user)):
 @router.post("/projects/{name}/reindex")
 def reindex_project(name: str, force: bool = False, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
-    """프로젝트 문서를 벡터 DB에 증분 인덱싱 (서브프로세스에서 실행, segfault 격리).
+    """프로젝트 문서를 인덱싱 (BM25 + 벡터DB + Gemini Files).
 
     force=True면 전체 재인덱싱, 기본은 변경분만 처리.
     """
     import subprocess, sys, json as _json
+    import core_rag
     api_key = _get_api_key()
     if not api_key:
         return {"success": False, "error": "API Key가 설정되지 않았습니다."}
+
+    results = {}
+
+    # 1. BM25 인덱싱 (인프로세스, 빠름)
+    try:
+        import core_rag_bm25
+        docs_dict = core_rag.load_project_docs_dict(name, owner_id=user["id"])
+        if docs_dict:
+            bm25_result = core_rag_bm25.build_index(name, docs_dict)
+            results["bm25"] = {"success": True, **bm25_result}
+        else:
+            results["bm25"] = {"success": False, "error": "문서 없음"}
+    except Exception as e:
+        results["bm25"] = {"success": False, "error": str(e)}
+
+    # 2. Gemini File Search 업로드 (선택적)
+    try:
+        import core_rag_gemini
+        if docs_dict:
+            gemini_result = core_rag_gemini.upload_project_docs(api_key, name, docs_dict)
+            results["gemini_files"] = {"success": True, **gemini_result}
+    except Exception as e:
+        results["gemini_files"] = {"success": False, "error": str(e)}
+
+    # 3. 벡터DB 인덱싱 (서브프로세스, segfault 격리)
     try:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         script = f"""
@@ -1382,11 +1432,14 @@ print(json.dumps(result, ensure_ascii=False))
             capture_output=True, text=True, timeout=300, cwd=base,
         )
         if proc.returncode == 0 and proc.stdout.strip():
-            return _json.loads(proc.stdout.strip().split("\n")[-1])
-        error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-        return {"success": False, "error": error_msg}
+            results["vector"] = _json.loads(proc.stdout.strip().split("\n")[-1])
+        else:
+            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
+            results["vector"] = {"success": False, "error": error_msg}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        results["vector"] = {"success": False, "error": str(e)}
+
+    return {"success": True, "results": results}
 
 
 @router.get("/projects/{name}/vector-stats")
