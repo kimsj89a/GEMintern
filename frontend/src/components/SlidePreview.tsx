@@ -692,17 +692,122 @@ function ElementRect({ el }: { el: any }) {
   );
 }
 
+/* ===== Dynamic Element Renderer (좌표 기반 elements[]) ===== */
+// 인치 → SVG viewBox 좌표 변환 (10" = 400px, 5.63" ≈ 300px)
+const INCH_X = 40;  // 1 inch = 40px in viewBox
+const INCH_Y = 53.3; // 1 inch ≈ 53.3px in viewBox (300/5.63)
+
+function DynamicElement({ el }: { el: any }) {
+  const x = (el.x ?? 0) * INCH_X;
+  const y = (el.y ?? 0) * INCH_Y;
+  const w = (el.w ?? 1) * INCH_X;
+  const h = (el.h ?? 0.5) * INCH_Y;
+
+  switch (el.type) {
+    case 'text': {
+      const fs = Math.min((el.fontSize ?? 11) * 0.4, 12);
+      const color = el.color ? `#${el.color}` : '#2D2D2D';
+      const textStr = Array.isArray(el.text)
+        ? el.text.map((r: any) => typeof r === 'string' ? r : r.text || '').join('')
+        : (el.text || '');
+      const fill = el.fill ? `#${el.fill}` : undefined;
+      return (
+        <g>
+          {fill && <rect x={x} y={y} width={w} height={h} fill={fill} rx={2} stroke={el.borderColor ? `#${el.borderColor}` : undefined} strokeWidth={el.borderColor ? 0.5 : 0} />}
+          <text x={x + 2} y={y + fs + 2} fontSize={fs} fontWeight={el.bold ? 'bold' : 'normal'} fill={color} opacity={0.9}>
+            {truncate(textStr, Math.floor(w / (fs * 0.5)))}
+          </text>
+        </g>
+      );
+    }
+    case 'shape': {
+      const fill = el.fill ? `#${el.fill}` : '#F6F6F6';
+      return <rect x={x} y={y} width={w} height={h} fill={fill} rx={el.rectRadius ? el.rectRadius * 4 : 1} />;
+    }
+    case 'table': {
+      const rows = el.rows || [];
+      if (rows.length === 0) return null;
+      const cols = rows[0]?.length || 1;
+      const colW = w / cols;
+      const rowH = Math.min(h / rows.length, 10);
+      return (
+        <g>
+          {rows.slice(0, 8).map((row: any[], ri: number) => (
+            <g key={ri}>
+              <rect x={x} y={y + ri * rowH} width={w} height={rowH}
+                fill={ri === 0 ? '#1B2A4A' : ri % 2 === 0 ? '#F2F5F7' : WHITE} />
+              {row.slice(0, 6).map((cell: any, ci: number) => {
+                const cellText = typeof cell === 'object' ? (cell.text || '') : String(cell ?? '');
+                return (
+                  <text key={ci} x={x + ci * colW + colW / 2} y={y + ri * rowH + rowH * 0.65}
+                    textAnchor="middle" fontSize={3.5} fill={ri === 0 ? WHITE : '#2D2D2D'}
+                    fontWeight={ri === 0 ? 'bold' : 'normal'}>
+                    {truncate(cellText, Math.floor(colW / 3))}
+                  </text>
+                );
+              })}
+            </g>
+          ))}
+        </g>
+      );
+    }
+    case 'chart': {
+      const data = el.data || [];
+      const values = data[0]?.values || [];
+      const maxVal = Math.max(...values.map(Number).filter((v: number) => !isNaN(v)), 1);
+      return (
+        <g>
+          <rect x={x} y={y} width={w} height={h} fill={WHITE} stroke="#E0E0E0" strokeWidth={0.5} rx={2} />
+          {values.slice(0, 8).map((v: number, i: number) => {
+            const n = Math.min(values.length, 8);
+            const barW = (w - 8) / n - 2;
+            const barH = ((Number(v) || 0) / maxVal) * (h - 12);
+            return <rect key={i} x={x + 4 + i * (barW + 2)} y={y + h - 4 - barH} width={barW} height={barH} fill="#1B2A4A" opacity={0.7} rx={1} />;
+          })}
+        </g>
+      );
+    }
+    case 'kpi_card': {
+      return (
+        <g>
+          <rect x={x} y={y} width={w} height={h} fill={WHITE} stroke="#E0E0E0" strokeWidth={0.5} rx={3} />
+          <rect x={x} y={y + 1} width={2} height={h - 2} fill="#86BC25" rx={1} />
+          <text x={x + 5} y={y + h * 0.35} fontSize={4} fill="#6B6B6B">{truncate(el.label || '', 12)}</text>
+          <text x={x + 5} y={y + h * 0.65} fontSize={7} fontWeight="bold" fill="#1B2A4A">{truncate(el.value || '', 10)}</text>
+          {el.change && <text x={x + w - 3} y={y + h * 0.35} textAnchor="end" fontSize={3.5} fontWeight="bold"
+            fill={String(el.change).includes('+') ? '#86BC25' : '#C4262E'}>{truncate(el.change, 8)}</text>}
+        </g>
+      );
+    }
+    case 'callout': {
+      return (
+        <g>
+          <rect x={x} y={y} width={w} height={h} fill="#F6F6F6" stroke="#E0E0E0" strokeWidth={0.5} rx={2} />
+          <rect x={x} y={y + 1} width={2} height={h - 2} fill={el.accentColor ? `#${el.accentColor}` : '#86BC25'} />
+          <text x={x + 5} y={y + h * 0.35} fontSize={3.5} fill="#6B6B6B">{truncate(el.label || '', 15)}</text>
+          <text x={x + 5} y={y + h * 0.65} fontSize={7} fontWeight="bold" fill="#1B2A4A">{truncate(el.value || '', 12)}</text>
+        </g>
+      );
+    }
+    case 'divider':
+      return <rect x={x} y={y} width={w} height={1} fill="#E0E0E0" />;
+    default:
+      return null;
+  }
+}
+
 /* ===== Main Component ===== */
 export default function SlidePreview({ slide, selected, onClick, width = 280 }: Props) {
   const sType = slide.slide_type || slide.type || 'content';
-  const height = width * (3 / 4); // 4:3 ratio
+  const height = width * (9 / 16); // 16:9 ratio for dynamic, 4:3 for NP
   const isNpTemplate = NP_TEMPLATE_TYPES.has(sType);
+  const isDynamic = !!(slide as any).elements?.length;
 
   const layoutElements = useMemo(() => {
-    if (isNpTemplate || !slide.elements?.length) return [];
+    if (isNpTemplate || isDynamic || !slide.elements?.length) return [];
     const hint = slide.layout_hint || 'auto';
     return computeLayout(slide.elements, hint);
-  }, [slide, isNpTemplate]);
+  }, [slide, isNpTemplate, isDynamic]);
 
   return (
     <div
@@ -712,8 +817,16 @@ export default function SlidePreview({ slide, selected, onClick, width = 280 }: 
       style={{ width, height }}
       onClick={onClick}
     >
-      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" height="100%">
-        {isNpTemplate ? (
+      <svg viewBox={`0 0 ${VB_W} ${isDynamic ? 225 : VB_H}`} width="100%" height="100%">
+        {isDynamic ? (
+          /* ===== 좌표 기반 동적 렌더링 ===== */
+          <>
+            <rect width={VB_W} height={225} fill={`#${(slide as any).background || 'FFFFFF'}`} />
+            {((slide as any).elements || []).map((el: any, i: number) => (
+              <DynamicElement key={i} el={el} />
+            ))}
+          </>
+        ) : isNpTemplate ? (
           <>
             {sType === 'title' && <RenderTitle slide={slide} />}
             {sType === 'divider' && <RenderDivider slide={slide} />}
@@ -729,42 +842,11 @@ export default function SlidePreview({ slide, selected, onClick, width = 280 }: 
           </>
         ) : (
           <>
-            {/* Legacy content slides */}
-            {sType === 'section' ? (
-              <>
-                <rect width={VB_W} height={VB_H} fill={NAVY} />
-                <text x={VB_W / 2} y={VB_H * 0.5} textAnchor="middle" fontSize={11} fontWeight="bold" fill={WHITE}>
-                  {truncate(slide.title || '', 30)}
-                </text>
-              </>
-            ) : (
-              <>
-                <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
-                <NpHeader title={slide.title || ''} />
-                {layoutElements.map((el: any, i: number) => <ElementRect key={i} el={el} />)}
-                {/* Layout hint badge */}
-                {slide.layout_hint && (
-                  <g>
-                    <rect x={VB_W - 55} y={VB_H - 22} width={50} height={10} fill={NAVY} rx={3} opacity={0.7} />
-                    <text x={VB_W - 30} y={VB_H - 14} textAnchor="middle" fontSize={4} fill={WHITE}>
-                      {slide.layout_hint}
-                    </text>
-                  </g>
-                )}
-                <NpFooter />
-              </>
-            )}
+            <rect width={VB_W} height={VB_H} fill={OFF_WHITE} />
+            <NpHeader title={slide.title || ''} />
+            {layoutElements.map((el: any, i: number) => <ElementRect key={i} el={el} />)}
+            <NpFooter />
           </>
-        )}
-
-        {/* Slide type badge (bottom-left) */}
-        {isNpTemplate && sType !== 'title' && sType !== 'divider' && (
-          <g>
-            <rect x={3} y={VB_H - 22} width={40} height={9} fill={GOLD} rx={3} opacity={0.85} />
-            <text x={23} y={VB_H - 15} textAnchor="middle" fontSize={3.5} fill={WHITE} fontWeight="bold">
-              {sType}
-            </text>
-          </g>
         )}
       </svg>
     </div>
