@@ -37,3 +37,4 @@ data/
 
 # Build artifacts
 frontend/dist/
+node_modules/

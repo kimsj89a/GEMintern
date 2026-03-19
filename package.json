@@ -1,0 +1,27 @@
+{
+  "name": "gemintern",
+  "version": "1.0.0",
+  "description": "",
+  "main": "generate_pptx.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kimsj89a/GEMintern.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/kimsj89a/GEMintern/issues"
+  },
+  "homepage": "https://github.com/kimsj89a/GEMintern#readme",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

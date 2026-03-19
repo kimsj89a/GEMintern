@@ -1239,6 +1239,49 @@ def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
     )
 
 
+@router.post("/create-ib-pptx")
+def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
+    """IB 아웃라인 JSON → pptxgenjs로 고품질 PPT 생성."""
+    import subprocess, sys, tempfile
+
+    slide_json = req.slide_json
+    if isinstance(slide_json, str):
+        slide_json = json.loads(slide_json)
+
+    # JSON을 임시 파일에 저장
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", dir=base, delete=False, encoding="utf-8"
+    ) as f:
+        json.dump(slide_json, f, ensure_ascii=False, indent=2)
+        json_path = f.name
+
+    pptx_path = json_path.replace(".json", ".pptx")
+
+    try:
+        # Node.js로 pptxgenjs 실행
+        result = subprocess.run(
+            ["node", os.path.join(base, "generate_pptx.js"), json_path, pptx_path],
+            capture_output=True, text=True, timeout=30, cwd=base,
+        )
+        if result.returncode != 0:
+            error = result.stderr.strip() or result.stdout.strip()
+            raise HTTPException(status_code=500, detail=f"pptxgenjs 에러: {error}")
+
+        with open(pptx_path, "rb") as f:
+            pptx_bytes = f.read()
+
+        return Response(
+            content=pptx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": "attachment; filename=ib_presentation.pptx"},
+        )
+    finally:
+        for p in [json_path, pptx_path]:
+            if os.path.exists(p):
+                os.remove(p)
+
+
 @router.post("/slide-regenerate")
 def slide_regenerate(req: SlideRegenerateRequest, user: dict = Depends(get_current_user)):
     """단일 슬라이드 재생성 (비동기 task)."""

@@ -2405,3 +2405,99 @@ risk_matrix, timeline_flow, comparison
 5. If the user asks for KPI cards, use kpi_dashboard with metrics array.
 6. Language: match the existing slide language.
 """
+
+# ── IB PPT Outline (pptxgenjs 16종 마스터 대응) ──
+IB_PPTX_OUTLINE_PROMPT = """You are a senior investment banking analyst creating a presentation outline.
+
+## Task
+Based on the retrieved documents below, create a structured JSON outline for an investment banking presentation deck.
+
+## Retrieved Context
+{context}
+
+## User Request
+{query}
+
+## Output Format
+Return ONLY a valid JSON object with this structure:
+
+{{
+  "deck_title": "프레젠테이션 제목",
+  "subtitle": "부제목 (예: 투자 검토 보고서)",
+  "date": "2025년 X월",
+  "confidential": true,
+  "slides": [
+    {{
+      "slide_number": 1,
+      "slide_type": "cover",
+      "title": "슬라이드 제목",
+      "subtitle": "부제목 (옵션)",
+      "content": {{
+        // slide_type별 다른 구조 (아래 참조)
+      }},
+      "speaker_notes": "발표자 노트 (옵션)"
+    }}
+  ]
+}}
+
+## Slide Type Schemas (16종)
+
+### cover
+{{"company_name": "...", "deal_name": "...", "date": "...", "prepared_by": "..."}}
+
+### executive_summary
+{{"highlights": ["핵심 포인트 1", "..."], "key_metrics": [{{"label": "매출", "value": "1,200억", "change": "+25%"}}]}}
+
+### company_overview
+{{"description": "사업 설명", "business_segments": [{{"name": "세그먼트명", "description": "...", "revenue_share": "40%"}}], "key_facts": [{{"label": "설립", "value": "2020년"}}]}}
+
+### market_analysis
+{{"paragraphs": ["시장 분석 본문..."], "bullet_points": ["핵심 포인트..."]}}
+
+### financial_summary
+{{"chart_type": "bar|line", "chart_data": {{"labels": ["FY22", "FY23", "FY24"], "datasets": [{{"name": "매출", "values": [800, 1000, 1200]}}]}}, "key_metrics": [{{"label": "...", "value": "..."}}], "footnotes": ["..."]}}
+
+### financial_projection
+동일 구조 (financial_summary)
+
+### valuation
+{{"paragraphs": ["밸류에이션 분석..."], "bullet_points": ["DCF: xxx억", "Comps: xxx억"]}}
+
+### deal_structure
+{{"investment_amount": "200억", "instrument": "RCPS", "terms": [{{"item": "전환가", "detail": "10,000원"}}]}}
+
+### risk_factors
+{{"risks": [{{"category": "사업 리스크", "items": [{{"risk": "...", "mitigation": "...", "severity": "High|Medium|Low"}}]}}]}}
+
+### kpi_dashboard
+{{"metrics": [{{"label": "...", "value": "...", "trend": "up|down|flat", "description": "..."}}]}}
+
+### comparison_table
+{{"headers": ["항목", "당사", "경쟁사A"], "rows": [["매출", "1,200억", "800억"]]}}
+
+### timeline
+{{"events": [{{"date": "2020.03", "title": "...", "description": "..."}}]}}
+
+### key_metrics
+{{"metrics": [{{"label": "...", "value": "...", "subtitle": "..."}}]}}
+
+### text_heavy
+{{"paragraphs": ["본문 텍스트..."], "bullet_points": ["..."]}}
+
+### toc
+{{"paragraphs": ["목차"], "bullet_points": ["1. Executive Summary", "2. 회사 개요", ...]}}
+
+### closing
+{{"message": "감사합니다", "contact": [{{"name": "...", "title": "...", "email": "..."}}]}}
+
+## Rules
+1. 슬라이드는 10-18장이 적절합니다.
+2. 첫 슬라이드는 반드시 cover, 마지막은 closing입니다.
+3. Executive Summary는 2번째 슬라이드에 배치하세요.
+4. 검색된 자료에 없는 내용은 추가하지 마세요.
+5. 숫자/데이터는 원본 그대로 사용하세요.
+6. 차트 데이터는 정확한 숫자 배열로 제공하세요.
+7. 한국어로 작성하되, 금융 용어는 영어 그대로 사용하세요.
+8. speaker_notes는 발표 시 참고 내용을 간략히 포함하세요.
+
+Return ONLY the JSON object. No markdown code blocks, no explanation."""
