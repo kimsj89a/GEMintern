@@ -4,7 +4,7 @@
  * AI가 각 슬라이드의 요소 배치(x, y, w, h)를 직접 결정.
  * 고정 마스터 없이, 콘텐츠에 따라 자유 레이아웃 구성.
  *
- * 요소 타입: text, table, chart, shape, kpi_card
+ * 요소 타입: text, table, chart, shape, kpi_card, callout, divider, icon_text
  */
 
 const pptxgen = require("pptxgenjs");
@@ -16,18 +16,21 @@ const _pres = new pptxgen();
 const SHAPES = _pres.shapes;
 const CHARTS = _pres.charts;
 
-// ── 기본 팔레트 ──
+// ── 기본 팔레트 (Deloitte-inspired design system) ──
 const PALETTE = {
-  primary: "1E2761",
-  secondary: "CADCFC",
-  accent: "F96167",
-  bg_dark: "0F1535",
-  bg_light: "F8F9FC",
-  text_dark: "1A1A2E",
+  primary: "1B2A4A",
+  accent: "86BC25",
+  secondary: "0076A8",
+  alert: "C4262E",
+  bg_dark: "1B2A4A",
+  bg_light: "F6F6F6",
+  text_dark: "2D2D2D",
+  text_secondary: "6B6B6B",
   text_light: "FFFFFF",
-  chart_colors: ["1E2761", "3D5A99", "6B8BC4", "F96167", "F9E795", "2C5F2D"],
-  gray: "8E8E93",
-  border: "D1D5DB",
+  chart_colors: ["1B2A4A", "0076A8", "86BC25", "C4262E", "F2A900", "6B6B6B"],
+  gray: "6B6B6B",
+  border: "E0E0E0",
+  table_alt: "F2F5F7",
   card_bg: "FFFFFF",
 };
 
@@ -104,11 +107,21 @@ function renderTable(slide, el) {
     valign: "middle",
   };
 
+  const totalRow = el.totalRow ?? false;
+  const lastRowIdx = rows.length - 1;
+
   const tableRows = rows.map((row, ri) => {
     return row.map(cell => {
       const cellText = cell?.text ?? cell?.toString?.() ?? String(cell ?? "");
       const isHeader = ri === 0;
+      const isTotalRow = totalRow && ri === lastRowIdx;
       const cellOpts = isHeader ? { ...headerOpts } : { ...bodyOpts };
+
+      // totalRow: bold + top border
+      if (isTotalRow) {
+        cellOpts.bold = true;
+        cellOpts.border = [{ pt: 1.5, color: PALETTE.primary }, null, null, null];
+      }
 
       // 셀별 커스텀
       if (cell && typeof cell === "object") {
@@ -118,9 +131,9 @@ function renderTable(slide, el) {
         if (cell.align) cellOpts.align = cell.align;
       }
 
-      // 짝수행 배경
-      if (!isHeader && ri % 2 === 0) {
-        cellOpts.fill = cellOpts.fill || { color: "F0F4FF" };
+      // 짝수행 배경 (totalRow 제외)
+      if (!isHeader && !isTotalRow && ri % 2 === 0) {
+        cellOpts.fill = cellOpts.fill || { color: PALETTE.table_alt };
       }
 
       return { text: cellText, options: cellOpts };
@@ -167,7 +180,7 @@ function renderChart(slide, el) {
   const opts = {
     x: el.x ?? 0.5,
     y: el.y ?? 1.5,
-    w: el.w ?? 5,
+    w: el.w ?? 6,
     h: el.h ?? 3.5,
     chartColors: el.colors ?? PALETTE.chart_colors,
     showTitle: !!el.title,
@@ -181,10 +194,27 @@ function renderChart(slide, el) {
     catAxisLabelFontSize: 8,
     valAxisLabelFontSize: 8,
     catAxisOrientation: el.catAxisOrientation ?? "minMax",
+    valAxisHidden: el.valAxisHidden ?? false,
+    catAxisHidden: el.catAxisHidden ?? false,
   };
 
-  if (chartType === "bar" && el.barDir === "col") {
-    opts.barDir = "col";
+  // Column chart (vertical bars)
+  if (chartType === "bar") {
+    opts.barDir = el.barDir ?? "bar";
+  }
+
+  // Axis titles
+  if (el.showCatAxisTitle && el.catAxisTitle) {
+    opts.showCatAxisTitle = true;
+    opts.catAxisTitle = el.catAxisTitle;
+    opts.catAxisTitleFontSize = el.catAxisTitleFontSize ?? 9;
+    opts.catAxisTitleColor = PALETTE.text_secondary;
+  }
+  if (el.showValAxisTitle && el.valAxisTitle) {
+    opts.showValAxisTitle = true;
+    opts.valAxisTitle = el.valAxisTitle;
+    opts.valAxisTitleFontSize = el.valAxisTitleFontSize ?? 9;
+    opts.valAxisTitleColor = PALETTE.text_secondary;
   }
 
   slide.addChart(pptxType, chartData, opts);
@@ -249,6 +279,85 @@ function renderKpiCard(slide, el) {
   }
 }
 
+function renderCallout(slide, el) {
+  const x = el.x ?? 0.5;
+  const y = el.y ?? 1.5;
+  const w = el.w ?? 3;
+  const h = el.h ?? 1.0;
+  const accentColor = el.accentColor ?? PALETTE.accent;
+
+  // Background rounded rect
+  slide.addShape(SHAPES.ROUNDED_RECTANGLE, {
+    x, y, w, h,
+    fill: { color: el.fill ?? PALETTE.bg_light },
+    line: { color: PALETTE.border, width: 0.5 },
+    rectRadius: 0.08,
+  });
+
+  // Left accent bar (4px colored strip)
+  slide.addShape(SHAPES.RECTANGLE, {
+    x: x, y: y + 0.05, w: 0.06, h: h - 0.1,
+    fill: { color: accentColor },
+  });
+
+  // Label text (8pt gray)
+  if (el.label) {
+    slide.addText(el.label, {
+      x: x + 0.2, y: y + 0.08, w: w - 0.35, h: 0.22,
+      fontSize: 8, fontFace: "Calibri", color: PALETTE.text_secondary,
+    });
+  }
+
+  // Value text (20pt bold navy)
+  slide.addText(el.value || "", {
+    x: x + 0.2, y: y + (el.label ? 0.28 : 0.1), w: w - 0.35, h: 0.4,
+    fontSize: el.valueFontSize ?? 20, fontFace: "Calibri",
+    color: el.valueColor ?? PALETTE.primary, bold: true,
+  });
+
+  // Optional subtitle (9pt)
+  if (el.subtitle) {
+    slide.addText(el.subtitle, {
+      x: x + 0.2, y: y + h - 0.3, w: w - 0.35, h: 0.22,
+      fontSize: 9, fontFace: "Calibri", color: PALETTE.text_secondary,
+    });
+  }
+}
+
+function renderDivider(slide, el) {
+  slide.addShape(SHAPES.LINE, {
+    x: el.x ?? 0.5,
+    y: el.y ?? 2.5,
+    w: el.w ?? 9,
+    h: 0.01,
+    line: { color: el.color ?? PALETTE.border, width: el.width ?? 0.5 },
+  });
+}
+
+function renderIconText(slide, el) {
+  const x = el.x ?? 0.5;
+  const y = el.y ?? 1.5;
+  const iconW = el.iconWidth ?? 0.35;
+  const w = el.w ?? 4;
+  const h = el.h ?? 0.35;
+
+  // Icon/emoji character
+  slide.addText(el.icon || "", {
+    x: x, y: y, w: iconW, h: h,
+    fontSize: el.iconFontSize ?? 14, fontFace: "Segoe UI Emoji",
+    align: "center", valign: "middle",
+  });
+
+  // Text beside icon
+  slide.addText(el.text || "", {
+    x: x + iconW, y: y, w: w - iconW, h: h,
+    fontSize: el.fontSize ?? 11, fontFace: el.fontFace ?? "Calibri",
+    color: el.color ?? PALETTE.text_dark,
+    bold: el.bold ?? false,
+    valign: "middle",
+  });
+}
+
 // ── 슬라이드 렌더링 ──
 
 function renderSlide(pres, slideData, slideNum, totalSlides) {
@@ -287,6 +396,15 @@ function renderSlide(pres, slideData, slideNum, totalSlides) {
         case "kpi_card":
           renderKpiCard(slide, el);
           break;
+        case "callout":
+          renderCallout(slide, el);
+          break;
+        case "divider":
+          renderDivider(slide, el);
+          break;
+        case "icon_text":
+          renderIconText(slide, el);
+          break;
         default:
           // 알 수 없는 타입은 텍스트로 폴백
           if (el.text) renderText(slide, el);
@@ -296,11 +414,20 @@ function renderSlide(pres, slideData, slideNum, totalSlides) {
     }
   }
 
-  // 페이지 번호
-  slide.addText(`${slideNum} / ${totalSlides}`, {
+  // 페이지 번호 (clean format, right-aligned)
+  slide.addText(`${slideNum}`, {
     x: 9.0, y: 5.25, w: 0.8, h: 0.3,
     fontSize: 8, color: PALETTE.gray, fontFace: "Calibri", align: "right",
   });
+
+  // Confidential footer
+  if (slideData.confidential) {
+    slide.addText("CONFIDENTIAL", {
+      x: 0, y: 5.35, w: 10, h: 0.2,
+      fontSize: 7, color: PALETTE.gray, fontFace: "Calibri",
+      align: "center", italic: true,
+    });
+  }
 
   // 스피커 노트
   if (slideData.speaker_notes) {

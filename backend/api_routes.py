@@ -1241,20 +1241,12 @@ def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
 
 @router.post("/create-ib-pptx")
 def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
-    """좌표 기반 동적 PPT 생성 (pptxgenjs).
-    slides[].elements[]에 x/y/w/h 좌표가 있으면 dynamic 렌더러,
-    없으면 기존 slide_masters 렌더러 사용.
-    """
+    """좌표 기반 동적 PPT 생성 (pptxgenjs). AI가 요소 배치를 직접 결정."""
     import subprocess, sys, tempfile
 
     slide_json = req.slide_json
     if isinstance(slide_json, str):
         slide_json = json.loads(slide_json)
-
-    # dynamic vs master 판별: 첫 슬라이드에 elements가 있으면 dynamic
-    slides = slide_json.get("slides", [])
-    use_dynamic = any(s.get("elements") for s in slides)
-    renderer_script = "generate_pptx_dynamic.js" if use_dynamic else "generate_pptx.js"
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with tempfile.NamedTemporaryFile(
@@ -1267,7 +1259,7 @@ def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user
 
     try:
         result = subprocess.run(
-            ["node", os.path.join(base, renderer_script), json_path, pptx_path],
+            ["node", os.path.join(base, "generate_pptx_dynamic.js"), json_path, pptx_path],
             capture_output=True, text=True, timeout=30, cwd=base,
         )
         if result.returncode != 0:

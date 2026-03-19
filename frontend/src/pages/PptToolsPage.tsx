@@ -276,24 +276,24 @@ export default function PptToolsPage() {
     }
   }, [currentProject, context, selectedDocs]);
 
-  // --- Download PPTX (pptxgenjs IB 마스터 사용) ---
+  // --- Download PPTX (좌표 기반 동적 렌더러) ---
   const handleDownload = useCallback(async () => {
     try {
-      // IB 아웃라인 포맷으로 변환하여 pptxgenjs 렌더링
-      const deckJson = {
-        deck_title: currentProject || '발표자료',
-        subtitle: 'Investment Presentation',
-        date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' }),
-        confidential: true,
-        slides: slides.map((s, i) => ({
-          slide_number: i + 1,
-          slide_type: s.slide_type || s.type || 'text_heavy',
-          title: s.title || `Slide ${i + 1}`,
-          subtitle: s.subtitle || '',
-          content: s,
-          speaker_notes: '',
-        })),
-      };
+      // slides가 이미 elements[] 기반이면 그대로, 아니면 변환
+      const hasElements = slides.some((s: any) => s.elements);
+      const deckJson = hasElements
+        ? { deck_title: currentProject || '발표자료', slides }
+        : {
+            deck_title: currentProject || '발표자료',
+            slides: slides.map((s, i) => ({
+              title: s.title || `Slide ${i + 1}`,
+              background: 'FFFFFF',
+              elements: [
+                { type: 'text', x: 0.5, y: 0.3, w: 9, h: 0.5, text: s.title || '', fontSize: 16, bold: true, color: '1B2A4A' },
+                { type: 'text', x: 0.5, y: 1.0, w: 9, h: 4, text: JSON.stringify(s, null, 2), fontSize: 9, color: '2D2D2D' },
+              ],
+            })),
+          };
       const blob = await api.createIbPptx(deckJson);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -302,18 +302,7 @@ export default function PptToolsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      // Fallback: 기존 python-pptx 방식
-      try {
-        const blob = await api.createPptx(slides);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = generateFilename('발표자료', 'pptx', currentProject);
-        a.click();
-        URL.revokeObjectURL(url);
-      } catch (err2: any) {
-        setError(`PPTX 다운로드 실패: ${err2.message}`);
-      }
+      setError(`PPTX 다운로드 실패: ${err.message}`);
     }
   }, [slides, currentProject]);
 
