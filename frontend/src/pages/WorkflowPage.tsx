@@ -37,7 +37,7 @@ function computeHighlightedMarkdown(oldText: string, newText: string): string {
 // Server-first: no IDB imports needed
 
 /* ─── Types ─── */
-type WriteMode = 'report' | 'ppt';
+// WriteMode 제거 — 보고서만 지원
 type Phase2View = 'choice' | 'templates' | 'generate' | 'refine' | 'result';
 
 /* ─── Section definitions for section-selectable templates ─── */
@@ -75,10 +75,7 @@ const REPORT_TEMPLATES = [
   { id: 'dd_report', label: 'DD 보고서', desc: '실사결과보고서', icon: '🔬' },
 ];
 
-const PPT_TEMPLATES = [
-  { id: 'presentation', label: '발표자료', desc: '2-Column 투자 발표 슬라이드', icon: '📊' },
-  { id: 'paper_review', label: '논문 발표자료', desc: '논문 구조 자동 인식 슬라이드', icon: '📄' },
-];
+// PPT_TEMPLATES 제거됨 — PPT는 독립 PptToolsPage에서 처리
 
 const TEMPLATE_PREVIEWS: Record<string, string> = {
   simple_review: `# 1. 투자 개요
@@ -362,7 +359,7 @@ export default function WorkflowPage() {
   const [showHighlight, setShowHighlight] = useState(true);
 
   const [phase2View, setPhase2View] = useState<Phase2View>('choice');
-  const [writeMode, setWriteMode] = useState<WriteMode>('report');
+  // writeMode 제거 — 보고서만 지원
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [docsCollapsed, setDocsCollapsed] = useState(true);
@@ -641,7 +638,7 @@ export default function WorkflowPage() {
     );
   }
 
-  const currentTemplates = writeMode === 'report' ? REPORT_TEMPLATES : PPT_TEMPLATES;
+  const currentTemplates = REPORT_TEMPLATES;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -873,43 +870,8 @@ export default function WorkflowPage() {
         </div>
       )}
 
-      {/* ======================== PHASE 2: Choice ======================== */}
-      {!isPhase1 && phase2View === 'choice' && (
-        <div className="flex items-center justify-center animate-fade-in-up" style={{ minHeight: 'calc(100vh - 280px)' }}>
-          <div className="flex gap-6">
-            <button
-              onClick={() => { setWriteMode('report'); setSelectedTemplate(''); setPhase2View('templates'); }}
-              className="group w-72 glass-card-elevated p-8 flex flex-col items-center gap-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-blue-500 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl group-hover:scale-110 transition-transform duration-300"
-                style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(6,182,212,0.1))' }}>
-                📄
-              </div>
-              <div>
-                <div className="text-lg font-bold text-slate-800">보고서 작성</div>
-                <div className="text-sm text-slate-500 mt-1">투심보고서, IM, Term Sheet 등</div>
-                <div className="text-xs text-blue-500 font-semibold mt-2">10종 템플릿</div>
-              </div>
-            </button>
-            <button
-              onClick={() => { setWriteMode('ppt'); setSelectedTemplate(''); setPhase2View('templates'); }}
-              className="group w-72 glass-card-elevated p-8 flex flex-col items-center gap-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-violet-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl group-hover:scale-110 transition-transform duration-300"
-                style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1))' }}>
-                📊
-              </div>
-              <div>
-                <div className="text-lg font-bold text-slate-800">PPT 작성</div>
-                <div className="text-sm text-slate-500 mt-1">투자 발표, 논문 발표</div>
-                <div className="text-xs text-violet-500 font-semibold mt-2">2종 템플릿</div>
-              </div>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Phase 2 choice 제거 — 바로 templates로 진입 */}
+      {!isPhase1 && phase2View === 'choice' && (() => { setPhase2View('templates'); return null; })()}
 
       {/* ======================== PHASE 2: Templates ======================== */}
       {!isPhase1 && phase2View === 'templates' && (
@@ -928,9 +890,9 @@ export default function WorkflowPage() {
               {/* Template grid */}
               <div className="glass-card p-4">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
-                  {writeMode === 'report' ? '보고서 템플릿' : 'PPT 템플릿'}
+                  보고서 템플릿
                 </div>
-                <div className={`grid gap-2 stagger-children ${writeMode === 'report' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="grid gap-2 stagger-children grid-cols-2">
                   {currentTemplates.map((t) => (
                     <button
                       key={t.id}
