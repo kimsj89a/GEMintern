@@ -51,8 +51,13 @@ export const api = {
 
   // Projects
   listProjects: () => request<any[]>('/projects'),
-  createProject: (name: string) =>
-    request<any>('/projects', { method: 'POST', body: JSON.stringify({ name }) }),
+  createProject: (data: { name: string; company?: string; manager?: string; category?: string; status?: string }) =>
+    request<any>('/projects', { method: 'POST', body: JSON.stringify(data) }),
+  autoClassifyProject: (company: string, title: string) =>
+    request<{ category: string; status: string; manager: string }>(
+      '/projects/auto-classify',
+      { method: 'POST', body: JSON.stringify({ company, title }) },
+    ),
   renameProject: (name: string, newName: string) =>
     request<any>(`/projects/${encodeURIComponent(name)}`, {
       method: 'PATCH',
@@ -307,6 +312,17 @@ export const api = {
   getHistory: (id: number) => request<any>(`/history/${id}`),
   deleteHistory: (id: number) =>
     request<{ ok: boolean }>(`/history/${id}`, { method: 'DELETE' }),
+
+  // Folder Scan
+  scanFolderPreview: (data: { folder_path: string; recursive?: boolean; file_extensions?: string[] }) =>
+    request<{ files: { path: string; name: string; size: number; ext: string; relative_path: string }[]; total_size: number; file_count: number }>(
+      '/scan-folder/preview', { method: 'POST', body: JSON.stringify(data) },
+    ),
+  ingestScannedFiles: (project: string, data: { folder_path: string; selected_files: string[]; preserve_structure?: boolean }) =>
+    request<{ success: boolean; indexed: string[]; skipped: string[]; errors: any[]; indexed_count: number; skipped_count: number; error_count: number }>(
+      `/projects/${encodeURIComponent(project)}/scan-folder/ingest`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
 
   // PDF Unlock
   unlockPdf: async (file: File, password: string) => {

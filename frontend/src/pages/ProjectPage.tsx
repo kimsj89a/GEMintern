@@ -3,6 +3,7 @@ import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import FolderTree from '../components/FolderTree';
 import FilePicker from '../components/FilePicker';
+import FolderScanModal from '../components/FolderScanModal';
 import { listLocalProjects, getProjectDocuments } from '../utils/projectDB';
 import { ensureServerSync, resetSyncCache } from '../utils/autoSync';
 
@@ -36,7 +37,7 @@ function IdbMigrationBanner({ onDone }: { onDone: () => void }) {
       setStatus(`${proj.name} 마이그레이션 중...`);
       try {
         // Create project on server
-        try { await api.createProject(proj.name); } catch {}
+        try { await api.createProject({ name: proj.name }); } catch {}
         // Get documents from IDB and sync
         const docs = await getProjectDocuments(proj.name);
         const validDocs = docs.filter(d => d.filename !== '__folder_placeholder__' && d.parsedText);
@@ -83,12 +84,18 @@ export default function ProjectPage() {
   const { currentProject, setCurrentProject } = useAppStore();
   const [projects, setProjects] = useState<any[]>([]);
   const [tree, setTree] = useState<Record<string, string[]>>({});
-  const [newProject, setNewProject] = useState('');
+  const [newCompany, setNewCompany] = useState('');
+  const [newManager, setNewManager] = useState('');
+  const [newTitle, setNewTitle] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newStatus, setNewStatus] = useState('검토중');
+  const [classifying, setClassifying] = useState(false);
   const [newFolder, setNewFolder] = useState('');
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
   const [docCount, setDocCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [showFolderScan, setShowFolderScan] = useState(false);
 
   const loadProjects = async () => {
     try {
@@ -110,13 +117,33 @@ export default function ProjectPage() {
   useEffect(() => { loadDocs(); }, [currentProject]);
 
   const handleCreateProject = async () => {
-    if (!newProject.trim()) return;
+    if (!newCompany.trim() && !newTitle.trim()) return;
+    const projectName = newTitle.trim() || newCompany.trim();
     try {
-      await api.createProject(newProject.trim());
-      setCurrentProject(newProject.trim());
-      setNewProject('');
+      await api.createProject({
+        name: projectName,
+        company: newCompany.trim(),
+        manager: newManager.trim(),
+        category: newCategory.trim(),
+        status: newStatus.trim() || '검토중',
+      });
+      setCurrentProject(projectName);
+      setNewCompany(''); setNewManager(''); setNewTitle('');
+      setNewCategory(''); setNewStatus('검토중');
       loadProjects();
     } catch { setStatus('프로젝트 생성 실패'); }
+  };
+
+  const handleAutoClassify = async () => {
+    if (!newCompany.trim() && !newTitle.trim()) return;
+    setClassifying(true);
+    try {
+      const result = await api.autoClassifyProject(newCompany.trim(), newTitle.trim());
+      if (result.category) setNewCategory(result.category);
+      if (result.status) setNewStatus(result.status);
+      if (result.manager && !newManager.trim()) setNewManager(result.manager);
+    } catch { setStatus('AI 자동분류 실패'); }
+    finally { setClassifying(false); }
   };
 
   const handleRenameProject = async () => {
@@ -196,7 +223,7 @@ export default function ProjectPage() {
         const realDocs = localDocs.filter(d => d.filename !== '__folder_placeholder__' && d.parsedText);
         if (realDocs.length === 0) continue;
         // Ensure project exists on server
-        try { await api.createProject(proj.name); } catch {}
+        try { await api.createProject({ name: proj.name }); } catch {}
         await ensureServerSync(proj.name, true);
         total += realDocs.length;
       }
@@ -252,14 +279,34 @@ export default function ProjectPage() {
       )}
       <div className="flex gap-6">
         {/* Sidebar — Project List */}
-        <div className="w-64 shrink-0">
-          <div className="flex gap-1.5 mb-3">
-            <input value={newProject} onChange={(e) => setNewProject(e.target.value)}
+        <div className="w-72 shrink-0">
+          <div className="mb-3 space-y-1.5 p-3 bg-[#FAFAF9] rounded-xl border border-[#E9E9E7]">
+            <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)}
+              placeholder="회사명"
+              className="w-full px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-[13px] bg-white focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
+            <input value={newManager} onChange={(e) => setNewManager(e.target.value)}
+              placeholder="담당자"
+              className="w-full px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-[13px] bg-white focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
+            <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
-              placeholder="새 프로젝트명"
-              className="flex-1 px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-[13px] focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
-            <button onClick={handleCreateProject}
-              className="px-3 py-1.5 bg-[#2383E2] text-white text-[13px] font-medium rounded-lg hover:bg-[#1b6ec2] transition-colors whitespace-nowrap">생성</button>
+              placeholder="제목 (프로젝트명)"
+              className="w-full px-3 py-1.5 border border-[#E9E9E7] rounded-lg text-[13px] bg-white focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
+            {(newCategory || newStatus !== '검토중') && (
+              <div className="flex gap-1.5 text-[11px]">
+                {newCategory && (
+                  <span className="px-2 py-0.5 bg-violet-50 text-violet-600 rounded-full border border-violet-100">{newCategory}</span>
+                )}
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">{newStatus}</span>
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <button onClick={handleAutoClassify} disabled={classifying || (!newCompany.trim() && !newTitle.trim())}
+                className="flex-1 px-2 py-1.5 text-[12px] text-violet-600 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 disabled:opacity-40 transition-colors">
+                {classifying ? '분류 중...' : '✦ AI 분류'}
+              </button>
+              <button onClick={handleCreateProject} disabled={!newCompany.trim() && !newTitle.trim()}
+                className="flex-1 px-2 py-1.5 bg-[#2383E2] text-white text-[12px] font-medium rounded-lg hover:bg-[#1b6ec2] disabled:opacity-40 transition-colors">생성</button>
+            </div>
           </div>
           <div className="mb-3 space-y-0.5">
             {projects.map((p) => {
@@ -267,14 +314,32 @@ export default function ProjectPage() {
               const isActive = currentProject === name;
               return (
                 <button key={name} onClick={() => setCurrentProject(name)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all flex items-center justify-between group ${isActive
+                  className={`w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all group ${isActive
                     ? 'bg-[#2383E2]/10 text-[#2383E2] font-medium shadow-sm shadow-[#2383E2]/5'
                     : 'hover:bg-[#F7F6F3] text-[#37352F]'}`}>
-                  <span className="truncate">{name}</span>
-                  {p.doc_count != null && (
-                    <span className={`text-[11px] tabular-nums px-1.5 py-0.5 rounded-full ${isActive ? 'bg-[#2383E2]/15 text-[#2383E2]' : 'bg-[#F0F0EE] text-[#9B9A97]'}`}>
-                      {p.doc_count}
-                    </span>
+                  <div className="flex items-center justify-between">
+                    <span className="truncate">{p.company ? `${p.company}` : name}</span>
+                    {p.doc_count != null && (
+                      <span className={`text-[11px] tabular-nums px-1.5 py-0.5 rounded-full shrink-0 ${isActive ? 'bg-[#2383E2]/15 text-[#2383E2]' : 'bg-[#F0F0EE] text-[#9B9A97]'}`}>
+                        {p.doc_count}
+                      </span>
+                    )}
+                  </div>
+                  {(p.company && name !== p.company) && (
+                    <div className="text-[11px] text-[#9B9A97] truncate mt-0.5">{name}</div>
+                  )}
+                  {(p.category || p.manager) && (
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {p.category && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-violet-50 text-violet-500 rounded-full">{p.category}</span>
+                      )}
+                      {p.status && p.status !== '검토중' && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-500 rounded-full">{p.status}</span>
+                      )}
+                      {p.manager && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-full">{p.manager}</span>
+                      )}
+                    </div>
                   )}
                 </button>
               );
@@ -301,19 +366,21 @@ export default function ProjectPage() {
         <div className="flex-1 min-w-0">
           {currentProject ? (
             <>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-[14px] font-semibold text-[#37352F] tracking-tight flex items-center gap-2">
                   {currentProject}
                   <span className="text-[12px] font-normal text-[#9B9A97] tabular-nums">{docCount}개 문서</span>
                 </h2>
-                <div className="flex gap-1.5">
-                  <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-                    placeholder="폴더명"
-                    className="px-2.5 py-1 border border-[#E9E9E7] rounded-lg text-[12px] w-28 focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
-                  <button onClick={handleCreateFolder}
-                    className="px-2.5 py-1 text-[12px] text-[#787774] border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] hover:text-[#37352F] transition-colors">+ 폴더</button>
-                </div>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3">
+                <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+                  placeholder="폴더명"
+                  className="px-2.5 py-1 border border-[#E9E9E7] rounded-lg text-[12px] w-24 focus:outline-none focus:border-[#2383E2] focus:ring-1 focus:ring-[#2383E2]/20 transition-shadow" />
+                <button onClick={handleCreateFolder}
+                  className="px-2.5 py-1 text-[12px] text-[#787774] border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] hover:text-[#37352F] transition-colors whitespace-nowrap">+ 폴더</button>
+                <button onClick={() => setShowFolderScan(true)}
+                  className="px-2.5 py-1 text-[12px] text-violet-600 border border-violet-200 rounded-lg bg-violet-50 hover:bg-violet-100 transition-colors whitespace-nowrap">📁 폴더 스캔</button>
               </div>
 
               {/* File Tree */}
@@ -344,6 +411,15 @@ export default function ProjectPage() {
 
               {/* Upload */}
               <FilePicker onFilesSelected={handleUpload} loading={uploading} />
+
+              {/* Folder Scan Modal */}
+              {showFolderScan && (
+                <FolderScanModal
+                  projectName={currentProject}
+                  onClose={() => setShowFolderScan(false)}
+                  onComplete={() => loadDocs()}
+                />
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center h-72 text-[#9B9A97]">

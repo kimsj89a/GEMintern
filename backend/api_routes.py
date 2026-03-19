@@ -16,6 +16,8 @@ from backend.api_models import (
     GenerateRequest, QaRequest, AnalysisRequest,
     CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
     SaveResearchRequest,
+    FolderScanRequest, FolderScanFileInfo, FolderScanPreviewResponse,
+    FolderIngestRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -384,7 +386,7 @@ def list_projects(user: dict = Depends(get_current_user)):
     import core_rag
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, name, storage_name, created_at FROM projects WHERE owner_id = ? ORDER BY created_at DESC",
+            "SELECT id, name, storage_name, created_at, company, manager, category, status FROM projects WHERE owner_id = ? ORDER BY created_at DESC",
             (user["id"],)
         ).fetchall()
     result = []
@@ -406,6 +408,8 @@ def list_projects(user: dict = Depends(get_current_user)):
         result.append({
             "id": r["id"], "name": r["name"], "storage_name": r["storage_name"],
             "created_at": r["created_at"], "doc_count": doc_count,
+            "company": r["company"] or "", "manager": r["manager"] or "",
+            "category": r["category"] or "", "status": r["status"] or "검토중",
         })
     return result
 
@@ -427,11 +431,69 @@ def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
         ).fetchone()
         if not existing:
             conn.execute(
-                "INSERT INTO projects (name, owner_id, storage_name) VALUES (?, ?, ?)",
+                "INSERT INTO projects (name, owner_id, storage_name, company, manager, category, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (project_info.get("name", req.name.strip()), user["id"],
-                 project_info.get("storage_name", req.name.strip()))
+                 project_info.get("storage_name", req.name.strip()),
+                 req.company.strip(), req.manager.strip(),
+                 req.category.strip(), req.status.strip() or "검토중")
+            )
+        else:
+            # Update metadata for existing project
+            conn.execute(
+                "UPDATE projects SET company=?, manager=?, category=?, status=? WHERE id=?",
+                (req.company.strip(), req.manager.strip(),
+                 req.category.strip(), req.status.strip() or "검토중",
+                 existing["id"])
             )
     return rag_result
+
+
+class AutoClassifyRequest(BaseModel):
+    company: str = ""
+    title: str = ""
+
+
+@router.post("/projects/auto-classify")
+def auto_classify_project(req: AutoClassifyRequest, user: dict = Depends(get_current_user)):
+    """Claude Sonnet 4.6으로 프로젝트 카테고리/상태/담당자를 자동 분류."""
+    from backend.database import get_user_settings
+    settings = get_user_settings(user["id"])
+    api_key = settings.get("api_key") or os.environ.get("GOOGLE_API_KEY", "")
+    client = AIClient(api_key=api_key)
+
+    prompt = (
+        f"당신은 PE/VC 투자 프로젝트 분류 전문가입니다.\n"
+        f"아래 정보를 바탕으로 프로젝트를 분류하세요.\n\n"
+        f"회사명: {req.company}\n"
+        f"제목: {req.title}\n\n"
+        f"다음 JSON 형식으로만 응답하세요:\n"
+        f'{{"category": "카테고리", "status": "상태", "manager": "담당자 추천"}}\n\n'
+        f"카테고리 선택지: Growth Equity, Buyout, M&A, 부동산, 인프라, 크레딧, 세컨더리, LP투자, 기타\n"
+        f"상태 선택지: 검토중, 진행중, 보류, 완료, 드랍\n"
+        f"담당자 추천: 회사명과 제목을 보고 적절한 담당자 유형을 한 단어로 추천 (예: 투자팀, 심사팀, 리서치팀 등)\n"
+    )
+
+    try:
+        from google.genai import types
+        config = types.GenerateContentConfig(
+            temperature=0.1,
+            response_mime_type="application/json",
+            max_output_tokens=256,
+        )
+        response = client.models.generate_content(
+            model="claude-sonnet-4-6-20250514",
+            contents=prompt,
+            config=config,
+        )
+        result = json.loads(response.text.strip())
+        return {
+            "category": result.get("category", "기타"),
+            "status": result.get("status", "검토중"),
+            "manager": result.get("manager", ""),
+        }
+    except Exception as e:
+        logger.warning(f"Auto-classify failed: {e}")
+        return {"category": "기타", "status": "검토중", "manager": ""}
 
 
 @router.patch("/projects/{name}")
@@ -676,6 +738,192 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
                 )
 
     return result
+
+
+# ========================================
+# Local Folder Scan — Preview & Ingest
+# ========================================
+
+SUPPORTED_SCAN_EXTENSIONS = {
+    '.pdf', '.docx', '.doc', '.pptx', '.ppt',
+    '.xlsx', '.xls', '.csv',
+    '.txt', '.md', '.json', '.xml', '.html', '.htm',
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff',
+}
+
+MAX_SCAN_FILES = 500
+
+
+def _validate_scan_path(folder_path: str) -> str:
+    """폴더 경로 유효성 검증. 안전한 실제 경로를 반환."""
+    real_path = os.path.realpath(folder_path)
+    if ".." in os.path.normpath(folder_path).split(os.sep):
+        raise HTTPException(status_code=400, detail="경로에 '..'은 사용할 수 없습니다.")
+    if not os.path.exists(real_path):
+        raise HTTPException(status_code=400, detail=f"경로가 존재하지 않습니다: {folder_path}")
+    if not os.path.isdir(real_path):
+        raise HTTPException(status_code=400, detail=f"디렉토리가 아닙니다: {folder_path}")
+    # Check allowed_scan_dirs from settings
+    settings = _load_settings()
+    allowed_dirs = settings.get("allowed_scan_dirs", [])
+    if allowed_dirs:
+        real_lower = real_path.lower().replace("\\", "/")
+        allowed = False
+        for d in allowed_dirs:
+            d_real = os.path.realpath(d).lower().replace("\\", "/")
+            if real_lower.startswith(d_real):
+                allowed = True
+                break
+        if not allowed:
+            raise HTTPException(status_code=403, detail="허용되지 않은 경로입니다.")
+    return real_path
+
+
+@router.post("/scan-folder/preview")
+async def scan_folder_preview(req: FolderScanRequest, user: dict = Depends(get_current_user)):
+    """로컬 폴더를 스캔하여 지원 파일 목록을 미리보기로 반환."""
+    real_path = _validate_scan_path(req.folder_path)
+    ext_filter = set(e.lower() if e.startswith('.') else f'.{e.lower()}' for e in req.file_extensions) if req.file_extensions else None
+
+    files: List[FolderScanFileInfo] = []
+    if req.recursive:
+        walker = os.walk(real_path)
+    else:
+        # Single level: just the top directory
+        try:
+            entries = os.listdir(real_path)
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="폴더 접근 권한이 없습니다.")
+        walker = [(real_path, [], [e for e in entries if os.path.isfile(os.path.join(real_path, e))])]
+
+    for dirpath, _dirnames, filenames in walker:
+        for fname in filenames:
+            if len(files) >= MAX_SCAN_FILES:
+                break
+            # Windows surrogateescape 방지: 잘못된 유니코드 파일명 건너뛰기
+            try:
+                fname.encode("utf-8")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                continue
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in SUPPORTED_SCAN_EXTENSIONS:
+                continue
+            if ext_filter and ext not in ext_filter:
+                continue
+            # ~$ 임시 파일 건너뛰기 (Word/Excel lock 파일)
+            if fname.startswith("~$"):
+                continue
+            full_path = os.path.join(dirpath, fname)
+            try:
+                size = os.path.getsize(full_path)
+            except OSError:
+                continue
+            rel_path = os.path.relpath(full_path, real_path).replace("\\", "/")
+            files.append(FolderScanFileInfo(
+                path=full_path.replace("\\", "/"),
+                name=fname,
+                size=size,
+                ext=ext,
+                relative_path=rel_path,
+            ))
+        if len(files) >= MAX_SCAN_FILES:
+            break
+
+    total_size = sum(f.size for f in files)
+    return FolderScanPreviewResponse(files=files, total_size=total_size, file_count=len(files))
+
+
+@router.post("/projects/{name}/scan-folder/ingest")
+async def scan_folder_ingest(name: str, req: FolderIngestRequest, user: dict = Depends(get_current_user)):
+    """선택된 로컬 파일들을 파싱하여 프로젝트에 인덱싱."""
+    _verify_project_ownership(name, user["id"])
+    real_folder = _validate_scan_path(req.folder_path)
+    api_key = _get_api_key()
+    import core_rag
+    from backend.database import get_db
+
+    indexed = []
+    skipped = []
+    errors = []
+
+    # Group files by folder for preserve_structure
+    folder_groups: Dict[str, Dict[str, str]] = {}  # folder_name -> {filename: parsed_text}
+
+    for file_path in req.selected_files:
+        # Security: ensure file is under the scanned folder
+        file_real = os.path.realpath(file_path)
+        if not file_real.lower().startswith(real_folder.lower()):
+            errors.append({"file": file_path, "error": "허용된 폴더 밖의 파일입니다."})
+            continue
+        if not os.path.isfile(file_real):
+            errors.append({"file": file_path, "error": "파일이 존재하지 않습니다."})
+            continue
+
+        filename = os.path.basename(file_real)
+        try:
+            with open(file_real, "rb") as fh:
+                data = fh.read()
+            parsed = _parse_file_bytes(filename, data, api_key)
+            if not parsed:
+                skipped.append(filename)
+                continue
+
+            if req.preserve_structure:
+                rel = os.path.relpath(file_real, real_folder)
+                rel_dir = os.path.dirname(rel).replace("\\", "/")
+                folder_key = rel_dir if rel_dir and rel_dir != "." else "__root__"
+            else:
+                folder_key = "__root__"
+
+            if folder_key not in folder_groups:
+                folder_groups[folder_key] = {}
+            folder_groups[folder_key][filename] = parsed
+        except Exception as e:
+            errors.append({"file": filename, "error": str(e)})
+
+    # Index each folder group
+    for folder_key, texts in folder_groups.items():
+        try:
+            if folder_key == "__root__":
+                result = core_rag.index_texts(api_key, texts, name, owner_id=user["id"])
+            else:
+                result = core_rag.index_texts_to_folder(
+                    api_key, texts, name, folder=folder_key, owner_id=user["id"]
+                )
+            indexed.extend(result.get("indexed", []))
+            skipped.extend(result.get("skipped", []))
+            if result.get("errors"):
+                errors.extend(result["errors"])
+
+            # Store in SQLite documents table
+            with get_db() as conn:
+                project = conn.execute(
+                    "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                    (name, user["id"])
+                ).fetchone()
+                if project:
+                    db_folder = folder_key if folder_key != "__root__" else "__root__"
+                    for fn, parsed_text in texts.items():
+                        size = len(parsed_text.encode("utf-8")) if parsed_text else 0
+                        conn.execute(
+                            """INSERT INTO documents (project_id, folder, filename, parsed_text, size)
+                               VALUES (?, ?, ?, ?, ?)
+                               ON CONFLICT(project_id, folder, filename) DO UPDATE SET
+                                 parsed_text = excluded.parsed_text, size = excluded.size""",
+                            (project["id"], db_folder, fn, parsed_text, size),
+                        )
+        except Exception as e:
+            errors.append({"folder": folder_key, "error": str(e)})
+
+    return {
+        "success": True,
+        "indexed": indexed,
+        "skipped": skipped,
+        "errors": errors,
+        "indexed_count": len(indexed),
+        "skipped_count": len(skipped),
+        "error_count": len(errors),
+    }
 
 
 @router.post("/parse-files")

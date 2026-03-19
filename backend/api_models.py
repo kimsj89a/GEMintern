@@ -5,6 +5,10 @@ from typing import Optional, Dict, List, Any
 
 class ProjectCreate(BaseModel):
     name: str
+    company: str = ""
+    manager: str = ""
+    category: str = ""
+    status: str = "검토중"
 
 
 class ProjectRename(BaseModel):
@@ -69,3 +73,29 @@ class SaveResearchRequest(BaseModel):
     project_name: str
     doc_name: str
     content: str
+
+
+class FolderScanRequest(BaseModel):
+    folder_path: str
+    recursive: bool = True
+    file_extensions: list[str] = []
+
+
+class FolderScanFileInfo(BaseModel):
+    path: str
+    name: str
+    size: int
+    ext: str
+    relative_path: str
+
+
+class FolderScanPreviewResponse(BaseModel):
+    files: list[FolderScanFileInfo]
+    total_size: int
+    file_count: int
+
+
+class FolderIngestRequest(BaseModel):
+    folder_path: str
+    selected_files: list[str]
+    preserve_structure: bool = True
