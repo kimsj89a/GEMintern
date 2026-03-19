@@ -251,10 +251,25 @@ export default function PptToolsPage() {
     }
   }, [currentProject, context, selectedDocs]);
 
-  // --- Download PPTX ---
+  // --- Download PPTX (pptxgenjs IB 마스터 사용) ---
   const handleDownload = useCallback(async () => {
     try {
-      const blob = await api.createPptx(slides);
+      // IB 아웃라인 포맷으로 변환하여 pptxgenjs 렌더링
+      const deckJson = {
+        deck_title: currentProject || '발표자료',
+        subtitle: 'Investment Presentation',
+        date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' }),
+        confidential: true,
+        slides: slides.map((s, i) => ({
+          slide_number: i + 1,
+          slide_type: s.slide_type || s.type || 'text_heavy',
+          title: s.title || `Slide ${i + 1}`,
+          subtitle: s.subtitle || '',
+          content: s,
+          speaker_notes: '',
+        })),
+      };
+      const blob = await api.createIbPptx(deckJson);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -262,7 +277,18 @@ export default function PptToolsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(`PPTX 다운로드 실패: ${err.message}`);
+      // Fallback: 기존 python-pptx 방식
+      try {
+        const blob = await api.createPptx(slides);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = generateFilename('발표자료', 'pptx', currentProject);
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err2: any) {
+        setError(`PPTX 다운로드 실패: ${err2.message}`);
+      }
     }
   }, [slides, currentProject]);
 

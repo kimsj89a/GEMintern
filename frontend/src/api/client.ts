@@ -156,6 +156,18 @@ export const api = {
     }
     return res.blob();
   },
+  createIbPptx: async (slideJson: any) => {
+    const res = await fetchWithAuth(`${BASE}/create-ib-pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slide_json: slideJson }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'IB PPTX 생성 실패' }));
+      throw new Error(err.detail || `API error: ${res.status}`);
+    }
+    return res.blob();
+  },
   slideRegenerate: (data: { current_slide: SlideData; prev_slide?: SlideData; next_slide?: SlideData; instruction: string }) =>
     request<{ task_id: string }>('/slide-regenerate', { method: 'POST', body: JSON.stringify(data) }),
   slideOutline: (data: { task_type: string; kwargs: Record<string, any> }) =>
