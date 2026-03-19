@@ -5,10 +5,6 @@ from typing import Optional, Dict, List, Any
 
 class ProjectCreate(BaseModel):
     name: str
-    company: str = ""
-    manager: str = ""
-    category: str = ""
-    status: str = "검토중"
 
 
 class ProjectRename(BaseModel):

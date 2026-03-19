@@ -51,13 +51,8 @@ export const api = {
 
   // Projects
   listProjects: () => request<any[]>('/projects'),
-  createProject: (data: { name: string; company?: string; manager?: string; category?: string; status?: string }) =>
-    request<any>('/projects', { method: 'POST', body: JSON.stringify(data) }),
-  autoClassifyProject: (company: string, title: string) =>
-    request<{ category: string; status: string; manager: string }>(
-      '/projects/auto-classify',
-      { method: 'POST', body: JSON.stringify({ company, title }) },
-    ),
+  createProject: (name: string) =>
+    request<any>('/projects', { method: 'POST', body: JSON.stringify({ name }) }),
   renameProject: (name: string, newName: string) =>
     request<any>(`/projects/${encodeURIComponent(name)}`, {
       method: 'PATCH',
