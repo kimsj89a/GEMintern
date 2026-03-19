@@ -174,10 +174,25 @@ def init_db():
                     )
                     print(f"[DB] Invite code '{code}' bootstrapped.")
 
+    # Add project metadata columns (safe to run multiple times)
+    _migrate_project_metadata(conn)
+
     # Migrate existing rag_storage projects to SQLite
     migrate_rag_projects_to_db()
     # Sync documents from disk to SQLite (for Railway ephemeral FS recovery)
     sync_docs_from_disk()
+
+
+def _migrate_project_metadata(conn):
+    """Add company/manager/category/status columns to projects table."""
+    existing = {col[1] for col in conn.execute("PRAGMA table_info(projects)").fetchall()}
+    for col, default in [
+        ("company", "''"), ("manager", "''"),
+        ("category", "''"), ("status", "'검토중'"),
+    ]:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE projects ADD COLUMN {col} TEXT DEFAULT {default}")
+    conn.commit()
 
 
 def migrate_rag_projects_to_db():
