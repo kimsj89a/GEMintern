@@ -597,27 +597,34 @@ def _safe_parse_json(text):
 
 
 def generate_slide_outline(api_key, model_name, file_context="", context_text="", **_kwargs):
-    """Phase 1 only: Generate PPT outline (sections + slide plans).
-    Returns outline JSON for user editing before detail generation.
+    """좌표 기반 동적 PPT JSON 생성.
+    DYNAMIC_PPTX_PROMPT로 20종 레시피 참조하여 elements[] 포함 완전한 deck JSON 반환.
     """
     import json as _json
     client = get_client(api_key)
 
-    outline_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
-    outline_user = f"[Context/Goal]\n{context_text}\n\n[Source Material]\n{file_context}"
+    # 새 디자인 시스템 프롬프트 사용
+    dynamic_prompt = getattr(prompts, 'DYNAMIC_PPTX_PROMPT', '')
+    if not dynamic_prompt:
+        # 폴백: 기존 프롬프트
+        dynamic_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
 
-    outline_config = types.GenerateContentConfig(
-        max_output_tokens=8192,
-        temperature=0.2,
-        system_instruction=outline_prompt,
-        response_mime_type="application/json"
+    user_content = dynamic_prompt.format(
+        context=file_context or "(문서 컨텍스트 없음)",
+        query=context_text or "투자 검토 보고서를 작성해주세요",
     )
-    outline_resp = client.models.generate_content(
+
+    config = types.GenerateContentConfig(
+        max_output_tokens=65536,
+        temperature=0.3,
+        response_mime_type="application/json",
+    )
+    resp = client.models.generate_content(
         model=model_name,
-        contents=outline_user,
-        config=outline_config
+        contents=user_content,
+        config=config,
     )
-    return _safe_parse_json(outline_resp.text)
+    return _safe_parse_json(resp.text)
 
 
 def generate_slides_from_outline(api_key, model_name, outline, file_context="",
@@ -694,99 +701,41 @@ Planned slides: {_json.dumps(sec_slides_plan, ensure_ascii=False)}
 
 
 def generate_slide_json(api_key, model_name, file_context="", context_text="",
-                        on_slide=None):
-    """
-    Two-phase PPT generation:
-      Phase 1: Generate outline (sections + slide titles/types)
-      Phase 2: Generate each section's slides in detail (separate LLM call per section)
+                        on_slide=None, **_kwargs):
+    """좌표 기반 동적 PPT JSON 한 번에 생성 (DYNAMIC_PPTX_PROMPT 사용).
+    elements[] 포함 완전한 deck JSON 반환.
     """
     import json as _json
     client = get_client(api_key)
 
-    # ── Phase 1: Outline ──
-    outline_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
-    outline_user = f"[Context/Goal]\n{context_text}\n\n[Source Material]\n{file_context}"
+    dynamic_prompt = getattr(prompts, 'DYNAMIC_PPTX_PROMPT', '')
+    if not dynamic_prompt:
+        dynamic_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
 
-    outline_config = types.GenerateContentConfig(
-        max_output_tokens=8192,
-        temperature=0.2,
-        system_instruction=outline_prompt,
-        response_mime_type="application/json"
+    user_content = dynamic_prompt.format(
+        context=file_context or "(문서 컨텍스트 없음)",
+        query=context_text or "투자 검토 보고서를 작성해주세요",
     )
-    outline_resp = client.models.generate_content(
+
+    config = types.GenerateContentConfig(
+        max_output_tokens=65536,
+        temperature=0.3,
+        response_mime_type="application/json",
+    )
+    resp = client.models.generate_content(
         model=model_name,
-        contents=outline_user,
-        config=outline_config
+        contents=user_content,
+        config=config,
     )
-    outline = _safe_parse_json(outline_resp.text)
+    result = _safe_parse_json(resp.text)
+    slides = result.get("slides", [])
 
-    sections = outline.get("sections", [])
-    if not sections:
-        return _json.dumps({"slides": []}, ensure_ascii=False)
+    # on_slide 콜백 호출 (WebSocket 스트리밍 호환)
+    if on_slide and slides:
+        for i, slide in enumerate(slides):
+            on_slide(slide, i)
 
-    # ── Phase 2: Section-by-section generation ──
-    section_prompt = prompts.LOGIC_PROMPTS.get('ppt_section_detail', '')
-    all_slides = []
-
-    for sec_idx, section in enumerate(sections):
-        sec_title = section.get("title", f"Section {sec_idx + 1}")
-        sec_slides_plan = section.get("slides", [])
-
-        section_user = f"""[Overall Outline]
-{_json.dumps(outline, ensure_ascii=False, indent=2)}
-
-[Current Section to Generate]
-Section {sec_idx + 1}: {sec_title}
-Planned slides: {_json.dumps(sec_slides_plan, ensure_ascii=False)}
-
-[Source Material]
-{file_context}
-
-[Context/Goal]
-{context_text}
-"""
-
-        if on_slide:
-            # Streaming mode per section
-            sec_config = types.GenerateContentConfig(
-                max_output_tokens=16384,
-                temperature=0.3,
-                system_instruction=section_prompt,
-            )
-            stream = client.models.generate_content_stream(
-                model=model_name,
-                contents=section_user,
-                config=sec_config
-            )
-            # Parse and emit slides as they stream
-            offset = len(all_slides)
-            section_slides = []
-
-            def _on_section_slide(slide_obj, idx):
-                section_slides.append(slide_obj)
-                on_slide(slide_obj, offset + idx)
-
-            _parse_streaming_slides(stream, _on_section_slide)
-            all_slides.extend(section_slides)
-        else:
-            # Non-streaming mode per section
-            sec_config = types.GenerateContentConfig(
-                max_output_tokens=16384,
-                temperature=0.3,
-                system_instruction=section_prompt,
-                response_mime_type="application/json"
-            )
-            resp = client.models.generate_content(
-                model=model_name,
-                contents=section_user,
-                config=sec_config
-            )
-            sec_data = _safe_parse_json(resp.text)
-            sec_slides = sec_data.get("slides", sec_data if isinstance(sec_data, list) else [])
-            if isinstance(sec_slides, list):
-                all_slides.extend(sec_slides)
-
-    return _json.dumps({"slides": all_slides}, ensure_ascii=False)
+    return _json.dumps(result, ensure_ascii=False)
 
 
 def _parse_streaming_slides(stream, on_slide):
