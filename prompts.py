@@ -2501,3 +2501,100 @@ Return ONLY a valid JSON object with this structure:
 8. speaker_notes는 발표 시 참고 내용을 간략히 포함하세요.
 
 Return ONLY the JSON object. No markdown code blocks, no explanation."""
+
+# ── 좌표 기반 동적 PPT 아웃라인 ──
+DYNAMIC_PPTX_OUTLINE_PROMPT = """You are an expert presentation designer. Create a pixel-perfect slide deck by specifying exact element positions.
+
+## Canvas
+- Slide size: 10" × 5.63" (16:9)
+- Safe margin: 0.4" from edges
+- Usable area: x=0.4 to x=9.6, y=0.4 to y=5.2
+
+## Retrieved Context
+{context}
+
+## User Request
+{query}
+
+## Output Format
+Return ONLY a JSON object:
+
+{{
+  "deck_title": "제목",
+  "slides": [
+    {{
+      "title": "슬라이드 제목",
+      "background": "FFFFFF",
+      "elements": [
+        {{element objects}}
+      ],
+      "speaker_notes": "발표자 노트"
+    }}
+  ]
+}}
+
+## Element Types
+
+### text
+{{"type": "text", "x": 0.5, "y": 0.3, "w": 9, "h": 0.5, "text": "제목 텍스트", "fontSize": 24, "bold": true, "color": "1E2761", "align": "left"}}
+
+Rich text (배열):
+{{"type": "text", "x": 0.5, "y": 1, "w": 9, "h": 2, "text": [{{"text": "굵은 부분 ", "bold": true, "fontSize": 14}}, {{"text": "일반 부분", "fontSize": 12}}], "color": "1A1A2E"}}
+
+Bullets:
+{{"type": "text", "x": 0.5, "y": 1.5, "w": 8, "h": 2, "text": "• 항목 1\\n• 항목 2\\n• 항목 3", "fontSize": 11, "lineSpacing": 1.5}}
+
+Card (배경+테두리):
+{{"type": "text", "x": 0.5, "y": 2, "w": 4, "h": 1.5, "text": "카드 내용", "fill": "F8F9FC", "borderColor": "D1D5DB", "rectRadius": 0.1, "fontSize": 11}}
+
+### table
+{{"type": "table", "x": 0.5, "y": 1.5, "w": 9, "rows": [["헤더1", "헤더2", "헤더3"], ["셀1", "셀2", "셀3"], ["셀4", "셀5", "셀6"]], "fontSize": 10, "headerFill": "1E2761"}}
+
+### chart
+{{"type": "chart", "x": 0.5, "y": 1.5, "w": 5, "h": 3.5, "chartType": "bar", "data": [{{"name": "매출", "labels": ["FY22", "FY23", "FY24"], "values": [800, 1000, 1200]}}], "showValue": true}}
+chartType: "bar" | "line" | "pie" | "doughnut" | "area"
+
+### shape (배경 영역, 구분선 등)
+{{"type": "shape", "x": 0, "y": 0, "w": 10, "h": 5.63, "fill": "0F1535"}}
+{{"type": "shape", "x": 0.5, "y": 2.5, "w": 9, "h": 0.01, "fill": "D1D5DB"}}
+
+### kpi_card (KPI 카드)
+{{"type": "kpi_card", "x": 0.5, "y": 1.5, "w": 2.5, "h": 1.3, "label": "매출", "value": "1,200억", "change": "+25% YoY"}}
+
+## Design Guidelines
+1. **표지**: 어두운 배경(0F1535), 큰 제목(28pt+), 날짜/작성자 하단
+2. **목차**: 깔끔한 번호 리스트, 적절한 간격
+3. **데이터 슬라이드**: 차트(좌) + KPI 카드(우) 또는 차트(상) + 테이블(하) 조합
+4. **비교**: 2열 레이아웃으로 좌우 대비
+5. **마무리**: 어두운 배경, "감사합니다" 중앙 배치
+
+## Layout Patterns (참고)
+- 2열: 좌 x=0.5 w=4.3 / 우 x=5.2 w=4.3
+- 3열: x=0.5 w=2.8 / x=3.5 w=2.8 / x=6.5 w=2.8
+- 제목 영역: y=0.3~0.8 / 본문 영역: y=1.2~5.0
+- KPI 3개 가로배치: w=2.7씩, gap=0.3
+- 차트+테이블: 차트 y=1.2 h=2.5 / 테이블 y=3.9
+
+## Color Palette
+- Primary: 1E2761 (네이비)
+- Accent: F96167 (코랄)
+- Secondary: CADCFC (연보라)
+- Background dark: 0F1535
+- Background light: F8F9FC
+- Text dark: 1A1A2E
+- Text light: FFFFFF
+- Gray: 8E8E93
+- Border: D1D5DB
+- Chart colors: ["1E2761", "3D5A99", "6B8BC4", "F96167", "F9E795", "2C5F2D"]
+
+## Rules
+1. 슬라이드 10-18장.
+2. 모든 요소에 x, y, w, h 좌표를 반드시 포함하세요.
+3. 요소가 겹치지 않게 배치하세요.
+4. 검색된 자료의 실제 숫자를 사용하세요.
+5. 한국어로 작성하되 금융 용어는 영어 그대로 사용하세요.
+6. 차트 values는 반드시 숫자 배열이어야 합니다.
+7. 다양한 레이아웃을 사용하세요: 2열, 3열, 차트+테이블, KPI 대시보드 등.
+8. 정보 밀도를 높이되 여백은 충분히 확보하세요.
+
+Return ONLY the JSON object."""
