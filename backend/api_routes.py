@@ -1241,7 +1241,7 @@ def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
 
 @router.post("/create-ib-pptx")
 def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
-    """좌표 기반 동적 PPT 생성 (pptxgenjs). AI가 요소 배치를 직접 결정."""
+    """좌표 기반 동적 PPT 생성. pptxgenjs 우선, 실패 시 python-pptx 폴백."""
     import subprocess, sys, tempfile
 
     slide_json = req.slide_json
@@ -1249,35 +1249,180 @@ def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user
         slide_json = json.loads(slide_json)
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", dir=base, delete=False, encoding="utf-8"
-    ) as f:
-        json.dump(slide_json, f, ensure_ascii=False, indent=2)
-        json_path = f.name
 
-    pptx_path = json_path.replace(".json", ".pptx")
-
+    # 1차: pptxgenjs (Node.js) 시도
+    pptx_bytes = None
+    json_path = None
+    pptx_path = None
     try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", dir=base, delete=False, encoding="utf-8"
+        ) as f:
+            json.dump(slide_json, f, ensure_ascii=False, indent=2)
+            json_path = f.name
+        pptx_path = json_path.replace(".json", ".pptx")
+
         result = subprocess.run(
             ["node", os.path.join(base, "generate_pptx_dynamic.js"), json_path, pptx_path],
             capture_output=True, text=True, timeout=30, cwd=base,
         )
-        if result.returncode != 0:
-            error = result.stderr.strip() or result.stdout.strip()
-            raise HTTPException(status_code=500, detail=f"pptxgenjs 에러: {error}")
-
-        with open(pptx_path, "rb") as f:
-            pptx_bytes = f.read()
-
-        return Response(
-            content=pptx_bytes,
-            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            headers={"Content-Disposition": "attachment; filename=presentation.pptx"},
-        )
+        if result.returncode == 0 and os.path.exists(pptx_path):
+            with open(pptx_path, "rb") as f:
+                pptx_bytes = f.read()
+            logger.info("PPT generated via pptxgenjs (Node.js)")
+    except Exception as e:
+        logger.warning(f"pptxgenjs failed, falling back to python-pptx: {e}")
     finally:
         for p in [json_path, pptx_path]:
-            if os.path.exists(p):
-                os.remove(p)
+            if p and os.path.exists(p):
+                try: os.remove(p)
+                except OSError: pass
+
+    # 2차: python-pptx 폴백
+    if not pptx_bytes:
+        try:
+            pptx_bytes = _render_dynamic_pptx_python(slide_json)
+            logger.info("PPT generated via python-pptx fallback")
+        except Exception as e:
+            logger.error(f"python-pptx fallback also failed: {e}")
+            raise HTTPException(status_code=500, detail=f"PPT 생성 실패: {e}")
+
+    return Response(
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": "attachment; filename=presentation.pptx"},
+    )
+
+
+def _render_dynamic_pptx_python(deck_json: dict) -> bytes:
+    """좌표 기반 elements[]를 python-pptx로 렌더링 (Node.js 없을 때 폴백)."""
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+    import io
+
+    prs = Presentation()
+    prs.slide_width = Inches(10)
+    prs.slide_height = Inches(5.63)
+    blank_layout = prs.slide_layouts[6]  # blank
+
+    slides = deck_json.get("slides", [])
+
+    for slide_data in slides:
+        slide = prs.slides.add_slide(blank_layout)
+        bg_color = slide_data.get("background", "FFFFFF")
+        slide.background.fill.solid()
+        slide.background.fill.fore_color.rgb = RGBColor.from_string(bg_color)
+
+        for el in slide_data.get("elements", []):
+            el_type = el.get("type", "")
+            x = Inches(el.get("x", 0))
+            y = Inches(el.get("y", 0))
+            w = Inches(el.get("w", 1))
+            h = Inches(el.get("h", 0.5))
+
+            if el_type == "text":
+                txBox = slide.shapes.add_textbox(x, y, w, h)
+                tf = txBox.text_frame
+                tf.word_wrap = True
+                text_content = el.get("text", "")
+                if isinstance(text_content, list):
+                    # Rich text runs
+                    for ri, run_data in enumerate(text_content):
+                        if ri == 0:
+                            p = tf.paragraphs[0]
+                        else:
+                            p = tf.add_paragraph()
+                        run_text = run_data if isinstance(run_data, str) else run_data.get("text", "")
+                        run = p.add_run()
+                        run.text = run_text
+                        run.font.size = Pt(run_data.get("fontSize", el.get("fontSize", 11)) if isinstance(run_data, dict) else el.get("fontSize", 11))
+                        run.font.bold = run_data.get("bold", el.get("bold", False)) if isinstance(run_data, dict) else el.get("bold", False)
+                        color_str = (run_data.get("color") if isinstance(run_data, dict) else None) or el.get("color", "2D2D2D")
+                        run.font.color.rgb = RGBColor.from_string(color_str)
+                else:
+                    p = tf.paragraphs[0]
+                    run = p.add_run()
+                    run.text = str(text_content)
+                    run.font.size = Pt(el.get("fontSize", 11))
+                    run.font.bold = el.get("bold", False)
+                    color_str = el.get("color", "2D2D2D")
+                    run.font.color.rgb = RGBColor.from_string(color_str)
+                    align_map = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
+                    p.alignment = align_map.get(el.get("align", "left"), PP_ALIGN.LEFT)
+
+                # Background fill
+                if el.get("fill"):
+                    txBox.fill.solid()
+                    txBox.fill.fore_color.rgb = RGBColor.from_string(el["fill"])
+
+            elif el_type == "shape":
+                from pptx.enum.shapes import MSO_SHAPE
+                shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+                shape.fill.solid()
+                shape.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", "F6F6F6"))
+                shape.line.fill.background()
+
+            elif el_type == "table":
+                rows = el.get("rows", [])
+                if not rows:
+                    continue
+                n_rows = len(rows)
+                n_cols = len(rows[0]) if rows else 1
+                table_shape = slide.shapes.add_table(n_rows, n_cols, x, y, w, Inches(n_rows * 0.3))
+                tbl = table_shape.table
+                for ri, row in enumerate(rows):
+                    for ci, cell_data in enumerate(row):
+                        cell = tbl.cell(ri, ci)
+                        cell_text = cell_data if isinstance(cell_data, str) else (cell_data.get("text", "") if isinstance(cell_data, dict) else str(cell_data))
+                        cell.text = cell_text
+                        for p in cell.text_frame.paragraphs:
+                            for run in p.runs:
+                                run.font.size = Pt(el.get("fontSize", 9))
+                        if ri == 0:
+                            cell.fill.solid()
+                            cell.fill.fore_color.rgb = RGBColor.from_string(el.get("headerFill", "1B2A4A"))
+                            for p in cell.text_frame.paragraphs:
+                                for run in p.runs:
+                                    run.font.color.rgb = RGBColor.from_string("FFFFFF")
+                                    run.font.bold = True
+
+            elif el_type in ("kpi_card", "callout"):
+                # Render as textbox with background
+                txBox = slide.shapes.add_textbox(x, y, w, h)
+                txBox.fill.solid()
+                txBox.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", "F6F6F6"))
+                tf = txBox.text_frame
+                tf.word_wrap = True
+                if el.get("label"):
+                    p = tf.paragraphs[0]
+                    run = p.add_run()
+                    run.text = el["label"]
+                    run.font.size = Pt(8)
+                    run.font.color.rgb = RGBColor.from_string("6B6B6B")
+                if el.get("value"):
+                    p = tf.add_paragraph()
+                    run = p.add_run()
+                    run.text = el["value"]
+                    run.font.size = Pt(20)
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor.from_string("1B2A4A")
+                if el.get("change"):
+                    p = tf.add_paragraph()
+                    run = p.add_run()
+                    run.text = el["change"]
+                    run.font.size = Pt(9)
+                    is_pos = "+" in el["change"] or "▲" in el["change"]
+                    run.font.color.rgb = RGBColor.from_string("86BC25" if is_pos else "C4262E")
+
+        # Speaker notes
+        if slide_data.get("speaker_notes"):
+            slide.notes_slide.notes_text_frame.text = slide_data["speaker_notes"]
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
 
 
 @router.post("/slide-regenerate")

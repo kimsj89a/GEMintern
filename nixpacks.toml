@@ -1,5 +1,12 @@
+# Railway 배포: Python + Node.js 동시 지원
 [phases.setup]
 nixPkgs = ["nodejs-18_x", "npm"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt", "npm install"]
+cmds = [
+  "pip install -r requirements.txt",
+  "npm install --production",
+]
+
+[start]
+cmd = "python -m backend.main"
