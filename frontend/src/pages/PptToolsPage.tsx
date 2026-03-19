@@ -4,6 +4,7 @@ import { subscribeTask, unsubscribeTask } from '../api/ws';
 import SlidePreview from '../components/SlidePreview';
 import OutlineEditor from '../components/OutlineEditor';
 import FolderTree from '../components/FolderTree';
+import FilePicker from '../components/FilePicker';
 import { generateFilename } from '../utils/clipboard';
 import { useAppStore } from '../stores/appStore';
 
@@ -44,18 +45,42 @@ export default function PptToolsPage() {
   const [editInstruction, setEditInstruction] = useState('');
   const [regenerating, setRegenerating] = useState(false);
 
+  // Upload to project
+  const [uploading, setUploading] = useState(false);
+
   // Update tab
   const [pptxFile, setPptxFile] = useState<File | null>(null);
   const [updateStatus, setUpdateStatus] = useState('');
   const [updating, setUpdating] = useState(false);
 
-  // Load project docs when project changes
-  useEffect(() => {
+  const loadDocs = useCallback(() => {
     if (!currentProject) { setTree({}); return; }
     api.getProjectDocs(currentProject)
       .then((data) => setTree(data.folder_tree || {}))
       .catch(() => setTree({}));
   }, [currentProject]);
+
+  // Load project docs when project changes
+  useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  const handleUploadFiles = useCallback(async (files: File[]) => {
+    if (!currentProject || files.length === 0) {
+      setError('프로젝트를 먼저 선택하세요.');
+      return;
+    }
+    setUploading(true);
+    setError('');
+    try {
+      const result = await api.uploadFiles(currentProject, files);
+      const count = Object.keys(result.parsed_texts || {}).length;
+      const errCount = result.parse_errors?.length || 0;
+      setError(errCount > 0 ? `${count}개 업로드, ${errCount}개 파싱 실패` : '');
+      loadDocs();
+    } catch (err: any) {
+      setError(`업로드 실패: ${err.message}`);
+    }
+    setUploading(false);
+  }, [currentProject, loadDocs]);
 
   const totalDocs = Object.values(tree).flat().length;
 
@@ -425,6 +450,10 @@ export default function PptToolsPage() {
                         onSelectionChange={setSelectedDocs}
                         onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)}
                       />
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-xs text-[#787774] mb-1.5">참조 문서 추가 업로드</div>
+                      <FilePicker onFilesSelected={handleUploadFiles} loading={uploading} />
                     </div>
                   </>
                 )}
