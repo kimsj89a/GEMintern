@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { generateFilename } from '../utils/clipboard';
 import { useAppStore } from '../stores/appStore';
+import { useAuthStore } from '../stores/authStore';
 
 interface CrawlResult {
   url: string;
@@ -29,9 +30,12 @@ export default function CrawlerPage() {
     abortRef.current = controller;
 
     try {
+      const token = useAuthStore.getState().token;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch('/api/crawl', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ urls: urlList, depth, max_pages: maxPages }),
         signal: controller.signal,
       });
