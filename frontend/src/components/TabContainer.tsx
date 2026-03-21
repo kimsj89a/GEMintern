@@ -2,13 +2,13 @@ import { Suspense } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { PAGE_REGISTRY } from '../pages';
 
-export default function TabContainer({ mobile }: { mobile?: boolean } = {}) {
+export default function TabContainer({ mobile, hideTabBar }: { mobile?: boolean; hideTabBar?: boolean } = {}) {
   const { openTabs, activePage, setActivePage, closeTab } = useAppStore();
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-mesh">
-      {/* Tab bar — 모바일에서는 축소 */}
-      <div className={`flex items-center bg-white/60 backdrop-blur-sm border-b border-slate-200/80 overflow-x-auto px-1 ${mobile ? 'min-h-[36px]' : 'min-h-[40px]'}`}>
+      {/* Tab bar — 모바일에서는 숨기기 가능 */}
+      {!hideTabBar && <div className={`flex items-center bg-white/60 backdrop-blur-sm border-b border-slate-200/80 overflow-x-auto px-1 ${mobile ? 'min-h-[36px]' : 'min-h-[40px]'}`}>
         {openTabs.map((tabId) => {
           const page = PAGE_REGISTRY[tabId];
           if (!page) return null;
@@ -41,7 +41,7 @@ export default function TabContainer({ mobile }: { mobile?: boolean } = {}) {
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {/* Page content */}
       <div className="flex-1 overflow-y-auto">
