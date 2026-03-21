@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from './stores/authStore';
+import { useAppStore } from './stores/appStore';
 import { api } from './api/client';
 import LoginPage from './pages/LoginPage';
 import Sidebar from './components/Sidebar';
 import TabContainer from './components/TabContainer';
 import MobileNav from './components/MobileNav';
+import ProjectDashboard from './pages/ProjectDashboard';
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -68,19 +70,45 @@ export default function App() {
   const token = useAuthStore((s) => s.token);
   useSessionKeepAlive();
   const isMobile = useIsMobile();
+  const view = useAppStore((s) => s.view);
 
   if (!token) {
     return <LoginPage />;
   }
 
+  // 대시보드 뷰 (NotebookLM 스타일)
+  if (view === 'dashboard') {
+    return <ProjectDashboard />;
+  }
+
+  // 작업 페이지 뷰 (추후 WorkspacePage로 교체)
+  // 현재는 legacy와 동일하게 동작
+  if (view === 'workspace') {
+    if (isMobile) {
+      return (
+        <div className="flex flex-col h-screen overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            <TabContainer mobile hideTabBar />
+          </div>
+          <MobileNav />
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <TabContainer />
+      </div>
+    );
+  }
+
+  // 레거시 뷰 (설정/관리자 등)
   if (isMobile) {
     return (
       <div className="flex flex-col h-screen overflow-hidden">
-        {/* 모바일 콘텐츠 (탭바 없이 활성 페이지만) */}
         <div className="flex-1 overflow-hidden">
           <TabContainer mobile hideTabBar />
         </div>
-        {/* 하단 탭바 */}
         <MobileNav />
       </div>
     );
