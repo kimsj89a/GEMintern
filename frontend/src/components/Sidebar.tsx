@@ -47,8 +47,9 @@ const NAV_SECTIONS = [
   },
 ];
 
-export default function Sidebar() {
-  const { activePage, openTab, currentProject, setCurrentProject } = useAppStore();
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
+  const { activePage, openTab: _openTab, currentProject, setCurrentProject } = useAppStore();
+  const openTab = (id: string) => { _openTab(id); onNavigate?.(); };
   const { user, logout } = useAuthStore();
   const [projects, setProjects] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === 'true');
