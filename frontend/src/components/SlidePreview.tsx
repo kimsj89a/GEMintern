@@ -692,105 +692,178 @@ function ElementRect({ el }: { el: any }) {
   );
 }
 
-/* ===== Dynamic Element Renderer (좌표 기반 elements[]) ===== */
-// 인치 → SVG viewBox 좌표 변환 (10" = 400px, 5.63" ≈ 300px)
-const INCH_X = 40;  // 1 inch = 40px in viewBox
-const INCH_Y = 53.3; // 1 inch ≈ 53.3px in viewBox (300/5.63)
+/* ===== Dynamic Slide Renderer (좌표 기반 elements[] → HTML/CSS) ===== */
 
-function DynamicElement({ el }: { el: any }) {
-  const x = (el.x ?? 0) * INCH_X;
-  const y = (el.y ?? 0) * INCH_Y;
-  const w = (el.w ?? 1) * INCH_X;
-  const h = (el.h ?? 0.5) * INCH_Y;
+// 스케일 팩터: 인치 → 미리보기 px (슬라이드 너비 기준)
+function DynamicSlidePreview({ slide, previewWidth }: { slide: any; previewWidth: number }) {
+  const scale = previewWidth / 10; // 10인치 캔버스 → previewWidth px
+  const previewHeight = previewWidth * (5.63 / 10);
+  const elements = slide.elements || [];
+  const bg = slide.background ? `#${slide.background}` : '#FFFFFF';
+
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{ width: previewWidth, height: previewHeight, backgroundColor: bg, fontFamily: 'Calibri, sans-serif' }}
+    >
+      {elements.map((el: any, i: number) => (
+        <DynEl key={i} el={el} scale={scale} />
+      ))}
+      {/* 슬라이드 번호 */}
+      <div className="absolute bottom-0.5 right-1 text-[6px] text-gray-400" style={{ fontSize: 6 * (scale / 28) }}>
+        {slide.slide_number || ''}
+      </div>
+    </div>
+  );
+}
+
+function DynEl({ el, scale }: { el: any; scale: number }) {
+  const s = scale;
+  const left = (el.x ?? 0) * s;
+  const top = (el.y ?? 0) * s;
+  const width = (el.w ?? 1) * s;
+  const height = (el.h ?? 0.5) * s;
+  const fs = (sz: number) => Math.max(sz * s * 0.1, 4);
 
   switch (el.type) {
     case 'text': {
-      const fs = Math.min((el.fontSize ?? 11) * 0.4, 12);
-      const color = el.color ? `#${el.color}` : '#2D2D2D';
       const textStr = Array.isArray(el.text)
         ? el.text.map((r: any) => typeof r === 'string' ? r : r.text || '').join('')
         : (el.text || '');
-      const fill = el.fill ? `#${el.fill}` : undefined;
       return (
-        <g>
-          {fill && <rect x={x} y={y} width={w} height={h} fill={fill} rx={2} stroke={el.borderColor ? `#${el.borderColor}` : undefined} strokeWidth={el.borderColor ? 0.5 : 0} />}
-          <text x={x + 2} y={y + fs + 2} fontSize={fs} fontWeight={el.bold ? 'bold' : 'normal'} fill={color} opacity={0.9}>
-            {truncate(textStr, Math.floor(w / (fs * 0.5)))}
-          </text>
-        </g>
+        <div
+          className="absolute overflow-hidden leading-tight"
+          style={{
+            left, top, width, height,
+            fontSize: fs(el.fontSize ?? 11),
+            fontWeight: el.bold ? 700 : 400,
+            fontStyle: el.italic ? 'italic' : 'normal',
+            color: el.color ? `#${el.color}` : '#2D2D2D',
+            textAlign: (el.align as any) || 'left',
+            backgroundColor: el.fill ? `#${el.fill}` : undefined,
+            border: el.borderColor ? `${Math.max(0.5, s * 0.01)}px solid #${el.borderColor}` : undefined,
+            borderRadius: el.rectRadius ? el.rectRadius * s * 0.3 : undefined,
+            padding: el.fill || el.borderColor ? `${s * 0.05}px` : undefined,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {textStr}
+        </div>
       );
     }
     case 'shape': {
-      const fill = el.fill ? `#${el.fill}` : '#F6F6F6';
-      return <rect x={x} y={y} width={w} height={h} fill={fill} rx={el.rectRadius ? el.rectRadius * 4 : 1} />;
+      return (
+        <div
+          className="absolute"
+          style={{
+            left, top, width, height,
+            backgroundColor: el.fill ? `#${el.fill}` : '#F6F6F6',
+            borderRadius: el.rectRadius ? el.rectRadius * s * 0.5 : el.shapeType === 'ellipse' ? '50%' : 1,
+            border: el.borderColor ? `0.5px solid #${el.borderColor}` : undefined,
+          }}
+        />
+      );
     }
     case 'table': {
-      const rows = el.rows || [];
-      if (rows.length === 0) return null;
-      const cols = rows[0]?.length || 1;
-      const colW = w / cols;
-      const rowH = Math.min(h / rows.length, 10);
+      const rows: any[][] = el.rows || [];
+      if (!rows.length) return null;
       return (
-        <g>
-          {rows.slice(0, 8).map((row: any[], ri: number) => (
-            <g key={ri}>
-              <rect x={x} y={y + ri * rowH} width={w} height={rowH}
-                fill={ri === 0 ? '#1B2A4A' : ri % 2 === 0 ? '#F2F5F7' : WHITE} />
-              {row.slice(0, 6).map((cell: any, ci: number) => {
-                const cellText = typeof cell === 'object' ? (cell.text || '') : String(cell ?? '');
-                return (
-                  <text key={ci} x={x + ci * colW + colW / 2} y={y + ri * rowH + rowH * 0.65}
-                    textAnchor="middle" fontSize={3.5} fill={ri === 0 ? WHITE : '#2D2D2D'}
-                    fontWeight={ri === 0 ? 'bold' : 'normal'}>
-                    {truncate(cellText, Math.floor(colW / 3))}
-                  </text>
-                );
-              })}
-            </g>
-          ))}
-        </g>
+        <div className="absolute overflow-hidden" style={{ left, top, width, height }}>
+          <table className="w-full border-collapse" style={{ fontSize: fs(el.fontSize ?? 9) }}>
+            <tbody>
+              {rows.slice(0, 12).map((row, ri) => (
+                <tr key={ri}>
+                  {row.slice(0, 8).map((cell: any, ci: number) => {
+                    const cellText = typeof cell === 'object' ? (cell.text || '') : String(cell ?? '');
+                    const isHeader = ri === 0;
+                    const cellFill = typeof cell === 'object' && cell.fill ? `#${cell.fill}` : undefined;
+                    return (
+                      <td
+                        key={ci}
+                        className="px-0.5 truncate"
+                        style={{
+                          backgroundColor: cellFill || (isHeader ? '#1B2A4A' : ri % 2 === 0 ? '#F2F5F7' : '#fff'),
+                          color: (typeof cell === 'object' && cell.color) ? `#${cell.color}` : (isHeader ? '#fff' : '#2D2D2D'),
+                          fontWeight: isHeader || (typeof cell === 'object' && cell.bold) ? 700 : 400,
+                          textAlign: (typeof cell === 'object' && cell.align) || (isHeader ? 'center' : 'left'),
+                          padding: `${s * 0.02}px ${s * 0.04}px`,
+                          borderBottom: `0.5px solid #E0E0E0`,
+                          maxWidth: width / (row.length || 1),
+                        }}
+                      >
+                        {truncate(cellText, 20)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     }
     case 'chart': {
       const data = el.data || [];
-      const values = data[0]?.values || [];
-      const maxVal = Math.max(...values.map(Number).filter((v: number) => !isNaN(v)), 1);
+      const chartType = el.chartType || 'bar';
+      const values: number[] = (data[0]?.values || []).map(Number);
+      const labels: string[] = data[0]?.labels || [];
+      const maxVal = Math.max(...values.filter(v => !isNaN(v)), 1);
+      const colors = ['#1B2A4A', '#0076A8', '#86BC25', '#C4262E', '#F2A900', '#6B6B6B'];
+
+      if (chartType === 'pie' || chartType === 'doughnut') {
+        return (
+          <div className="absolute flex items-center justify-center" style={{ left, top, width, height, border: '0.5px solid #E0E0E0', borderRadius: 4, backgroundColor: '#fff' }}>
+            <div style={{ width: height * 0.6, height: height * 0.6, borderRadius: '50%', background: `conic-gradient(${values.map((v, i) => `${colors[i % colors.length]} ${values.slice(0, i).reduce((a, b) => a + b, 0) / values.reduce((a, b) => a + b, 1) * 100}% ${(values.slice(0, i).reduce((a, b) => a + b, 0) + v) / values.reduce((a, b) => a + b, 1) * 100}%`).join(', ')})` }} />
+          </div>
+        );
+      }
+
       return (
-        <g>
-          <rect x={x} y={y} width={w} height={h} fill={WHITE} stroke="#E0E0E0" strokeWidth={0.5} rx={2} />
-          {values.slice(0, 8).map((v: number, i: number) => {
-            const n = Math.min(values.length, 8);
-            const barW = (w - 8) / n - 2;
-            const barH = ((Number(v) || 0) / maxVal) * (h - 12);
-            return <rect key={i} x={x + 4 + i * (barW + 2)} y={y + h - 4 - barH} width={barW} height={barH} fill="#1B2A4A" opacity={0.7} rx={1} />;
+        <div className="absolute flex items-end gap-px" style={{ left: left + s * 0.15, top, width: width - s * 0.3, height, paddingTop: s * 0.2, paddingBottom: s * 0.1, border: '0.5px solid #E0E0E0', borderRadius: 4, backgroundColor: '#fff' }}>
+          {values.slice(0, 10).map((v, i) => {
+            const barH = (v / maxVal) * (height - s * 0.5);
+            return (
+              <div key={i} className="flex flex-col items-center flex-1" style={{ height: '100%', justifyContent: 'flex-end' }}>
+                <div style={{ width: '70%', height: Math.max(barH, 2), backgroundColor: colors[i % colors.length], borderRadius: 1, opacity: 0.85 }} />
+                {labels[i] && <div className="truncate text-center w-full" style={{ fontSize: Math.max(fs(7), 4), color: '#6B6B6B', marginTop: 1 }}>{labels[i]}</div>}
+              </div>
+            );
           })}
-        </g>
+        </div>
       );
     }
-    case 'kpi_card': {
-      return (
-        <g>
-          <rect x={x} y={y} width={w} height={h} fill={WHITE} stroke="#E0E0E0" strokeWidth={0.5} rx={3} />
-          <rect x={x} y={y + 1} width={2} height={h - 2} fill="#86BC25" rx={1} />
-          <text x={x + 5} y={y + h * 0.35} fontSize={4} fill="#6B6B6B">{truncate(el.label || '', 12)}</text>
-          <text x={x + 5} y={y + h * 0.65} fontSize={7} fontWeight="bold" fill="#1B2A4A">{truncate(el.value || '', 10)}</text>
-          {el.change && <text x={x + w - 3} y={y + h * 0.35} textAnchor="end" fontSize={3.5} fontWeight="bold"
-            fill={String(el.change).includes('+') ? '#86BC25' : '#C4262E'}>{truncate(el.change, 8)}</text>}
-        </g>
-      );
-    }
+    case 'kpi_card':
     case 'callout': {
+      const isPos = el.change && (String(el.change).includes('+') || String(el.change).includes('▲'));
       return (
-        <g>
-          <rect x={x} y={y} width={w} height={h} fill="#F6F6F6" stroke="#E0E0E0" strokeWidth={0.5} rx={2} />
-          <rect x={x} y={y + 1} width={2} height={h - 2} fill={el.accentColor ? `#${el.accentColor}` : '#86BC25'} />
-          <text x={x + 5} y={y + h * 0.35} fontSize={3.5} fill="#6B6B6B">{truncate(el.label || '', 15)}</text>
-          <text x={x + 5} y={y + h * 0.65} fontSize={7} fontWeight="bold" fill="#1B2A4A">{truncate(el.value || '', 12)}</text>
-        </g>
+        <div
+          className="absolute flex flex-col justify-center overflow-hidden"
+          style={{
+            left, top, width, height,
+            backgroundColor: el.fill ? `#${el.fill}` : '#fff',
+            border: '0.5px solid #E0E0E0',
+            borderRadius: s * 0.08,
+            borderLeft: `${Math.max(s * 0.06, 2)}px solid ${el.accentColor ? `#${el.accentColor}` : '#86BC25'}`,
+            padding: `${s * 0.06}px ${s * 0.1}px`,
+          }}
+        >
+          {el.label && <div style={{ fontSize: fs(8), color: '#6B6B6B' }}>{el.label}</div>}
+          <div style={{ fontSize: fs(el.type === 'kpi_card' ? 20 : 18), fontWeight: 700, color: '#1B2A4A', lineHeight: 1.2 }}>{el.value || ''}</div>
+          {el.change && <div style={{ fontSize: fs(8), fontWeight: 600, color: isPos ? '#86BC25' : '#C4262E' }}>{el.change}</div>}
+          {el.description && <div style={{ fontSize: fs(7), color: '#6B6B6B' }}>{el.description}</div>}
+        </div>
       );
     }
     case 'divider':
-      return <rect x={x} y={y} width={w} height={1} fill="#E0E0E0" />;
+      return <div className="absolute" style={{ left, top, width, height: Math.max(height, 1), backgroundColor: el.color ? `#${el.color}` : '#E0E0E0' }} />;
+    case 'icon_text':
+      return (
+        <div className="absolute flex items-center gap-1" style={{ left, top, width, height }}>
+          <span style={{ fontSize: fs(el.iconFontSize ?? 14) }}>{el.icon || ''}</span>
+          <span style={{ fontSize: fs(el.fontSize ?? 11), color: el.color ? `#${el.color}` : '#2D2D2D', fontWeight: el.bold ? 700 : 400 }}>{el.text || ''}</span>
+        </div>
+      );
     default:
       return null;
   }
@@ -799,15 +872,30 @@ function DynamicElement({ el }: { el: any }) {
 /* ===== Main Component ===== */
 export default function SlidePreview({ slide, selected, onClick, width = 280 }: Props) {
   const sType = slide.slide_type || slide.type || 'content';
-  const height = width * (9 / 16); // 16:9 ratio for dynamic, 4:3 for NP
   const isNpTemplate = NP_TEMPLATE_TYPES.has(sType);
   const isDynamic = !!(slide as any).elements?.length;
+  const height = isDynamic ? width * (5.63 / 10) : width * (3 / 4);
 
   const layoutElements = useMemo(() => {
     if (isNpTemplate || isDynamic || !slide.elements?.length) return [];
     const hint = slide.layout_hint || 'auto';
     return computeLayout(slide.elements, hint);
   }, [slide, isNpTemplate, isDynamic]);
+
+  // 좌표 기반 슬라이드: HTML/CSS 렌더링 (고품질)
+  if (isDynamic) {
+    return (
+      <div
+        className={`cursor-pointer rounded-lg border-2 transition-all overflow-hidden shadow-sm ${
+          selected ? 'border-blue-500 shadow-md' : 'border-[#E9E9E7] hover:border-[#c0c0c0]'
+        }`}
+        style={{ width }}
+        onClick={onClick}
+      >
+        <DynamicSlidePreview slide={slide} previewWidth={width} />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -817,16 +905,8 @@ export default function SlidePreview({ slide, selected, onClick, width = 280 }: 
       style={{ width, height }}
       onClick={onClick}
     >
-      <svg viewBox={`0 0 ${VB_W} ${isDynamic ? 225 : VB_H}`} width="100%" height="100%">
-        {isDynamic ? (
-          /* ===== 좌표 기반 동적 렌더링 ===== */
-          <>
-            <rect width={VB_W} height={225} fill={`#${(slide as any).background || 'FFFFFF'}`} />
-            {((slide as any).elements || []).map((el: any, i: number) => (
-              <DynamicElement key={i} el={el} />
-            ))}
-          </>
-        ) : isNpTemplate ? (
+      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" height="100%">
+        {isNpTemplate ? (
           <>
             {sType === 'title' && <RenderTitle slide={slide} />}
             {sType === 'divider' && <RenderDivider slide={slide} />}
