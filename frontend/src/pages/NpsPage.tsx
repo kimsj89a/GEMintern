@@ -100,7 +100,7 @@ export default function NpsPage() {
   const totalAmt = results.reduce((s, r) => s + (r.당월고지금액 || 0), 0);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <h1 className="text-xl font-bold text-[#37352F] mb-1">🏢 국민연금 사업장 조회</h1>
       <p className="text-sm text-[#787774] mb-6">
         국민연금 가입 사업장 내역을 연도/월/사업장명으로 조회합니다.
@@ -161,7 +161,7 @@ export default function NpsPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
             <div className="bg-white border border-[#E9E9E7] rounded-xl p-3">
               <div className="text-xs text-[#787774] mb-1">조회 건수</div>
               <div className="text-lg font-bold text-[#2383E2]">{fmt(total)}</div>

@@ -252,7 +252,7 @@ export default function LpQaPage() {
 
   if (!currentProject) {
     return (
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
         <h1 className="text-xl font-bold text-[#37352F] mb-2">🙋 LP Q&A 대응</h1>
         <div className="text-sm text-[#9B9A97] py-8 text-center">프로젝트를 먼저 선택하세요.</div>
       </div>
@@ -262,13 +262,13 @@ export default function LpQaPage() {
   return (
     <>
       {/* Scrollable content */}
-      <div className="p-8 pb-52 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 pb-52 max-w-5xl mx-auto">
         <h1 className="text-xl font-bold text-[#37352F] mb-1">🙋 LP Q&A 대응</h1>
         <p className="text-sm text-[#787774] mb-6">질문 목록을 입력하면 문서 기반으로 일괄 답변을 생성합니다. 생성 중에도 추가 질문을 넣을 수 있습니다.</p>
 
-        <div className="flex gap-6">
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Left: Document selector */}
-          <div className="w-64 shrink-0">
+          <div className="w-full md:w-64 md:shrink-0">
             <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 max-h-80 overflow-y-auto">
               <div className="text-xs font-semibold text-[#9B9A97] uppercase mb-2">참조 문서</div>
               {Object.keys(tree).length > 0 ? (
@@ -395,7 +395,7 @@ export default function LpQaPage() {
 
       {/* Floating bottom input bar */}
       <div className="sticky bottom-0 z-10 border-t border-[#E9E9E7] bg-white/95 backdrop-blur-sm shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <div className="max-w-5xl mx-auto px-8 py-4">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-4">
           {/* File upload question preview (shown above input when in file mode) */}
           {inputMode === 'file' && questionsList.length > 0 && (
             <div className="bg-[#F7F6F3] border border-[#E9E9E7] rounded-xl p-3 mb-3 max-h-48 overflow-y-auto">

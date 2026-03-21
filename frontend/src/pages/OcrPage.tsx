@@ -122,13 +122,13 @@ export default function OcrPage() {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <h1 className="text-xl font-bold text-slate-800 mb-1">문서 OCR</h1>
       <p className="text-sm text-slate-500 mb-6">이미지/PDF에서 텍스트를 추출합니다.</p>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col md:flex-row gap-4">
         {/* Left panel: files + engine */}
-        <div className="w-80 shrink-0 space-y-3">
+        <div className="w-full md:w-80 md:shrink-0 space-y-3">
           {/* Drop zone */}
           <div className="glass-card p-4">
             <label className="block text-sm font-semibold text-slate-700 mb-2">파일 선택</label>

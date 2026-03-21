@@ -376,7 +376,7 @@ export default function PptToolsPage() {
   const selectedSlide = slides[selectedIdx] || null;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <h1 className="text-xl font-bold text-[#37352F] mb-1">발표자료 (PPT)</h1>
       <p className="text-sm text-[#787774] mb-6">프로젝트 문서 기반 PPT 생성 및 투자이력 업데이트</p>
 
@@ -502,9 +502,9 @@ export default function PptToolsPage() {
 
           {/* Slide workspace */}
           {slides.length > 0 && (
-            <div className="flex gap-4">
+            <div className="flex flex-col md:flex-row gap-4">
               {/* Slide list (left) */}
-              <div className="w-48 flex-shrink-0 space-y-2 max-h-[600px] overflow-y-auto pr-1">
+              <div className="w-full md:w-48 md:flex-shrink-0 space-y-2 max-h-[600px] overflow-y-auto pr-1">
                 {slides.map((slide, i) => (
                   <div key={i} className="relative">
                     <div className="text-[10px] text-[#787774] mb-0.5 pl-1">

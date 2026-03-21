@@ -628,7 +628,7 @@ export default function WorkflowPage() {
 
   if (!currentProject) {
     return (
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
         <h1 className="text-xl font-bold text-slate-800 mb-2">{phase.title}</h1>
         <div className="flex flex-col items-center py-16 text-slate-400">
           <svg className="w-12 h-12 mb-3 opacity-30" viewBox="0 0 24 24" fill="none"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" strokeWidth="1.5"/></svg>
@@ -641,7 +641,7 @@ export default function WorkflowPage() {
   const currentTemplates = REPORT_TEMPLATES;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-5 animate-fade-in">
         <h1 className="text-xl font-bold text-slate-800 tracking-tight">{phase.title}</h1>
@@ -676,9 +676,9 @@ export default function WorkflowPage() {
       {/* ======================== PHASE 1 ======================== */}
       {isPhase1 && step === 1 && (
         <div className="space-y-4 animate-fade-in-up">
-          <div className="flex gap-4">
+          <div className="flex flex-col md:flex-row gap-4">
             {/* Left: Project docs */}
-            <div className="w-64 shrink-0 glass-card p-3 max-h-[calc(100vh-320px)] overflow-y-auto">
+            <div className="w-full md:w-64 md:shrink-0 glass-card p-3 max-h-[calc(100vh-320px)] overflow-y-auto">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">프로젝트 문서</div>
               <FolderTree tree={tree} projectName={currentProject} selectable selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs} onDocDownload={(doc) => currentProject && api.downloadDoc(currentProject, doc)} />
             </div>
@@ -858,12 +858,12 @@ export default function WorkflowPage() {
       )}
 
       {isPhase1 && step === 3 && (
-        <div className="flex gap-4 animate-fade-in-up" style={{ height: 'calc(100vh - 280px)' }}>
+        <div className="flex flex-col md:flex-row gap-4 animate-fade-in-up" style={{ height: 'calc(100vh - 280px)' }}>
           <div className="flex-1 glass-card-elevated p-5 overflow-y-auto">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">분석 결과</div>
             <MarkdownViewer content={analysisResult} />
           </div>
-          <div className="w-96 glass-card-elevated p-4 flex flex-col">
+          <div className="w-full md:w-96 glass-card-elevated p-4 flex flex-col">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">자료 기반 Q&A</div>
             <ChatWidget messages={chatMessages} onSend={handlePhase1Chat} loading={chatLoading} onStop={handleStopChat} placeholder="자료에 대해 질문하세요..." />
           </div>
@@ -884,9 +884,9 @@ export default function WorkflowPage() {
             돌아가기
           </button>
 
-          <div className="flex gap-5" style={{ minHeight: 'calc(100vh - 340px)' }}>
+          <div className="flex flex-col md:flex-row gap-5" style={{ minHeight: 'calc(100vh - 340px)' }}>
             {/* Left panel */}
-            <div className="w-[480px] shrink-0 space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
+            <div className="w-full md:w-[480px] md:shrink-0 space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
               {/* Template grid */}
               <div className="glass-card p-4">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
@@ -1064,7 +1064,7 @@ export default function WorkflowPage() {
 
       {/* ======================== PHASE 2: Refine ======================== */}
       {!isPhase1 && phase2View === 'refine' && (
-        <div className="flex gap-4 animate-fade-in-up" style={{ height: 'calc(100vh - 280px)' }}>
+        <div className="flex flex-col md:flex-row gap-4 animate-fade-in-up" style={{ height: 'calc(100vh - 280px)' }}>
           <div className="flex-1 glass-card-elevated flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
@@ -1092,7 +1092,7 @@ export default function WorkflowPage() {
               <MarkdownViewer content={highlightedResult} />
             </div>
           </div>
-          <div className="w-96 glass-card-elevated p-4 flex flex-col">
+          <div className="w-full md:w-96 glass-card-elevated p-4 flex flex-col">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">수정 요청</div>
             <ChatWidget messages={chatMessages} onSend={handleRefine} loading={chatLoading} onStop={handleStopChat} placeholder="수정할 내용을 입력하세요..." />
           </div>

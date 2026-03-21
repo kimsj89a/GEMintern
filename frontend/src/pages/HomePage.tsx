@@ -45,7 +45,7 @@ export default function HomePage() {
   }, [currentProject]);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto animate-fade-in-up">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto animate-fade-in-up">
       {/* Hero */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Dashboard</h1>
@@ -53,7 +53,7 @@ export default function HomePage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8 stagger-children">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8 stagger-children">
         <div className="glass-card p-5 text-center">
           <div className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">{projectCount}</div>
           <div className="text-xs text-slate-500 mt-1 font-medium">프로젝트</div>
@@ -72,7 +72,7 @@ export default function HomePage() {
       {/* Workflow cards */}
       <div className="mb-8">
         <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.12em] mb-3">Investment Workflow</h2>
-        <div className="grid grid-cols-2 gap-4 stagger-children">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger-children">
           {WORKFLOW_CARDS.map((card) => (
             <div
               key={card.id}
@@ -101,7 +101,7 @@ export default function HomePage() {
       {/* Tools */}
       <div>
         <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.12em] mb-3">Independent Tools</h2>
-        <div className="grid grid-cols-3 gap-3 stagger-children">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 stagger-children">
           {TOOL_BUTTONS.map((tool) => (
             <button
               key={tool.id}

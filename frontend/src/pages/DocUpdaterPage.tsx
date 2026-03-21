@@ -224,7 +224,7 @@ export default function DocUpdaterPage() {
   // Result view
   if (result) {
     return (
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
         <h1 className="text-xl font-bold text-[#37352F] mb-1">
           🔄 문서 업데이트 완료
         </h1>
@@ -352,7 +352,7 @@ export default function DocUpdaterPage() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <h1 className="text-xl font-bold text-[#37352F] mb-1">
         🔄 문서 업데이트
       </h1>

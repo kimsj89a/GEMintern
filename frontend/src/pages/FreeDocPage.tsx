@@ -143,7 +143,7 @@ export default function FreeDocPage() {
   const canGenerate = instruction.trim() && hasSource && !generating;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <h1 className="text-xl font-bold text-[#37352F] mb-1">📝 자유양식 문서 작성</h1>
       <p className="text-sm text-[#787774] mb-6">
         프로젝트 선택 없이 파일을 올리고 지시사항만 주면 AI가 문서를 작성합니다.

@@ -190,7 +190,7 @@ export default function QaSessionPage() {
 
   if (!currentProject) {
     return (
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
         <h1 className="text-xl font-bold text-[#37352F] mb-2">자료기반 Q&A</h1>
         <div className="text-sm text-[#9B9A97] py-8 text-center">프로젝트를 먼저 선택하세요.</div>
       </div>
@@ -199,7 +199,7 @@ export default function QaSessionPage() {
 
   return (
     <>
-      <div className="p-8 pb-28 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 pb-28 max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl font-bold text-[#37352F] mb-1">자료기반 Q&A</h1>
@@ -215,9 +215,9 @@ export default function QaSessionPage() {
           </button>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           {/* Left sidebar */}
-          <div className="w-64 shrink-0 space-y-3">
+          <div className="w-full md:w-64 md:shrink-0 space-y-3">
             {/* Session list */}
             <div className="bg-white border border-[#E9E9E7] rounded-xl p-3 max-h-48 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
@@ -276,7 +276,7 @@ export default function QaSessionPage() {
 
       {/* Floating bottom input bar */}
       <div className="sticky bottom-0 z-10 border-t border-[#E9E9E7] bg-white/95 backdrop-blur-sm shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <div className="max-w-5xl mx-auto px-8 py-4">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-4">
           <ChatInputBar
             onSend={handleSend}
             loading={loading}

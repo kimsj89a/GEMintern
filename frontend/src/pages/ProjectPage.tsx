@@ -242,7 +242,7 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <h1 className="text-lg font-semibold text-[#37352F] tracking-tight mb-0.5">프로젝트 관리</h1>
       <p className="text-[13px] text-[#787774] mb-6">프로젝트별 문서를 관리합니다</p>
       <IdbMigrationBanner onDone={loadProjects} />
@@ -252,9 +252,9 @@ export default function ProjectPage() {
           <button className="text-blue-400 hover:text-blue-600 text-xs font-medium ml-3" onClick={() => setStatus('')}>닫기</button>
         </div>
       )}
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Sidebar — Project List */}
-        <div className="w-64 shrink-0">
+        <div className="w-full md:w-64 md:shrink-0">
           <div className="flex gap-1.5 mb-3">
             <input value={newProject} onChange={(e) => setNewProject(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
