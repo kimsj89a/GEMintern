@@ -84,12 +84,12 @@ function SearchBar({ onSelect }: { onSelect: (code: string, name: string) => voi
 
   return (
     <div ref={ref} className="relative max-w-lg mx-auto">
-      <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-800/60 border border-slate-700/60 focus-within:border-blue-500/60 transition-colors">
-        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-white border border-slate-200 focus-within:border-blue-500/60 transition-colors">
+        <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
-          className="flex-1 bg-transparent text-white placeholder-slate-500 outline-none text-sm"
+          className="flex-1 bg-transparent text-slate-900 placeholder-slate-400 outline-none text-sm"
           placeholder="종목명 또는 종목코드 검색..."
           value={query}
           onChange={e => onChange(e.target.value)}
@@ -97,7 +97,7 @@ function SearchBar({ onSelect }: { onSelect: (code: string, name: string) => voi
         />
         {loading && <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />}
         {query && !loading && (
-          <button onClick={() => { setQuery(''); setResults([]); }} className="text-slate-500 hover:text-slate-300">
+          <button onClick={() => { setQuery(''); setResults([]); }} className="text-slate-400 hover:text-slate-600">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -105,15 +105,15 @@ function SearchBar({ onSelect }: { onSelect: (code: string, name: string) => voi
         )}
       </div>
       {show && results.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl bg-slate-800 border border-slate-700 shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+        <div className="absolute z-50 mt-1 w-full rounded-xl bg-white border border-slate-200 shadow-xl overflow-hidden max-h-80 overflow-y-auto">
           {results.map((r, i) => (
             <button
               key={i}
-              className="w-full text-left px-4 py-2.5 hover:bg-slate-700/60 flex items-center justify-between transition-colors"
+              className="w-full text-left px-4 py-2.5 hover:bg-slate-100 flex items-center justify-between transition-colors"
               onClick={() => { onSelect(r.stockCode, r.corpName); setQuery(''); setShow(false); }}
             >
-              <span className="text-sm text-white">{r.corpName}</span>
-              <span className="text-xs text-slate-400 font-mono">{r.stockCode}</span>
+              <span className="text-sm text-slate-900">{r.corpName}</span>
+              <span className="text-xs text-slate-500 font-mono">{r.stockCode}</span>
             </button>
           ))}
         </div>
@@ -131,13 +131,13 @@ function PopularChips({ onSelect }: { onSelect: (code: string, name: string) => 
   if (!chips.length) return null;
   return (
     <div className="flex flex-wrap justify-center gap-2 mt-4">
-      <span className="text-xs text-slate-500 flex items-center gap-1">
+      <span className="text-xs text-slate-400 flex items-center gap-1">
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
         인기
       </span>
       {chips.map(c => (
         <button key={c.stockCode}
-          className="px-3 py-1 text-xs rounded-full bg-slate-700/50 text-slate-300 hover:bg-blue-500/20 hover:text-blue-400 transition-all border border-slate-700/40 hover:border-blue-500/30"
+          className="px-3 py-1 text-xs rounded-full bg-slate-100 text-slate-600 hover:bg-blue-500/20 hover:text-blue-400 transition-all border border-slate-200 hover:border-blue-500/30"
           onClick={() => onSelect(c.stockCode, c.corpName)}
         >{c.corpName}</button>
       ))}
@@ -155,11 +155,11 @@ const TABS = [
 
 function TabNav({ active, onChange }: { active: string; onChange: (t: string) => void }) {
   return (
-    <div className="flex gap-1 p-1 rounded-xl bg-slate-800/40 border border-slate-700/40">
+    <div className="flex gap-1 p-1 rounded-xl bg-slate-50 border border-slate-200">
       {TABS.map(t => (
         <button key={t.id}
           className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-            active === t.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/30 border border-transparent'
+            active === t.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 border border-transparent'
           }`}
           onClick={() => onChange(t.id)}
         >
@@ -191,15 +191,15 @@ function CompanyOverview({ data }: { data: any }) {
   return (
     <div className="space-y-6">
       {/* Stock Price Card */}
-      <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
+      <div className="p-5 rounded-xl bg-white border border-slate-200">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-2xl font-bold text-white">{formatPrice(stockPrice.current)}</div>
+            <div className="text-2xl font-bold text-slate-900">{formatPrice(stockPrice.current)}</div>
             <div className={`text-sm font-medium ${priceUp ? 'text-green-400' : 'text-red-400'}`}>
               {priceUp ? '▲' : '▼'} {Math.abs(stockPrice.change)}%
             </div>
           </div>
-          <div className="text-right text-xs text-slate-400 space-y-1">
+          <div className="text-right text-xs text-slate-500 space-y-1">
             <div>시가총액: {formatKRW(stockPrice.marketCap)}</div>
             <div>거래량: {(stockPrice.volume || 0).toLocaleString()}</div>
           </div>
@@ -207,11 +207,11 @@ function CompanyOverview({ data }: { data: any }) {
         {chartData.length > 0 && (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => v.slice(5)} interval={Math.floor(chartData.length / 6)} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} domain={['auto', 'auto']} tickFormatter={v => formatKRW(v)} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
-                labelStyle={{ color: '#94a3b8' }} formatter={(v: any) => [formatPrice(v), '종가']} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={v => v.slice(5)} interval={Math.floor(chartData.length / 6)} />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} domain={['auto', 'auto']} tickFormatter={v => formatKRW(v)} />
+              <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8 }}
+                labelStyle={{ color: '#64748b' }} formatter={(v: any) => [formatPrice(v), '종가']} />
               <Line type="monotone" dataKey="price" stroke={COLORS.accent} strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -221,16 +221,16 @@ function CompanyOverview({ data }: { data: any }) {
       {/* Info Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {infoItems.map((item, i) => (
-          <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+          <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50/50 border border-slate-200">
             <span className="text-lg">{item.icon}</span>
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500">{item.label}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">{item.label}</div>
               {item.link ? (
                 <a href={item.link.startsWith('http') ? item.link : `http://${item.link}`}
                   target="_blank" rel="noopener noreferrer"
                   className="text-sm text-blue-400 hover:underline truncate block">{item.value}</a>
               ) : (
-                <div className="text-sm text-slate-200 truncate">{item.value}</div>
+                <div className="text-sm text-slate-700 truncate">{item.value}</div>
               )}
             </div>
           </div>
@@ -271,14 +271,14 @@ function FinancialData({ data }: { data: any }) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Bar Chart */}
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">연간 실적 추이</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">연간 실적 추이</h3>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={barData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => formatKRW(v)} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={v => formatKRW(v)} />
+              <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8 }}
                 formatter={(v: any) => [formatKRW(v)]} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="매출액" fill={COLORS.accent} radius={[4, 4, 0, 0]} />
@@ -289,8 +289,8 @@ function FinancialData({ data }: { data: any }) {
         </div>
 
         {/* Pie Chart */}
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">자본/부채 구조 ({financials.years[latestIdx]})</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">자본/부채 구조 ({financials.years[latestIdx]})</h3>
           {pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
@@ -299,34 +299,34 @@ function FinancialData({ data }: { data: any }) {
                   labelLine={{ stroke: '#64748b' }}>
                   {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
                 </Pie>
-                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
+                <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8 }}
                   formatter={(v: any) => [formatKRW(v)]} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-[260px] text-slate-500 text-sm">데이터 없음</div>
+            <div className="flex items-center justify-center h-[260px] text-slate-400 text-sm">데이터 없음</div>
           )}
         </div>
       </div>
 
       {/* Table */}
-      <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40 overflow-x-auto">
-        <h3 className="text-sm font-semibold text-slate-200 mb-3">재무 요약</h3>
+      <div className="p-5 rounded-xl bg-white border border-slate-200 overflow-x-auto">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">재무 요약</h3>
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-slate-700/40">
-              <th className="text-left py-2 text-slate-400 font-medium">항목</th>
+            <tr className="border-b border-slate-200">
+              <th className="text-left py-2 text-slate-500 font-medium">항목</th>
               {financials.years.map((yr: string) => (
-                <th key={yr} className="text-right py-2 text-slate-400 font-medium">{yr}</th>
+                <th key={yr} className="text-right py-2 text-slate-500 font-medium">{yr}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.key} className="border-b border-slate-700/20 hover:bg-slate-700/20">
-                <td className="py-2 text-slate-300 font-medium">{r.label}</td>
+              <tr key={r.key} className="border-b border-slate-100 hover:bg-slate-50">
+                <td className="py-2 text-slate-600 font-medium">{r.label}</td>
                 {(financials[r.key] as number[]).map((v: number, i: number) => (
-                  <td key={i} className="py-2 text-right text-slate-200 font-mono">{formatKRW(v)}</td>
+                  <td key={i} className="py-2 text-right text-slate-700 font-mono">{formatKRW(v)}</td>
                 ))}
               </tr>
             ))}
@@ -361,20 +361,20 @@ function DisclosureTab({ stockCode }: { stockCode: string }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">월별 공시 건수</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">월별 공시 건수</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#94a3b8' }} interval={2} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#64748b' }} interval={2} />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />
+              <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8 }} />
               <Bar dataKey="count" fill={COLORS.accent} radius={[3, 3, 0, 0]} name="건수" />
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">공시 유형별 분포</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">공시 유형별 분포</h3>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie data={typeData} cx="50%" cy="50%" outerRadius={80} dataKey="value"
@@ -382,27 +382,27 @@ function DisclosureTab({ stockCode }: { stockCode: string }) {
                 labelLine={{ stroke: '#64748b' }}>
                 {typeData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} />
+              <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8 }} />
             </PieChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Recent Disclosures */}
-      <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-        <h3 className="text-sm font-semibold text-slate-200 mb-3">최근 공시</h3>
+      <div className="p-5 rounded-xl bg-white border border-slate-200">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">최근 공시</h3>
         <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
           {data.recentDisclosures.map((d: any, i: number) => (
             <a key={i} href={d.link} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-700/40 transition-colors group">
+              className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-slate-500">📄</span>
-                <span className="text-xs text-slate-300 truncate group-hover:text-blue-400">{d.title}</span>
+                <span className="text-slate-400">📄</span>
+                <span className="text-xs text-slate-600 truncate group-hover:text-blue-400">{d.title}</span>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-400">{d.type}</span>
-                <span className="text-[10px] text-slate-500">{d.date}</span>
-                <svg className="w-3 h-3 text-slate-600 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{d.type}</span>
+                <span className="text-[10px] text-slate-400">{d.date}</span>
+                <svg className="w-3 h-3 text-slate-400 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </div>
@@ -463,90 +463,90 @@ function ValuationTab({ stockCode }: { stockCode: string }) {
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {metrics.map(m => (
-          <div key={m.label} className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/40 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">{m.label}</div>
+          <div key={m.label} className="p-3 rounded-xl bg-white border border-slate-200 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">{m.label}</div>
             <div className="text-lg font-bold" style={{ color: m.color }}>
               {typeof m.value === 'number' ? m.value.toFixed(2) : '-'}
             </div>
-            <div className="text-[10px] text-slate-500">{m.suffix}</div>
+            <div className="text-[10px] text-slate-400">{m.suffix}</div>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* DCF */}
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">DCF 모델</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">DCF 모델</h3>
           {dcf.fairValue ? (
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">적정가치</span>
-                <span className="text-lg font-bold text-white">{formatPrice(dcf.fairValue)}</span>
+                <span className="text-xs text-slate-500">적정가치</span>
+                <span className="text-lg font-bold text-slate-900">{formatPrice(dcf.fairValue)}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">현재가</span>
-                <span className="text-sm text-slate-300">{formatPrice(dcf.currentPrice)}</span>
+                <span className="text-xs text-slate-500">현재가</span>
+                <span className="text-sm text-slate-600">{formatPrice(dcf.currentPrice)}</span>
               </div>
               {dcf.upside !== undefined && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-400">상승여력</span>
+                  <span className="text-xs text-slate-500">상승여력</span>
                   <span className={`text-sm font-bold ${dcf.upside > 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {dcf.upside > 0 ? '+' : ''}{dcf.upside}%
                   </span>
                 </div>
               )}
-              <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-1">
-                <div className="text-[10px] text-slate-500">가정</div>
-                <div className="text-[11px] text-slate-400">성장률: {dcf.assumptions?.growthRate}% / 할인율: {dcf.assumptions?.discountRate}% / 영구성장률: {dcf.assumptions?.terminalGrowthRate}%</div>
+              <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
+                <div className="text-[10px] text-slate-400">가정</div>
+                <div className="text-[11px] text-slate-500">성장률: {dcf.assumptions?.growthRate}% / 할인율: {dcf.assumptions?.discountRate}% / 영구성장률: {dcf.assumptions?.terminalGrowthRate}%</div>
               </div>
             </div>
           ) : (
-            <div className="text-sm text-slate-500 text-center py-6">데이터 부족으로 산출 불가</div>
+            <div className="text-sm text-slate-400 text-center py-6">데이터 부족으로 산출 불가</div>
           )}
         </div>
 
         {/* S-RIM */}
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">S-RIM 모델</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">S-RIM 모델</h3>
           {srim.fairValue ? (
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">적정가치</span>
-                <span className="text-lg font-bold text-white">{formatPrice(srim.fairValue)}</span>
+                <span className="text-xs text-slate-500">적정가치</span>
+                <span className="text-lg font-bold text-slate-900">{formatPrice(srim.fairValue)}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-400">현재가</span>
-                <span className="text-sm text-slate-300">{formatPrice(srim.currentPrice)}</span>
+                <span className="text-xs text-slate-500">현재가</span>
+                <span className="text-sm text-slate-600">{formatPrice(srim.currentPrice)}</span>
               </div>
               {srim.upside !== undefined && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-400">상승여력</span>
+                  <span className="text-xs text-slate-500">상승여력</span>
                   <span className={`text-sm font-bold ${srim.upside > 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {srim.upside > 0 ? '+' : ''}{srim.upside}%
                   </span>
                 </div>
               )}
-              <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-1">
-                <div className="text-[10px] text-slate-500">가정</div>
-                <div className="text-[11px] text-slate-400">ROE: {srim.assumptions?.roe}% / 요구수익률: {srim.assumptions?.requiredReturn}% / BPS: {formatPrice(srim.assumptions?.bps)}</div>
+              <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
+                <div className="text-[10px] text-slate-400">가정</div>
+                <div className="text-[11px] text-slate-500">ROE: {srim.assumptions?.roe}% / 요구수익률: {srim.assumptions?.requiredReturn}% / BPS: {formatPrice(srim.assumptions?.bps)}</div>
               </div>
             </div>
           ) : (
-            <div className="text-sm text-slate-500 text-center py-6">데이터 부족으로 산출 불가</div>
+            <div className="text-sm text-slate-400 text-center py-6">데이터 부족으로 산출 불가</div>
           )}
         </div>
       </div>
 
       {/* ROE History Chart */}
       {roeData.length > 0 && (
-        <div className="p-5 rounded-xl bg-slate-800/50 border border-slate-700/40">
-          <h3 className="text-sm font-semibold text-slate-200 mb-4">ROE 추이</h3>
+        <div className="p-5 rounded-xl bg-white border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">ROE 추이</h3>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={roeData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => `${v}%`} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={v => `${v}%`} />
+              <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8 }}
                 formatter={(v: any) => [`${v}%`, 'ROE']} />
               <Line type="monotone" dataKey="ROE" stroke={COLORS.green} strokeWidth={2} dot={{ r: 4, fill: COLORS.green }} />
             </LineChart>
@@ -562,7 +562,7 @@ function LoadingSpinner({ text }: { text: string }) {
   return (
     <div className="flex items-center justify-center py-16">
       <div className="w-8 h-8 border-3 border-blue-400 border-t-transparent rounded-full animate-spin mr-3" />
-      <span className="text-slate-400">{text}</span>
+      <span className="text-slate-500">{text}</span>
     </div>
   );
 }
@@ -601,10 +601,10 @@ export default function DartwingsPage() {
       <div className="text-center">
         <div className="flex items-center justify-center gap-2 mb-2">
           <span className="text-2xl">📊</span>
-          <h1 className="text-xl font-bold text-white">DartWings</h1>
+          <h1 className="text-xl font-bold text-slate-900">DartWings</h1>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">BETA</span>
         </div>
-        <p className="text-sm text-slate-400 mb-6">DART 전자공시 기반 기업 분석 도구</p>
+        <p className="text-sm text-slate-500 mb-6">DART 전자공시 기반 기업 분석 도구</p>
         <SearchBar onSelect={handleSelect} />
         <PopularChips onSelect={handleSelect} />
       </div>
@@ -612,9 +612,9 @@ export default function DartwingsPage() {
       {/* Dashboard */}
       {selected && (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-white">
+          <h2 className="text-lg font-bold text-slate-900">
             {selected.corpName}
-            <span className="text-xs font-normal text-slate-400 ml-2">({selected.stockCode})</span>
+            <span className="text-xs font-normal text-slate-500 ml-2">({selected.stockCode})</span>
           </h2>
 
           {loading ? (
