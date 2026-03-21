@@ -597,34 +597,17 @@ def _safe_parse_json(text):
 
 
 def generate_slide_outline(api_key, model_name, file_context="", context_text="", **_kwargs):
-    """좌표 기반 동적 PPT JSON 생성.
-    DYNAMIC_PPTX_PROMPT로 20종 레시피 참조하여 elements[] 포함 완전한 deck JSON 반환.
+    """2단계 PPT 아웃라인: Quick Review → 슬라이드 JSON.
+    generate_slide_json과 동일 로직이지만 on_slide 콜백 없이 dict 반환.
     """
     import json as _json
-    client = get_client(api_key)
-
-    # 새 디자인 시스템 프롬프트 사용
-    dynamic_prompt = getattr(prompts, 'DYNAMIC_PPTX_PROMPT', '')
-    if not dynamic_prompt:
-        # 폴백: 기존 프롬프트
-        dynamic_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
-
-    user_content = dynamic_prompt.format(
-        context=file_context or "(문서 컨텍스트 없음)",
-        query=context_text or "투자 검토 보고서를 작성해주세요",
+    result_json = generate_slide_json(
+        api_key, model_name,
+        file_context=file_context,
+        context_text=context_text,
+        on_slide=None,
     )
-
-    config = types.GenerateContentConfig(
-        max_output_tokens=65536,
-        temperature=0.3,
-        response_mime_type="application/json",
-    )
-    resp = client.models.generate_content(
-        model=model_name,
-        contents=user_content,
-        config=config,
-    )
-    return _safe_parse_json(resp.text)
+    return _safe_parse_json(result_json) if isinstance(result_json, str) else result_json
 
 
 def generate_slides_from_outline(api_key, model_name, outline, file_context="",
@@ -702,33 +685,61 @@ Planned slides: {_json.dumps(sec_slides_plan, ensure_ascii=False)}
 
 def generate_slide_json(api_key, model_name, file_context="", context_text="",
                         on_slide=None, **_kwargs):
-    """좌표 기반 동적 PPT JSON 한 번에 생성 (DYNAMIC_PPTX_PROMPT 사용).
-    elements[] 포함 완전한 deck JSON 반환.
+    """2단계 PPT 생성: Quick Review → 슬라이드화.
+
+    Step 1: 문서를 분석하여 구조화된 리뷰 생성 (simple_review)
+    Step 2: 리뷰 결과를 DYNAMIC_PPTX_PROMPT로 좌표 기반 슬라이드 JSON 변환
     """
     import json as _json
+    import logging
+    logger = logging.getLogger(__name__)
     client = get_client(api_key)
 
+    # ── Step 1: Quick Review (문서 분석) ──
+    logger.info("PPT Step 1: Quick Review 분석 시작")
+    review_prompt = prompts.LOGIC_PROMPTS.get('simple_review_system', '')
+    review_user = (
+        f"아래 자료를 분석하여 투자 검토 보고서를 작성하세요.\n"
+        f"핵심 지표(매출, EBITDA, 성장률 등)를 정확한 숫자와 함께 정리하고,\n"
+        f"시장 분석, 사업 모델, 재무 현황, 리스크를 구조화하세요.\n\n"
+        f"[사용자 요청]\n{context_text or '투자 검토 보고서'}\n\n"
+        f"[자료]\n{file_context}"
+    )
+
+    review_config = types.GenerateContentConfig(
+        max_output_tokens=16384,
+        temperature=0.2,
+        system_instruction=review_prompt if review_prompt else None,
+    )
+    review_resp = client.models.generate_content(
+        model=model_name, contents=review_user, config=review_config,
+    )
+    review_text = review_resp.text or ""
+    logger.info(f"PPT Step 1 완료: {len(review_text)} chars")
+
+    # ── Step 2: 리뷰 → 슬라이드 JSON 변환 ──
+    logger.info("PPT Step 2: 슬라이드 JSON 변환 시작")
     dynamic_prompt = getattr(prompts, 'DYNAMIC_PPTX_PROMPT', '')
     if not dynamic_prompt:
         dynamic_prompt = prompts.LOGIC_PROMPTS.get('ppt_outline', '')
 
+    # 리뷰 결과를 context로, 원래 사용자 요청을 query로
     user_content = dynamic_prompt.format(
-        context=file_context or "(문서 컨텍스트 없음)",
+        context=review_text,
         query=context_text or "투자 검토 보고서를 작성해주세요",
     )
 
-    config = types.GenerateContentConfig(
+    slide_config = types.GenerateContentConfig(
         max_output_tokens=65536,
         temperature=0.3,
         response_mime_type="application/json",
     )
-    resp = client.models.generate_content(
-        model=model_name,
-        contents=user_content,
-        config=config,
+    slide_resp = client.models.generate_content(
+        model=model_name, contents=user_content, config=slide_config,
     )
-    result = _safe_parse_json(resp.text)
+    result = _safe_parse_json(slide_resp.text)
     slides = result.get("slides", [])
+    logger.info(f"PPT Step 2 완료: {len(slides)} slides")
 
     # on_slide 콜백 호출 (WebSocket 스트리밍 호환)
     if on_slide and slides:
