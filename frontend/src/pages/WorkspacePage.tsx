@@ -12,6 +12,7 @@ import FolderTree from '../components/FolderTree';
 import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
+import SlideGeneratorModal from '../components/SlideGeneratorModal';
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
@@ -31,6 +32,7 @@ export default function WorkspacePage() {
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [docCount, setDocCount] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [showSlideModal, setShowSlideModal] = useState(false);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -119,10 +121,14 @@ export default function WorkspacePage() {
     setLoading(false);
   }, []);
 
-  // Studio tool click → legacy page로 이동
-  const handleToolClick = (page: string) => {
-    setView('legacy');
-    openTab(page);
+  // Studio tool click
+  const handleToolClick = (toolId: string, page: string) => {
+    if (toolId === 'ppt') {
+      setShowSlideModal(true);
+    } else {
+      setView('legacy');
+      openTab(page);
+    }
   };
 
   const isMobile = window.innerWidth < 768;
@@ -164,7 +170,7 @@ export default function WorkspacePage() {
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">스튜디오</div>
               <div className="grid grid-cols-2 gap-3">
                 {STUDIO_TOOLS.map(tool => (
-                  <button key={tool.id} onClick={() => handleToolClick(tool.page)}
+                  <button key={tool.id} onClick={() => handleToolClick(tool.id, tool.page)}
                     className="flex flex-col items-center gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all">
                     <span className="text-2xl">{tool.icon}</span>
                     <span className="text-sm font-medium text-slate-700">{tool.label}</span>
@@ -275,7 +281,7 @@ export default function WorkspacePage() {
           </div>
           <div className="px-4 pb-4 space-y-2">
             {STUDIO_TOOLS.map(tool => (
-              <button key={tool.id} onClick={() => handleToolClick(tool.page)}
+              <button key={tool.id} onClick={() => handleToolClick(tool.id, tool.page)}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group">
                 <span className="text-xl">{tool.icon}</span>
                 <div className="flex-1 min-w-0">
@@ -293,6 +299,14 @@ export default function WorkspacePage() {
           </div>
         </div>
       </div>
+
+      {/* 슬라이드 생성 모달 */}
+      {showSlideModal && (
+        <SlideGeneratorModal
+          onClose={() => setShowSlideModal(false)}
+          selectedDocs={selectedDocs.length > 0 ? selectedDocs : undefined}
+        />
+      )}
     </div>
   );
 }
