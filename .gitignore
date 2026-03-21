@@ -35,6 +35,9 @@ nul
 # Database
 data/
 
+# RAG storage large files (문서 원본 — DB로 관리)
+rag_storage/*/docs/*.md
+
 # Build artifacts
 frontend/dist/
 node_modules/
