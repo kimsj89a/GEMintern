@@ -49,3 +49,4 @@ dart-fss
 pykrx
 httpx
 rank-bm25
+opendataloader-pdf

@@ -10,6 +10,14 @@ from docx.oxml.ns import qn
 from pptx import Presentation
 import ocr
 
+# OpenDataLoader PDF 지원 확인
+OPENDATALOADER_AVAILABLE = False
+try:
+    import opendataloader_pdf
+    OPENDATALOADER_AVAILABLE = True
+except ImportError:
+    pass
+
 # MarkItDown 지원 확인
 MARKITDOWN_AVAILABLE = False
 try:
@@ -135,6 +143,53 @@ def parse_uploaded_file(uploaded_file, api_key=None, docai_config=None, template
         except Exception as e:
             uploaded_file.seek(0)
             # Document AI 실패 시 다음 방법으로 진행
+
+    # [OpenDataLoader PDF] PDF 전용 고정밀 파서 (표 추출 0.93 정확도)
+    if OPENDATALOADER_AVAILABLE and file_type == 'pdf':
+        try:
+            import logging as _logging
+            _logging.getLogger(__name__).info(f"OpenDataLoader PDF: parsing {uploaded_file.name}")
+            suffix = os.path.splitext(uploaded_file.name)[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                uploaded_file.seek(0)
+                tmp.write(uploaded_file.read())
+                tmp_path = tmp.name
+            uploaded_file.seek(0)
+
+            out_dir = tempfile.mkdtemp(prefix="odl_")
+            try:
+                import concurrent.futures
+                def _run_odl(path, out):
+                    opendataloader_pdf.convert(
+                        input_path=[path],
+                        output_dir=out,
+                        format="markdown",
+                    )
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(_run_odl, tmp_path, out_dir)
+                    future.result(timeout=120)  # 2분 타임아웃
+
+                # 결과 .md 파일 읽기
+                md_files = [f for f in os.listdir(out_dir) if f.endswith('.md')]
+                if md_files:
+                    md_path = os.path.join(out_dir, md_files[0])
+                    with open(md_path, 'r', encoding='utf-8') as mf:
+                        md_content = mf.read()
+                    if md_content.strip():
+                        return f"### [파일명: {uploaded_file.name} (OpenDataLoader)]\n{md_content}\n\n"
+            finally:
+                # 임시 파일 정리
+                import shutil
+                if os.path.exists(tmp_path):
+                    try: os.unlink(tmp_path)
+                    except OSError: pass
+                if os.path.exists(out_dir):
+                    try: shutil.rmtree(out_dir)
+                    except OSError: pass
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(f"OpenDataLoader failed, falling back: {e}")
+            uploaded_file.seek(0)
 
     # [MarkItDown] 우선 시도 (타임아웃 60초)
     # PPT 모드에서 Word는 별도 변환 로직을 사용한다.
