@@ -1,4 +1,4 @@
-﻿# --- Core Logic Prompts ---
+# --- Core Logic Prompts ---
 # 각 템플릿별 시스템 프롬프트
 
 LOGIC_PROMPTS = {

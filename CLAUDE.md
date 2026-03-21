@@ -52,11 +52,15 @@ GEMintern/
 ├── Core Logic Modules (코어 비즈니스 로직)
 │   ├── core_logic.py           # Main business logic and file parsing
 │   ├── core_rag.py             # RAG (Retrieval-Augmented Generation) system
-│   ├── core_rag_vector.py      # Vector-based RAG
+│   ├── core_rag_vector.py      # Vector-based RAG (ChromaDB + Gemini embedding)
+│   ├── core_rag_bm25.py        # BM25 키워드 검색 (rank-bm25)
+│   ├── core_rag_hybrid.py      # 하이브리드 검색 (BM25 + 벡터 RRF 퓨전 + 리랭킹)
+│   ├── core_rag_gemini.py      # Gemini File Search API 연동
 │   ├── core_rfi.py             # RFI (Request for Information) processing
 │   ├── core_chained.py         # Chained prompting logic
 │   ├── core_im.py              # Investment Memorandum 생성
 │   ├── core_im_ppt.py          # IM PPT 생성
+│   ├── ai_client.py            # AI Client 어댑터 (Gemini/Claude 라우팅)
 │   ├── core_ppt_updater.py     # PPT update automation
 │   ├── core_doc_updater.py     # Document update automation
 │   └── prompts.py              # AI prompt templates

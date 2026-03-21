@@ -1,4 +1,4 @@
-﻿from google.genai import types
+from google.genai import types
 from ai_client import AIClient, get_client
 import utils
 import core_rfi

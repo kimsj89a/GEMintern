@@ -307,7 +307,7 @@ def _verify_project_ownership(project_name: str, user_id: int):
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok", "version": "2026.03.16T3"}
+    return {"status": "ok", "version": "2026.03.21"}
 
 
 # ========================================
