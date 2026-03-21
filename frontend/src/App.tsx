@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import TabContainer from './components/TabContainer';
 import MobileNav from './components/MobileNav';
 import ProjectDashboard from './pages/ProjectDashboard';
+import WorkspacePage from './pages/WorkspacePage';
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -81,25 +82,9 @@ export default function App() {
     return <ProjectDashboard />;
   }
 
-  // 작업 페이지 뷰 (추후 WorkspacePage로 교체)
-  // 현재는 legacy와 동일하게 동작
+  // 작업 페이지 뷰 (NotebookLM 3열)
   if (view === 'workspace') {
-    if (isMobile) {
-      return (
-        <div className="flex flex-col h-screen overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <TabContainer mobile hideTabBar />
-          </div>
-          <MobileNav />
-        </div>
-      );
-    }
-    return (
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <TabContainer />
-      </div>
-    );
+    return <WorkspacePage />;
   }
 
   // 레거시 뷰 (설정/관리자 등)
