@@ -1300,7 +1300,46 @@ def _render_dynamic_pptx_python(deck_json: dict) -> bytes:
     from pptx.util import Inches, Pt, Emu
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.oxml.ns import qn
     import io
+
+    # --- Design system colors ---
+    CLR_PRIMARY = "1B2A4A"
+    CLR_ACCENT = "86BC25"
+    CLR_SECONDARY = "0076A8"
+    CLR_ALERT = "C4262E"
+    CLR_BG = "F6F6F6"
+    CLR_TEXT = "2D2D2D"
+    CLR_TABLE_HDR = "1B2A4A"
+    CLR_ALT_ROW = "F2F5F7"
+
+    align_map = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
+
+    def _add_text_paragraphs(tf, text_str, font_size, bold, color_str, align=None):
+        """Split text by newlines, handle bullet points, add paragraphs."""
+        lines = str(text_str).split("\n")
+        for li, line in enumerate(lines):
+            if li == 0:
+                p = tf.paragraphs[0]
+            else:
+                p = tf.add_paragraph()
+            is_bullet = line.lstrip().startswith("•") or line.lstrip().startswith("- ")
+            display_text = line.lstrip("•- ").strip() if is_bullet else line
+            if is_bullet:
+                p.level = 1
+                pPr = p._pPr
+                if pPr is None:
+                    pPr = p._p.get_or_add_pPr()
+                buChar = pPr.makeelement(qn("a:buChar"), {"char": "\u2022"})
+                pPr.append(buChar)
+            run = p.add_run()
+            run.text = display_text
+            run.font.size = Pt(font_size)
+            run.font.bold = bold
+            run.font.color.rgb = RGBColor.from_string(color_str)
+            if align:
+                p.alignment = align
 
     prs = Presentation()
     prs.slide_width = Inches(10)
@@ -1309,7 +1348,7 @@ def _render_dynamic_pptx_python(deck_json: dict) -> bytes:
 
     slides = deck_json.get("slides", [])
 
-    for slide_data in slides:
+    for slide_idx, slide_data in enumerate(slides):
         slide = prs.slides.add_slide(blank_layout)
         bg_color = slide_data.get("background", "FFFFFF")
         slide.background.fill.solid()
@@ -1322,11 +1361,14 @@ def _render_dynamic_pptx_python(deck_json: dict) -> bytes:
             w = Inches(el.get("w", 1))
             h = Inches(el.get("h", 0.5))
 
+            # ===== TEXT =====
             if el_type == "text":
                 txBox = slide.shapes.add_textbox(x, y, w, h)
                 tf = txBox.text_frame
                 tf.word_wrap = True
                 text_content = el.get("text", "")
+                el_align = align_map.get(el.get("align", "left"), PP_ALIGN.LEFT)
+
                 if isinstance(text_content, list):
                     # Rich text runs
                     for ri, run_data in enumerate(text_content):
@@ -1334,65 +1376,269 @@ def _render_dynamic_pptx_python(deck_json: dict) -> bytes:
                             p = tf.paragraphs[0]
                         else:
                             p = tf.add_paragraph()
-                        run_text = run_data if isinstance(run_data, str) else run_data.get("text", "")
-                        run = p.add_run()
-                        run.text = run_text
-                        run.font.size = Pt(run_data.get("fontSize", el.get("fontSize", 11)) if isinstance(run_data, dict) else el.get("fontSize", 11))
-                        run.font.bold = run_data.get("bold", el.get("bold", False)) if isinstance(run_data, dict) else el.get("bold", False)
-                        color_str = (run_data.get("color") if isinstance(run_data, dict) else None) or el.get("color", "2D2D2D")
-                        run.font.color.rgb = RGBColor.from_string(color_str)
+                        if isinstance(run_data, str):
+                            run_text = run_data
+                            r_size = el.get("fontSize", 11)
+                            r_bold = el.get("bold", False)
+                            r_italic = el.get("italic", False)
+                            r_color = el.get("color", CLR_TEXT)
+                        else:
+                            run_text = run_data.get("text", "")
+                            r_size = run_data.get("fontSize", el.get("fontSize", 11))
+                            r_bold = run_data.get("bold", el.get("bold", False))
+                            r_italic = run_data.get("italic", el.get("italic", False))
+                            r_color = run_data.get("color") or el.get("color", CLR_TEXT)
+
+                        # Handle line breaks within a single run
+                        sub_lines = run_text.split("\n")
+                        for sli, sub_line in enumerate(sub_lines):
+                            if sli > 0:
+                                p = tf.add_paragraph()
+                            run = p.add_run()
+                            run.text = sub_line
+                            run.font.size = Pt(r_size)
+                            run.font.bold = r_bold
+                            run.font.italic = r_italic
+                            run.font.color.rgb = RGBColor.from_string(r_color)
+                        p.alignment = el_align
                 else:
-                    p = tf.paragraphs[0]
-                    run = p.add_run()
-                    run.text = str(text_content)
-                    run.font.size = Pt(el.get("fontSize", 11))
-                    run.font.bold = el.get("bold", False)
-                    color_str = el.get("color", "2D2D2D")
-                    run.font.color.rgb = RGBColor.from_string(color_str)
-                    align_map = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
-                    p.alignment = align_map.get(el.get("align", "left"), PP_ALIGN.LEFT)
+                    _add_text_paragraphs(
+                        tf, text_content,
+                        font_size=el.get("fontSize", 11),
+                        bold=el.get("bold", False),
+                        color_str=el.get("color", CLR_TEXT),
+                        align=el_align,
+                    )
 
                 # Background fill
                 if el.get("fill"):
                     txBox.fill.solid()
                     txBox.fill.fore_color.rgb = RGBColor.from_string(el["fill"])
 
+                # Shadow (drop shadow via XML)
+                if el.get("shadow"):
+                    spPr = txBox._element.spPr
+                    effectLst = spPr.makeelement(qn("a:effectLst"), {})
+                    outerShdw = effectLst.makeelement(qn("a:outerShdw"), {
+                        "blurRad": "50800", "dist": "38100", "dir": "2700000",
+                        "algn": "tl", "rotWithShape": "0",
+                    })
+                    srgbClr = outerShdw.makeelement(qn("a:srgbClr"), {"val": "000000"})
+                    alpha = srgbClr.makeelement(qn("a:alpha"), {"val": "40000"})
+                    srgbClr.append(alpha)
+                    outerShdw.append(srgbClr)
+                    effectLst.append(outerShdw)
+                    spPr.append(effectLst)
+
+            # ===== SHAPE =====
             elif el_type == "shape":
-                from pptx.enum.shapes import MSO_SHAPE
-                shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+                shape_type_name = el.get("shapeType", "RECTANGLE").upper()
+                shape_enum = getattr(MSO_SHAPE, shape_type_name, MSO_SHAPE.RECTANGLE)
+                shape = slide.shapes.add_shape(shape_enum, x, y, w, h)
                 shape.fill.solid()
-                shape.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", "F6F6F6"))
+                shape.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", CLR_BG))
+                shape.line.fill.background()
+                # Optional text inside shape
+                if el.get("text"):
+                    tf = shape.text_frame
+                    tf.word_wrap = True
+                    p = tf.paragraphs[0]
+                    run = p.add_run()
+                    run.text = str(el["text"])
+                    run.font.size = Pt(el.get("fontSize", 10))
+                    run.font.color.rgb = RGBColor.from_string(el.get("color", CLR_TEXT))
+                    p.alignment = align_map.get(el.get("align", "center"), PP_ALIGN.CENTER)
+
+            # ===== DIVIDER =====
+            elif el_type == "divider":
+                div_h = Inches(el.get("h", 0.02))
+                shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, div_h)
+                shape.fill.solid()
+                shape.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", "CCCCCC"))
                 shape.line.fill.background()
 
+            # ===== ICON_TEXT =====
+            elif el_type == "icon_text":
+                txBox = slide.shapes.add_textbox(x, y, w, h)
+                tf = txBox.text_frame
+                tf.word_wrap = True
+                p = tf.paragraphs[0]
+                icon_char = el.get("icon", "\u25CF")  # default: filled circle
+                icon_run = p.add_run()
+                icon_run.text = icon_char + "  "
+                icon_run.font.size = Pt(el.get("iconSize", el.get("fontSize", 14)))
+                icon_run.font.color.rgb = RGBColor.from_string(el.get("iconColor", CLR_ACCENT))
+                text_run = p.add_run()
+                text_run.text = el.get("text", "")
+                text_run.font.size = Pt(el.get("fontSize", 11))
+                text_run.font.bold = el.get("bold", False)
+                text_run.font.color.rgb = RGBColor.from_string(el.get("color", CLR_TEXT))
+                p.alignment = align_map.get(el.get("align", "left"), PP_ALIGN.LEFT)
+                if el.get("fill"):
+                    txBox.fill.solid()
+                    txBox.fill.fore_color.rgb = RGBColor.from_string(el["fill"])
+
+            # ===== TABLE =====
             elif el_type == "table":
                 rows = el.get("rows", [])
                 if not rows:
                     continue
                 n_rows = len(rows)
-                n_cols = len(rows[0]) if rows else 1
-                table_shape = slide.shapes.add_table(n_rows, n_cols, x, y, w, Inches(n_rows * 0.3))
+                n_cols = max(len(r) for r in rows) if rows else 1
+                table_h = Inches(el.get("h", n_rows * 0.3))
+                table_shape = slide.shapes.add_table(n_rows, n_cols, x, y, w, table_h)
                 tbl = table_shape.table
+                has_total = el.get("totalRow", False)
+                font_size = el.get("fontSize", 9)
+
                 for ri, row in enumerate(rows):
+                    is_header = (ri == 0)
+                    is_total = has_total and (ri == n_rows - 1)
+                    is_alt = (not is_header) and (ri % 2 == 0) and (not is_total)
+
                     for ci, cell_data in enumerate(row):
+                        if ci >= n_cols:
+                            break
                         cell = tbl.cell(ri, ci)
-                        cell_text = cell_data if isinstance(cell_data, str) else (cell_data.get("text", "") if isinstance(cell_data, dict) else str(cell_data))
+
+                        # Extract cell text and optional cell-level props
+                        if isinstance(cell_data, dict):
+                            cell_text = str(cell_data.get("text", ""))
+                            cell_fill = cell_data.get("fill")
+                            cell_bold = cell_data.get("bold")
+                            cell_color = cell_data.get("color")
+                            cell_align = cell_data.get("align")
+                        else:
+                            cell_text = str(cell_data) if cell_data is not None else ""
+                            cell_fill = None
+                            cell_bold = None
+                            cell_color = None
+                            cell_align = None
+
                         cell.text = cell_text
+
+                        # --- Cell styling ---
                         for p in cell.text_frame.paragraphs:
+                            if cell_align:
+                                p.alignment = align_map.get(cell_align, PP_ALIGN.LEFT)
                             for run in p.runs:
-                                run.font.size = Pt(el.get("fontSize", 9))
-                        if ri == 0:
+                                run.font.size = Pt(font_size)
+
+                        if is_header:
                             cell.fill.solid()
-                            cell.fill.fore_color.rgb = RGBColor.from_string(el.get("headerFill", "1B2A4A"))
+                            cell.fill.fore_color.rgb = RGBColor.from_string(el.get("headerFill", CLR_TABLE_HDR))
                             for p in cell.text_frame.paragraphs:
                                 for run in p.runs:
                                     run.font.color.rgb = RGBColor.from_string("FFFFFF")
                                     run.font.bold = True
+                        elif is_total:
+                            cell.fill.solid()
+                            cell.fill.fore_color.rgb = RGBColor.from_string("FFFFFF")
+                            for p in cell.text_frame.paragraphs:
+                                for run in p.runs:
+                                    run.font.bold = True
+                                    run.font.color.rgb = RGBColor.from_string(CLR_PRIMARY)
+                            # Top border for total row
+                            tc = cell._tc
+                            tcPr = tc.get_or_add_tcPr()
+                            for border_tag in ["a:lnT"]:
+                                ln = tcPr.makeelement(qn(border_tag), {"w": "12700", "cmpd": "sng"})
+                                solidFill = ln.makeelement(qn("a:solidFill"), {})
+                                srgb = solidFill.makeelement(qn("a:srgbClr"), {"val": CLR_PRIMARY})
+                                solidFill.append(srgb)
+                                ln.append(solidFill)
+                                tcPr.append(ln)
+                        elif is_alt:
+                            cell.fill.solid()
+                            cell.fill.fore_color.rgb = RGBColor.from_string(CLR_ALT_ROW)
 
+                        # Cell-level fill override (conditional formatting)
+                        if cell_fill:
+                            cell.fill.solid()
+                            cell.fill.fore_color.rgb = RGBColor.from_string(cell_fill)
+                        if cell_bold is not None:
+                            for p in cell.text_frame.paragraphs:
+                                for run in p.runs:
+                                    run.font.bold = cell_bold
+                        if cell_color:
+                            for p in cell.text_frame.paragraphs:
+                                for run in p.runs:
+                                    run.font.color.rgb = RGBColor.from_string(cell_color)
+
+            # ===== CHART =====
+            elif el_type == "chart":
+                try:
+                    from pptx.chart.data import CategoryChartData
+                    from pptx.enum.chart import XL_CHART_TYPE
+
+                    chart_type_str = el.get("chartType", "bar").lower()
+                    chart_type_map = {
+                        "bar": XL_CHART_TYPE.COLUMN_CLUSTERED,
+                        "column": XL_CHART_TYPE.COLUMN_CLUSTERED,
+                        "line": XL_CHART_TYPE.LINE,
+                        "pie": XL_CHART_TYPE.PIE,
+                        "stacked_bar": XL_CHART_TYPE.COLUMN_STACKED,
+                        "bar_stacked": XL_CHART_TYPE.COLUMN_STACKED,
+                    }
+                    xl_chart_type = chart_type_map.get(chart_type_str, XL_CHART_TYPE.COLUMN_CLUSTERED)
+
+                    chart_data_list = el.get("chart_data") or el.get("chartData") or []
+                    # chart_data_list: [{name, labels, values}]
+
+                    cd = CategoryChartData()
+                    if chart_data_list:
+                        # Use labels from the first series
+                        labels = chart_data_list[0].get("labels", [])
+                        cd.categories = labels
+                        for series_info in chart_data_list:
+                            s_name = series_info.get("name", "Series")
+                            s_values = series_info.get("values", [])
+                            # Pad or truncate values to match labels length
+                            padded = list(s_values) + [0] * max(0, len(labels) - len(s_values))
+                            cd.add_series(s_name, padded[:len(labels)])
+
+                    chart_shape = slide.shapes.add_chart(xl_chart_type, x, y, w, h, cd)
+                    chart = chart_shape.chart
+                    chart.has_legend = len(chart_data_list) > 1
+
+                    # Apply design colors to series
+                    series_colors = [CLR_PRIMARY, CLR_ACCENT, CLR_SECONDARY, CLR_ALERT, "4472C4", "ED7D31"]
+                    for si, series in enumerate(chart.series):
+                        color_hex = series_colors[si % len(series_colors)]
+                        fill = series.format.fill
+                        fill.solid()
+                        fill.fore_color.rgb = RGBColor.from_string(color_hex)
+                        if chart_type_str == "line":
+                            series.format.line.color.rgb = RGBColor.from_string(color_hex)
+                            series.format.line.width = Pt(2)
+                            series.smooth = False
+
+                    # Chart title
+                    if el.get("title"):
+                        chart.has_title = True
+                        chart.chart_title.text_frame.paragraphs[0].text = el["title"]
+                        chart.chart_title.text_frame.paragraphs[0].font.size = Pt(10)
+                        chart.chart_title.text_frame.paragraphs[0].font.color.rgb = RGBColor.from_string(CLR_PRIMARY)
+                except Exception:
+                    # Fallback: render a placeholder shape if chart fails
+                    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+                    shape.fill.solid()
+                    shape.fill.fore_color.rgb = RGBColor.from_string(CLR_BG)
+                    shape.line.fill.background()
+                    tf = shape.text_frame
+                    tf.word_wrap = True
+                    p = tf.paragraphs[0]
+                    run = p.add_run()
+                    run.text = f"[Chart: {el.get('title', el.get('chartType', 'chart'))}]"
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = RGBColor.from_string(CLR_TEXT)
+                    p.alignment = PP_ALIGN.CENTER
+
+            # ===== KPI_CARD / CALLOUT =====
             elif el_type in ("kpi_card", "callout"):
-                # Render as textbox with background
                 txBox = slide.shapes.add_textbox(x, y, w, h)
                 txBox.fill.solid()
-                txBox.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", "F6F6F6"))
+                txBox.fill.fore_color.rgb = RGBColor.from_string(el.get("fill", CLR_BG))
                 tf = txBox.text_frame
                 tf.word_wrap = True
                 if el.get("label"):
@@ -1401,24 +1647,56 @@ def _render_dynamic_pptx_python(deck_json: dict) -> bytes:
                     run.text = el["label"]
                     run.font.size = Pt(8)
                     run.font.color.rgb = RGBColor.from_string("6B6B6B")
+                    p.alignment = align_map.get(el.get("align", "center"), PP_ALIGN.CENTER)
                 if el.get("value"):
                     p = tf.add_paragraph()
                     run = p.add_run()
                     run.text = el["value"]
                     run.font.size = Pt(20)
                     run.font.bold = True
-                    run.font.color.rgb = RGBColor.from_string("1B2A4A")
+                    run.font.color.rgb = RGBColor.from_string(CLR_PRIMARY)
+                    p.alignment = align_map.get(el.get("align", "center"), PP_ALIGN.CENTER)
                 if el.get("change"):
                     p = tf.add_paragraph()
                     run = p.add_run()
                     run.text = el["change"]
                     run.font.size = Pt(9)
-                    is_pos = "+" in el["change"] or "▲" in el["change"]
-                    run.font.color.rgb = RGBColor.from_string("86BC25" if is_pos else "C4262E")
+                    is_pos = "+" in el["change"] or "\u25B2" in el["change"]
+                    run.font.color.rgb = RGBColor.from_string(CLR_ACCENT if is_pos else CLR_ALERT)
+                    p.alignment = align_map.get(el.get("align", "center"), PP_ALIGN.CENTER)
+
+                # Shadow for cards
+                if el.get("shadow", el_type == "kpi_card"):
+                    spPr = txBox._element.spPr
+                    effectLst = spPr.makeelement(qn("a:effectLst"), {})
+                    outerShdw = effectLst.makeelement(qn("a:outerShdw"), {
+                        "blurRad": "40000", "dist": "25400", "dir": "2700000",
+                        "algn": "tl", "rotWithShape": "0",
+                    })
+                    srgbClr = outerShdw.makeelement(qn("a:srgbClr"), {"val": "000000"})
+                    alpha = srgbClr.makeelement(qn("a:alpha"), {"val": "25000"})
+                    srgbClr.append(alpha)
+                    outerShdw.append(srgbClr)
+                    effectLst.append(outerShdw)
+                    spPr.append(effectLst)
 
         # Speaker notes
         if slide_data.get("speaker_notes"):
             slide.notes_slide.notes_text_frame.text = slide_data["speaker_notes"]
+
+        # Slide number (bottom-right)
+        sn_left = Inches(9.1)
+        sn_top = Inches(5.3)
+        sn_w = Inches(0.7)
+        sn_h = Inches(0.25)
+        sn_box = slide.shapes.add_textbox(sn_left, sn_top, sn_w, sn_h)
+        sn_tf = sn_box.text_frame
+        sn_p = sn_tf.paragraphs[0]
+        sn_run = sn_p.add_run()
+        sn_run.text = str(slide_idx + 1)
+        sn_run.font.size = Pt(8)
+        sn_run.font.color.rgb = RGBColor.from_string("999999")
+        sn_p.alignment = PP_ALIGN.RIGHT
 
     buf = io.BytesIO()
     prs.save(buf)
