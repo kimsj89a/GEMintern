@@ -7,7 +7,7 @@ interface AppState {
   setView: (v: ViewMode) => void;
   activePanel: 'sources' | 'chat' | 'studio';
   setActivePanel: (p: 'sources' | 'chat' | 'studio') => void;
-  activeTool: string | null; // workspace 내 활성 도구 (null=채팅)
+  activeTool: string | null;
   setActiveTool: (t: string | null) => void;
   currentProject: string;
   setCurrentProject: (p: string) => void;
@@ -24,16 +24,13 @@ interface AppState {
   backToDashboard: () => void;
 }
 
+// pushState 중복 방지 플래그
+let _skipNextPush = false;
+
 export const useAppStore = create<AppState>((set, get) => ({
   view: 'dashboard' as ViewMode,
-  setView: (v) => {
-    const prev = get().view;
-    set({ view: v });
-    // 브라우저 히스토리에 상태 push
-    if (v !== prev) {
-      window.history.pushState({ view: v, project: get().currentProject }, '');
-    }
-  },
+  setView: (v) => set({ view: v }),
+
   activePanel: 'chat' as const,
   setActivePanel: (p) => set({ activePanel: p }),
   activeTool: null,
@@ -48,11 +45,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   enterProject: (name) => {
     localStorage.setItem('lastProject', name);
     set({ currentProject: name, view: 'workspace', activePanel: 'chat', activeTool: null });
-    window.history.pushState({ view: 'workspace', project: name }, '');
+    if (!_skipNextPush) {
+      window.history.pushState({ view: 'workspace', project: name }, '', `#project/${encodeURIComponent(name)}`);
+    }
   },
   backToDashboard: () => {
     set({ view: 'dashboard', activeTool: null });
-    window.history.pushState({ view: 'dashboard' }, '');
+    if (!_skipNextPush) {
+      window.history.pushState({ view: 'dashboard' }, '', '#');
+    }
   },
 
   activePage: 'home',
@@ -90,18 +91,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAppStarted: (v) => set({ appStarted: v }),
 }));
 
-// 브라우저 뒤로가기/앞으로가기 처리
+// ── 브라우저 히스토리 관리 ──
+
+// 초기 상태 설정 (SPA 첫 로드 시)
+const initHash = window.location.hash;
+if (initHash.startsWith('#project/')) {
+  const projectName = decodeURIComponent(initHash.slice(9));
+  if (projectName) {
+    _skipNextPush = true;
+    useAppStore.getState().enterProject(projectName);
+    _skipNextPush = false;
+  }
+}
+window.history.replaceState(
+  { view: useAppStore.getState().view, project: useAppStore.getState().currentProject },
+  ''
+);
+
+// 뒤로가기/앞으로가기 처리
 window.addEventListener('popstate', (e) => {
   const state = e.state;
-  if (state?.view) {
-    const store = useAppStore.getState();
-    if (state.view === 'dashboard') {
-      store.setView !== undefined && useAppStore.setState({ view: 'dashboard', activeTool: null });
-    } else if (state.view === 'workspace' && state.project) {
-      useAppStore.setState({ view: 'workspace', currentProject: state.project, activeTool: null });
-    }
+  _skipNextPush = true; // popstate 처리 중에는 pushState 방지
+
+  if (state?.view === 'workspace' && state?.project) {
+    useAppStore.setState({
+      view: 'workspace',
+      currentProject: state.project,
+      activeTool: null,
+      activePanel: 'chat',
+    });
+    localStorage.setItem('lastProject', state.project);
   } else {
-    // 히스토리 없으면 대시보드로
-    useAppStore.setState({ view: 'dashboard', activeTool: null });
+    useAppStore.setState({
+      view: 'dashboard',
+      activeTool: null,
+    });
   }
+
+  _skipNextPush = false;
 });

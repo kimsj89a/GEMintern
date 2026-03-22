@@ -4,7 +4,7 @@
  * 가운데: 채팅 — RAG 기반 Q&A
  * 오른쪽: 스튜디오 — 도구 카드 그리드
  */
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, Component, type ReactNode } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import { unsubscribeTask } from '../api/ws';
@@ -13,6 +13,28 @@ import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import SlideGeneratorModal from '../components/SlideGeneratorModal';
+
+// 에러 바운더리
+class ToolErrorBoundary extends Component<{ children: ReactNode; onReset: () => void }, { hasError: boolean; error: string }> {
+  state = { hasError: false, error: '' };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error.message };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+          <span className="text-3xl mb-3">⚠️</span>
+          <span className="text-sm mb-2">도구 로딩 오류</span>
+          <span className="text-xs text-slate-300 mb-4">{this.state.error}</span>
+          <button onClick={() => { this.setState({ hasError: false, error: '' }); this.props.onReset(); }}
+            className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">채팅으로 돌아가기</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // 스튜디오 도구 → 기존 페이지 lazy import
 const TOOL_PAGES: Record<string, React.LazyExoticComponent<any>> = {
@@ -264,13 +286,24 @@ export default function WorkspacePage() {
                 </span>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <Suspense fallback={
-                  <div className="flex items-center justify-center h-32">
-                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                {!currentProject ? (
+                  <div className="flex flex-col items-center justify-center h-32 text-slate-400">
+                    <span className="text-sm">프로젝트가 선택되지 않았습니다</span>
                   </div>
-                }>
-                  {(() => { const ToolPage = TOOL_PAGES[activeTool]; return <ToolPage />; })()}
-                </Suspense>
+                ) : (
+                  <ToolErrorBoundary onReset={() => setActiveTool(null)}>
+                    <Suspense fallback={
+                      <div className="flex items-center justify-center h-32">
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm">로딩 중...</span>
+                        </div>
+                      </div>
+                    }>
+                      {(() => { const ToolPage = TOOL_PAGES[activeTool]; return <ToolPage />; })()}
+                    </Suspense>
+                  </ToolErrorBoundary>
+                )}
               </div>
             </>
           ) : (
