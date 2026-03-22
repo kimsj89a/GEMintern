@@ -512,32 +512,39 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
     from backend.database import get_db
-    # Auto-sync FIRST (may fix _folders.json), then read tree
-    doc_names = core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or []
-    tree = core_rag.get_folder_tree(name, owner_id=user["id"])
 
-    # Fallback: also check SQLite documents table (for Railway ephemeral FS)
-    if not doc_names:
-        with get_db() as conn:
-            project = conn.execute(
-                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
-                (name, user["id"])
-            ).fetchone()
-            if project:
-                rows = conn.execute(
-                    "SELECT DISTINCT filename, folder FROM documents WHERE project_id = ?",
-                    (project["id"],)
-                ).fetchall()
-                if rows:
-                    db_names = [r["filename"] for r in rows]
-                    # Rebuild tree from DB
-                    tree = {}
-                    for r in rows:
-                        folder = r["folder"] or core_rag.ROOT_FOLDER
-                        tree.setdefault(folder, []).append(r["filename"])
-                    doc_names = db_names
+    # 1. 파일시스템에서 문서 목록
+    fs_names = set(core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or [])
+    fs_tree = core_rag.get_folder_tree(name, owner_id=user["id"]) or {}
 
-    return {"folder_tree": tree, "doc_names": doc_names, "count": len(doc_names)}
+    # 2. SQLite에서 문서 목록 (항상 확인 — 파일시스템과 합침)
+    db_tree: dict = {}
+    db_names: set = set()
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        ).fetchone()
+        if project:
+            rows = conn.execute(
+                "SELECT DISTINCT filename, folder FROM documents WHERE project_id = ?",
+                (project["id"],)
+            ).fetchall()
+            for r in rows:
+                folder = r["folder"] or core_rag.ROOT_FOLDER
+                db_tree.setdefault(folder, []).append(r["filename"])
+                db_names.add(r["filename"])
+
+    # 3. 합치기 (파일시스템 + SQLite, 중복 제거)
+    all_names = fs_names | db_names
+    merged_tree: dict = {}
+    for folder, docs in {**db_tree, **fs_tree}.items():
+        merged_tree.setdefault(folder, [])
+        for doc in docs:
+            if doc not in merged_tree[folder]:
+                merged_tree[folder].append(doc)
+
+    return {"folder_tree": merged_tree, "doc_names": list(all_names), "count": len(all_names)}
 
 
 @router.get("/projects/{name}/documents")

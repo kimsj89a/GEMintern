@@ -4,7 +4,7 @@
  * 가운데: 채팅 — RAG 기반 Q&A
  * 오른쪽: 스튜디오 — 도구 카드 그리드
  */
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, Component, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import { unsubscribeTask } from '../api/ws';
@@ -13,39 +13,6 @@ import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import SlideGeneratorModal from '../components/SlideGeneratorModal';
-
-// 에러 바운더리
-class ToolErrorBoundary extends Component<{ children: ReactNode; onReset: () => void }, { hasError: boolean; error: string }> {
-  state = { hasError: false, error: '' };
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error: error.message };
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-          <span className="text-3xl mb-3">⚠️</span>
-          <span className="text-sm mb-2">도구 로딩 오류</span>
-          <span className="text-xs text-slate-300 mb-4">{this.state.error}</span>
-          <button onClick={() => { this.setState({ hasError: false, error: '' }); this.props.onReset(); }}
-            className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">채팅으로 돌아가기</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// 스튜디오 도구 → 기존 페이지 lazy import
-const TOOL_PAGES: Record<string, React.LazyExoticComponent<any>> = {
-  report: lazy(() => import('./WorkflowPage')),
-  analysis: lazy(() => import('./WorkflowPage')),
-  qa: lazy(() => import('./LpQaPage')),
-  doc_update: lazy(() => import('./DocUpdaterPage')),
-  draft: lazy(() => import('./DraftDocPage')),
-  freedoc: lazy(() => import('./FreeDocPage')),
-  ocr: lazy(() => import('./OcrPage')),
-};
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
@@ -274,7 +241,7 @@ export default function WorkspacePage() {
 
         {/* 가운데: 채팅 또는 활성 도구 */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {activeTool && TOOL_PAGES[activeTool] ? (
+          {activeTool ? (
             <>
               <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
                 <button onClick={() => setActiveTool(null)}
@@ -282,28 +249,37 @@ export default function WorkspacePage() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
                 </button>
                 <span className="text-sm font-bold text-slate-700">
-                  {STUDIO_TOOLS.find(t => t.id === activeTool)?.label || activeTool}
+                  {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label || activeTool}
                 </span>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                {!currentProject ? (
-                  <div className="flex flex-col items-center justify-center h-32 text-slate-400">
-                    <span className="text-sm">프로젝트가 선택되지 않았습니다</span>
+              {/* 도구별 안내 + 채팅 인터페이스 */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {messages.length === 0 && (
+                  <div className="px-6 py-4 bg-blue-50/50 border-b border-blue-100">
+                    <div className="text-sm text-blue-700 font-medium mb-1">
+                      {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label}
+                    </div>
+                    <div className="text-xs text-blue-500">
+                      {activeTool === 'report' && '프로젝트 자료를 기반으로 투심보고서, IM 등을 작성합니다. 원하는 보고서 유형과 요구사항을 입력하세요.'}
+                      {activeTool === 'analysis' && '프로젝트 자료를 분석하여 핵심 인사이트를 도출합니다. 분석 관점이나 질문을 입력하세요.'}
+                      {activeTool === 'qa' && 'LP 질의에 대한 답변을 프로젝트 자료 기반으로 작성합니다. LP의 질문을 입력하세요.'}
+                      {activeTool === 'doc_update' && '기존 문서의 내용을 업데이트합니다. 수정할 내용을 설명하세요.'}
+                      {activeTool === 'draft' && '기안문을 작성합니다. 기안 내용을 설명하세요.'}
+                      {activeTool === 'freedoc' && '자유 구조로 문서를 작성합니다. 원하는 내용을 입력하세요.'}
+                      {activeTool === 'ocr' && '이미지/스캔 문서에서 텍스트를 추출합니다. 파일을 왼쪽에서 업로드하세요.'}
+                    </div>
                   </div>
-                ) : (
-                  <ToolErrorBoundary onReset={() => setActiveTool(null)}>
-                    <Suspense fallback={
-                      <div className="flex items-center justify-center h-32">
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-sm">로딩 중...</span>
-                        </div>
-                      </div>
-                    }>
-                      {(() => { const ToolPage = TOOL_PAGES[activeTool]; return <ToolPage />; })()}
-                    </Suspense>
-                  </ToolErrorBoundary>
                 )}
+                <div className="flex-1 overflow-hidden">
+                  <ChatWidget messages={messages} onSend={handleSend} loading={loading}
+                    onStop={handleStop}
+                    placeholder={
+                      activeTool === 'report' ? '보고서 유형과 요구사항을 입력하세요...' :
+                      activeTool === 'analysis' ? '분석할 내용을 입력하세요...' :
+                      activeTool === 'qa' ? 'LP 질문을 입력하세요...' :
+                      '요청 내용을 입력하세요...'
+                    } />
+                </div>
               </div>
             </>
           ) : (
