@@ -1191,8 +1191,25 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
 def download_doc(name: str, doc_name: str, user: dict = Depends(get_current_user)):
     """프로젝트 문서를 마크다운 파일로 다운로드."""
     import core_rag
+    from backend.database import get_db
     storage = core_rag._get_storage_name(name, owner_id=user["id"])
     content = core_rag._load_doc_file(storage, doc_name)
+
+    # 파일시스템에 없으면 SQLite에서 로드 (Railway 폴백)
+    if not content:
+        with get_db() as conn:
+            project = conn.execute(
+                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                (name, user["id"])
+            ).fetchone()
+            if project:
+                row = conn.execute(
+                    "SELECT parsed_text FROM documents WHERE project_id = ? AND filename = ?",
+                    (project["id"], doc_name)
+                ).fetchone()
+                if row:
+                    content = row["parsed_text"]
+
     if not content:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다")
     filename = f"{doc_name}.md" if not doc_name.endswith('.md') else doc_name
@@ -1211,9 +1228,27 @@ def download_doc(name: str, doc_name: str, user: dict = Depends(get_current_user
 def save_research(req: SaveResearchRequest, user: dict = Depends(get_current_user)):
     """웹 리서치 결과를 프로젝트 문서로 저장."""
     import core_rag
+    from backend.database import get_db
     api_key = _get_api_key()
     texts = {req.doc_name: req.content}
     result = core_rag.index_texts(api_key, texts, req.project_name, owner_id=user["id"])
+
+    # SQLite에도 저장 (Railway 에포메럴 FS 대비)
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (req.project_name, user["id"])
+        ).fetchone()
+        if project and req.content:
+            size = len(req.content.encode("utf-8"))
+            conn.execute(
+                """INSERT INTO documents (project_id, folder, filename, parsed_text, size)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(project_id, folder, filename) DO UPDATE SET
+                     parsed_text = excluded.parsed_text, size = excluded.size""",
+                (project["id"], "__root__", req.doc_name, req.content, size),
+            )
+
     return result
 
 
