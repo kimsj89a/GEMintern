@@ -4,7 +4,7 @@
  * 가운데: 채팅 — RAG 기반 Q&A
  * 오른쪽: 스튜디오 — 도구 카드 그리드
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import { unsubscribeTask } from '../api/ws';
@@ -13,6 +13,17 @@ import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import SlideGeneratorModal from '../components/SlideGeneratorModal';
+
+// 스튜디오 도구 → 기존 페이지 lazy import
+const TOOL_PAGES: Record<string, React.LazyExoticComponent<any>> = {
+  report: lazy(() => import('./WorkflowPage')),
+  analysis: lazy(() => import('./WorkflowPage')),
+  qa: lazy(() => import('./LpQaPage')),
+  doc_update: lazy(() => import('./DocUpdaterPage')),
+  draft: lazy(() => import('./DraftDocPage')),
+  freedoc: lazy(() => import('./FreeDocPage')),
+  ocr: lazy(() => import('./OcrPage')),
+};
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
@@ -121,13 +132,14 @@ export default function WorkspacePage() {
     setLoading(false);
   }, []);
 
-  // Studio tool click
-  const handleToolClick = (toolId: string, page: string) => {
+  const { activeTool, setActiveTool } = useAppStore();
+
+  // Studio tool click — workspace 내에서 처리
+  const handleToolClick = (toolId: string) => {
     if (toolId === 'ppt') {
       setShowSlideModal(true);
     } else {
-      setView('legacy');
-      openTab(page);
+      setActiveTool(toolId);
     }
   };
 
@@ -170,7 +182,7 @@ export default function WorkspacePage() {
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">스튜디오</div>
               <div className="grid grid-cols-2 gap-3">
                 {STUDIO_TOOLS.map(tool => (
-                  <button key={tool.id} onClick={() => handleToolClick(tool.id, tool.page)}
+                  <button key={tool.id} onClick={() => handleToolClick(tool.id)}
                     className="flex flex-col items-center gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all">
                     <span className="text-2xl">{tool.icon}</span>
                     <span className="text-sm font-medium text-slate-700">{tool.label}</span>
@@ -238,39 +250,64 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* 가운데: 채팅 */}
+        {/* 가운데: 채팅 또는 활성 도구 */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 pt-4 pb-2">
-            <span className="text-sm font-bold text-slate-700">채팅</span>
-          </div>
-          {messages.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-              <span className="text-5xl mb-4 opacity-50">💬</span>
-              <span className="text-sm">자료에 대해 질문하세요</span>
-              <span className="text-xs mt-1">소스 {docCount}개가 참조됩니다</span>
-            </div>
-          ) : null}
-          <div className={messages.length > 0 ? 'flex-1 overflow-hidden' : 'hidden'}>
-            <ChatWidget messages={messages} onSend={handleSend} loading={loading}
-              onStop={handleStop} placeholder="입력을 시작하세요..." />
-          </div>
-          {messages.length === 0 && (
-            <div className="px-4 pb-4">
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-                <input
-                  type="text"
-                  placeholder="입력을 시작하세요..."
-                  className="flex-1 bg-transparent text-sm outline-none text-slate-700 placeholder-slate-400"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                      handleSend((e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
-                    }
-                  }}
-                />
-                <span className="text-xs text-slate-400">소스 {docCount}개</span>
+          {activeTool && TOOL_PAGES[activeTool] ? (
+            <>
+              <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+                <button onClick={() => setActiveTool(null)}
+                  className="text-slate-400 hover:text-slate-600">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <span className="text-sm font-bold text-slate-700">
+                  {STUDIO_TOOLS.find(t => t.id === activeTool)?.label || activeTool}
+                </span>
               </div>
-            </div>
+              <div className="flex-1 overflow-y-auto">
+                <Suspense fallback={
+                  <div className="flex items-center justify-center h-32">
+                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                }>
+                  {(() => { const ToolPage = TOOL_PAGES[activeTool]; return <ToolPage />; })()}
+                </Suspense>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="px-4 pt-4 pb-2">
+                <span className="text-sm font-bold text-slate-700">채팅</span>
+              </div>
+              {messages.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                  <span className="text-5xl mb-4 opacity-50">💬</span>
+                  <span className="text-sm">자료에 대해 질문하세요</span>
+                  <span className="text-xs mt-1">소스 {docCount}개가 참조됩니다</span>
+                </div>
+              ) : null}
+              <div className={messages.length > 0 ? 'flex-1 overflow-hidden' : 'hidden'}>
+                <ChatWidget messages={messages} onSend={handleSend} loading={loading}
+                  onStop={handleStop} placeholder="입력을 시작하세요..." />
+              </div>
+              {messages.length === 0 && (
+                <div className="px-4 pb-4">
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                    <input
+                      type="text"
+                      placeholder="입력을 시작하세요..."
+                      className="flex-1 bg-transparent text-sm outline-none text-slate-700 placeholder-slate-400"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                          handleSend((e.target as HTMLInputElement).value);
+                          (e.target as HTMLInputElement).value = '';
+                        }
+                      }}
+                    />
+                    <span className="text-xs text-slate-400">소스 {docCount}개</span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -281,7 +318,7 @@ export default function WorkspacePage() {
           </div>
           <div className="px-4 pb-4 space-y-2">
             {STUDIO_TOOLS.map(tool => (
-              <button key={tool.id} onClick={() => handleToolClick(tool.id, tool.page)}
+              <button key={tool.id} onClick={() => handleToolClick(tool.id)}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group">
                 <span className="text-xl">{tool.icon}</span>
                 <div className="flex-1 min-w-0">
