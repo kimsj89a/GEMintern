@@ -129,7 +129,7 @@ def generate_wiki(
 ```"""
 
     client = AIClient(api_key)
-    model = "gemini-2.5-flash-preview-05-20"
+    model = "gemini-3-pro-preview"
     config = types.GenerateContentConfig(temperature=0.2, max_output_tokens=16384)
 
     try:
@@ -259,7 +259,7 @@ def suggest_sections(
     config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=4096)
     try:
         resp = client.models.generate_content(
-            model="gemini-2.5-flash-preview-05-20", contents=prompt, config=config
+            model="gemini-3-pro-preview", contents=prompt, config=config
         )
         raw = resp.text.strip()
         m = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL)
