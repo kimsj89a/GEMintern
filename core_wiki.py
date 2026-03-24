@@ -29,8 +29,8 @@ DEFAULT_SECTIONS = [
     {"id": "reference", "title": "Reference Materials", "desc": "참고 자료 목록"},
 ]
 
-# Per-doc truncation limit when building source context
-_DOC_BUDGET = 15000
+# Total context budget for wiki generation (characters)
+_TOTAL_BUDGET = 200_000
 
 
 def _wiki_path(project_name: str) -> str:
@@ -75,11 +75,14 @@ def save_wiki(project_name: str, wiki_data: dict, owner_id: int | None = None):
 def _build_source_context(docs: Dict[str, str]) -> tuple[str, list[tuple[str, str]]]:
     """Build numbered source text from project docs.
     Returns (formatted_text, [(doc_name, full_content), ...]).
+    Dynamically allocates per-doc budget based on total doc count.
     """
     doc_list = list(docs.items())
+    n = len(doc_list)
+    per_doc = max(2000, _TOTAL_BUDGET // max(n, 1))
     parts = []
     for i, (name, content) in enumerate(doc_list, 1):
-        truncated = content[:_DOC_BUDGET] if len(content) > _DOC_BUDGET else content
+        truncated = content[:per_doc] if len(content) > per_doc else content
         parts.append(f"[DOC-{i}] {name}\n{truncated}")
     return "\n\n---\n\n".join(parts), doc_list
 
@@ -154,13 +157,15 @@ def generate_wiki(
 
     client = AIClient(api_key)
     model = _get_model()
+    # 위키 생성은 thinking 끄고 빠르게
     config = types.GenerateContentConfig(
         temperature=0.2,
         max_output_tokens=16384,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
     try:
-        logger.info(f"Wiki generate: model={model}, docs={len(docs)}")
+        logger.info(f"Wiki generate: model={model}, docs={len(docs)}, prompt_len={len(prompt)}")
         resp = client.models.generate_content(model=model, contents=prompt, config=config)
         logger.info(f"Wiki generate: response received, len={len(resp.text)}")
     except Exception as e:
