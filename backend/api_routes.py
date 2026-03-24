@@ -545,6 +545,15 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
             if doc not in merged_tree[folder]:
                 merged_tree[folder].append(doc)
 
+    # 4. 어떤 폴더에도 없는 문서를 __root__에 추가 (orphan 방지)
+    assigned = set()
+    for docs in merged_tree.values():
+        assigned.update(docs)
+    orphans = all_names - assigned
+    if orphans:
+        merged_tree.setdefault(core_rag.ROOT_FOLDER, [])
+        merged_tree[core_rag.ROOT_FOLDER].extend(sorted(orphans))
+
     return {"folder_tree": merged_tree, "doc_names": list(all_names), "count": len(all_names)}
 
 
