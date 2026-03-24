@@ -341,7 +341,14 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
   useEffect(() => { loadWiki(); }, [loadWiki]);
 
   const pollTask = useCallback(async (taskId: string) => {
+    const startTime = Date.now();
+    const TIMEOUT = 180_000; // 3분
     const poll = async () => {
+      if (Date.now() - startTime > TIMEOUT) {
+        setError('위키 생성 시간 초과 (3분). 문서가 너무 많으면 일부만 선택해 주세요.');
+        setGenerating(false);
+        return;
+      }
       try {
         const status = await api.getTaskStatus(taskId);
         if (status.status === 'complete') {

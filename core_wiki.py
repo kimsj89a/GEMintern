@@ -154,10 +154,16 @@ def generate_wiki(
 
     client = AIClient(api_key)
     model = _get_model()
-    config = types.GenerateContentConfig(temperature=0.2, max_output_tokens=16384)
+    config = types.GenerateContentConfig(
+        temperature=0.2,
+        max_output_tokens=16384,
+        http_options={"timeout": 120_000},  # 120초 타임아웃
+    )
 
     try:
+        logger.info(f"Wiki generate: model={model}, docs={len(docs)}")
         resp = client.models.generate_content(model=model, contents=prompt, config=config)
+        logger.info(f"Wiki generate: response received, len={len(resp.text)}")
     except Exception as e:
         logger.error(f"Wiki generation API error: {e}")
         return {"error": f"AI 호출 실패: {e}"}
