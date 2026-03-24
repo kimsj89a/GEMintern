@@ -157,7 +157,6 @@ def generate_wiki(
     config = types.GenerateContentConfig(
         temperature=0.2,
         max_output_tokens=16384,
-        http_options={"timeout": 120_000},  # 120초 타임아웃
     )
 
     try:
