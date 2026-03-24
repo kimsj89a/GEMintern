@@ -3,8 +3,20 @@ import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../api/client';
 
+const STANDALONE_TOOLS = [
+  { id: 'draftdoc', label: '기안문', icon: '📝', desc: '기안문 작성' },
+  { id: 'freedoc', label: '자유양식', icon: '✏️', desc: '자유 구조 문서' },
+  { id: 'ocr', label: 'OCR', icon: '👁', desc: '문서 텍스트 추출' },
+  { id: 'audio', label: '오디오 전사', icon: '🎙', desc: '음성→텍스트' },
+  { id: 'crawler', label: '웹 크롤러', icon: '🌐', desc: '웹사이트 수집' },
+  { id: 'markdown', label: 'MD → Word', icon: '📄', desc: '마크다운 변환' },
+  { id: 'doc_template', label: '문서양식', icon: '📋', desc: '표준 템플릿' },
+  { id: 'text_organizer', label: '문장 정리기', icon: '✂️', desc: '텍스트 정리' },
+  { id: 'quick_mail', label: '메일 작성', icon: '📧', desc: '이메일 생성' },
+];
+
 export default function ProjectDashboard() {
-  const { enterProject } = useAppStore();
+  const { enterProject, openLegacyTool } = useAppStore();
   const { user } = useAuthStore();
   const [projects, setProjects] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
@@ -144,6 +156,21 @@ export default function ProjectDashboard() {
             })}
           </div>
         )}
+
+        {/* 독립 도구 */}
+        <h2 className="text-xl font-bold text-slate-800 mt-10 mb-4">도구</h2>
+        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
+          {STANDALONE_TOOLS.map((tool) => (
+            <button
+              key={tool.id}
+              onClick={() => openLegacyTool(tool.id)}
+              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center gap-2 transition-all hover:shadow-sm group"
+            >
+              <span className="text-2xl">{tool.icon}</span>
+              <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 text-center leading-tight">{tool.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

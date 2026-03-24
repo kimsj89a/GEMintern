@@ -22,6 +22,7 @@ interface AppState {
   setAppStarted: (v: boolean) => void;
   enterProject: (name: string) => void;
   backToDashboard: () => void;
+  openLegacyTool: (page: string) => void;
 }
 
 // pushState 중복 방지 플래그
@@ -34,7 +35,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   activePanel: 'chat' as const,
   setActivePanel: (p) => set({ activePanel: p }),
   activeTool: null,
-  setActiveTool: (t) => set({ activeTool: t }),
+  setActiveTool: (t) => {
+    const prev = get().activeTool;
+    set({ activeTool: t });
+    if (!_skipNextPush && t && t !== prev) {
+      const project = get().currentProject;
+      window.history.pushState(
+        { view: 'workspace', project, tool: t },
+        '',
+        `#project/${encodeURIComponent(project)}/tool/${t}`
+      );
+    }
+  },
 
   currentProject: localStorage.getItem('lastProject') || '',
   setCurrentProject: (p) => {
@@ -53,6 +65,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ view: 'dashboard', activeTool: null });
     if (!_skipNextPush) {
       window.history.pushState({ view: 'dashboard' }, '', '#');
+    }
+  },
+
+  openLegacyTool: (page) => {
+    const { openTabs } = get();
+    if (!openTabs.includes(page)) {
+      set({ view: 'legacy', activePage: page, openTabs: [...openTabs, page] });
+    } else {
+      set({ view: 'legacy', activePage: page });
+    }
+    if (!_skipNextPush) {
+      window.history.pushState({ view: 'legacy', page }, '', `#tool/${page}`);
     }
   },
 
@@ -96,36 +120,51 @@ export const useAppStore = create<AppState>((set, get) => ({
 // 초기 상태 설정 (SPA 첫 로드 시)
 const initHash = window.location.hash;
 if (initHash.startsWith('#project/')) {
-  const projectName = decodeURIComponent(initHash.slice(9));
+  // #project/name 또는 #project/name/tool/toolId
+  const raw = initHash.slice(9);
+  const toolSep = raw.indexOf('/tool/');
+  const projectName = decodeURIComponent(toolSep >= 0 ? raw.slice(0, toolSep) : raw);
+  const toolId = toolSep >= 0 ? raw.slice(toolSep + 6) : null;
   if (projectName) {
     _skipNextPush = true;
     useAppStore.getState().enterProject(projectName);
+    if (toolId) useAppStore.getState().setActiveTool(toolId);
+    _skipNextPush = false;
+  }
+} else if (initHash.startsWith('#tool/')) {
+  const page = initHash.slice(6);
+  if (page) {
+    _skipNextPush = true;
+    useAppStore.getState().openLegacyTool(page);
     _skipNextPush = false;
   }
 }
+
+const s = useAppStore.getState();
 window.history.replaceState(
-  { view: useAppStore.getState().view, project: useAppStore.getState().currentProject },
+  { view: s.view, project: s.currentProject, tool: s.activeTool, page: s.activePage },
   ''
 );
 
 // 뒤로가기/앞으로가기 처리
 window.addEventListener('popstate', (e) => {
   const state = e.state;
-  _skipNextPush = true; // popstate 처리 중에는 pushState 방지
+  _skipNextPush = true;
 
   if (state?.view === 'workspace' && state?.project) {
     useAppStore.setState({
       view: 'workspace',
       currentProject: state.project,
-      activeTool: null,
+      activeTool: state.tool || null,
       activePanel: 'chat',
     });
     localStorage.setItem('lastProject', state.project);
+  } else if (state?.view === 'legacy' && state?.page) {
+    const { openTabs } = useAppStore.getState();
+    const tabs = openTabs.includes(state.page) ? openTabs : [...openTabs, state.page];
+    useAppStore.setState({ view: 'legacy', activePage: state.page, openTabs: tabs, activeTool: null });
   } else {
-    useAppStore.setState({
-      view: 'dashboard',
-      activeTool: null,
-    });
+    useAppStore.setState({ view: 'dashboard', activeTool: null });
   }
 
   _skipNextPush = false;
