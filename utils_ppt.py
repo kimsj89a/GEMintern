@@ -33,7 +33,7 @@ COLOR_OFF_WHITE = RGBColor(0xF5, 0xF6, 0xF8)
 COLOR_LIGHT_GRAY = RGBColor(0xD9, 0xDE, 0xE4)
 COLOR_MID_GRAY = RGBColor(0x88, 0x92, 0xA5)
 COLOR_GOLD = COLOR_YELLOW  # Legacy alias
-COLOR_TEXT = COLOR_BLACK
+COLOR_TEXT = COLOR_DARK_GRAY  # NP style: #404040 (순수 검정 #000000 미사용)
 COLOR_ROW_EVEN = RGBColor(0xF2, 0xF6, 0xFA)   # Light blue tint for table rows
 COLOR_ROW_ODD = RGBColor(0xFF, 0xFF, 0xFF)
 
@@ -88,9 +88,9 @@ CONTENT_PAD = 0.15
 # Presets & Mappings
 # ============================================================
 ROLE_PRESETS = {
-    "title":      {"font_size": 25, "bold": True,  "color": "#000000"},
+    "title":      {"font_size": 25, "bold": True,  "color": "#001D3D"},  # Deep Navy
     "subtitle":   {"font_size": 12, "bold": False, "color": "#005DA2"},
-    "body":       {"font_size": 11, "bold": False, "color": "#000000"},
+    "body":       {"font_size": 11, "bold": False, "color": "#404040"},  # Dark Grey (not black)
     "label":      {"font_size": 14, "bold": True,  "color": "#0C3064"},
     "kpi_number": {"font_size": 36, "bold": True,  "color": "#005DA2"},
 }
