@@ -18,6 +18,7 @@ from backend.api_models import (
     SaveResearchRequest,
     FolderScanRequest, FolderScanFileInfo, FolderScanPreviewResponse,
     FolderIngestRequest,
+    WikiSectionUpdate, WikiSectionCreate,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -709,6 +710,63 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
         threading.Thread(target=_auto_index, daemon=True).start()
 
     return result
+
+
+# ========================================
+# Wiki
+# ========================================
+
+@router.get("/projects/{name}/wiki")
+def get_wiki(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    wiki = core_wiki.load_wiki(name, owner_id=user["id"])
+    return wiki or {"sections": [], "citations": [], "generated_at": None}
+
+
+@router.post("/projects/{name}/wiki/generate")
+def generate_wiki(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    api_key = _get_api_key()
+    return core_wiki.generate_wiki(api_key, name, owner_id=user["id"])
+
+
+@router.post("/projects/{name}/wiki/update")
+def update_wiki(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    api_key = _get_api_key()
+    return core_wiki.update_wiki(api_key, name, owner_id=user["id"])
+
+
+@router.post("/projects/{name}/wiki/suggest-sections")
+def suggest_wiki_sections(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    api_key = _get_api_key()
+    return core_wiki.suggest_sections(api_key, name, owner_id=user["id"])
+
+
+@router.patch("/projects/{name}/wiki/sections/{section_id}")
+def patch_wiki_section(name: str, section_id: str, body: WikiSectionUpdate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    return core_wiki.update_section(name, section_id, body.dict(exclude_none=True), owner_id=user["id"])
+
+
+@router.post("/projects/{name}/wiki/sections")
+def add_wiki_section(name: str, body: WikiSectionCreate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    return core_wiki.add_section(name, body.id, body.title, body.content, owner_id=user["id"])
+
+
+@router.delete("/projects/{name}/wiki/sections/{section_id}")
+def delete_wiki_section(name: str, section_id: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    return core_wiki.delete_section(name, section_id, owner_id=user["id"])
 
 
 # ========================================

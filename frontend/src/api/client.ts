@@ -99,6 +99,28 @@ export const api = {
       body: JSON.stringify({ docs }),
     }),
 
+  // Wiki
+  getWiki: (project: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki`),
+  generateWiki: (project: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/generate`, { method: 'POST' }),
+  updateWiki: (project: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/update`, { method: 'POST' }),
+  suggestWikiSections: (project: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/suggest-sections`, { method: 'POST' }),
+  patchWikiSection: (project: string, sectionId: string, body: any) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections/${encodeURIComponent(sectionId)}`, {
+      method: 'PATCH', body: JSON.stringify(body),
+    }),
+  addWikiSection: (project: string, body: { id: string; title: string; content?: string }) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  deleteWikiSection: (project: string, sectionId: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections/${encodeURIComponent(sectionId)}`, {
+      method: 'DELETE',
+    }),
+
   extractExcelCells: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));

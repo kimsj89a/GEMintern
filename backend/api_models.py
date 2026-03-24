@@ -95,3 +95,17 @@ class FolderIngestRequest(BaseModel):
     folder_path: str
     selected_files: list[str]
     preserve_structure: bool = True
+
+
+# ── Wiki ──
+
+class WikiSectionUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    order: Optional[int] = None
+
+
+class WikiSectionCreate(BaseModel):
+    id: str
+    title: str
+    content: str = ""

@@ -13,6 +13,7 @@ import FilePicker from '../components/FilePicker';
 import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import SlideGeneratorModal from '../components/SlideGeneratorModal';
+import WikiPanel from '../components/WikiPanel';
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
@@ -25,6 +26,73 @@ const STUDIO_TOOLS = [
   { id: 'freedoc', label: '자유양식', icon: '✏️', desc: '자유 구조 문서', page: 'freedoc' },
   { id: 'ocr', label: 'OCR', icon: '👁', desc: '문서 텍스트 추출', page: 'ocr' },
 ];
+
+// ── 좌측 패널: 출처(상) + 위키(하) 리사이즈 ──
+function LeftPanel({
+  docCount, uploading, handleUpload, tree, currentProject, selectedDocs, setSelectedDocs,
+}: {
+  docCount: number;
+  uploading: boolean;
+  handleUpload: (files: File[]) => void;
+  tree: Record<string, string[]>;
+  currentProject: string;
+  selectedDocs: string[];
+  setSelectedDocs: (d: string[]) => void;
+}) {
+  const [topRatio, setTopRatio] = useState(0.45);
+  const dragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const ratio = (ev.clientY - rect.top) / rect.height;
+      setTopRatio(Math.min(0.8, Math.max(0.15, ratio)));
+    };
+    const onUp = () => { dragging.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="w-[300px] shrink-0 border-r border-slate-200 flex flex-col overflow-hidden">
+      {/* 상단: 출처 */}
+      <div style={{ height: `${topRatio * 100}%` }} className="flex flex-col overflow-hidden shrink-0">
+        <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-700">출처</span>
+          <span className="text-xs text-slate-400">{docCount}개</span>
+        </div>
+        <div className="px-4 pb-3">
+          <FilePicker onFilesSelected={handleUpload} loading={uploading} />
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 pb-2">
+          <div className="text-xs text-slate-400 mb-2">
+            {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : '전체 선택됨'}
+          </div>
+          <FolderTree tree={tree} projectName={currentProject} selectable
+            selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
+            onDocDownload={(doc) => api.downloadDoc(currentProject, doc)} />
+        </div>
+      </div>
+
+      {/* 리사이즈 핸들 */}
+      <div
+        onMouseDown={onMouseDown}
+        className="h-1.5 shrink-0 cursor-row-resize bg-slate-100 hover:bg-blue-200 transition-colors flex items-center justify-center"
+      >
+        <div className="w-8 h-0.5 bg-slate-300 rounded-full" />
+      </div>
+
+      {/* 하단: 위키 */}
+      <div className="flex-1 overflow-hidden">
+        <WikiPanel projectName={currentProject} />
+      </div>
+    </div>
+  );
+}
 
 export default function WorkspacePage() {
   const { currentProject, backToDashboard, activePanel, setActivePanel, openTab, setView } = useAppStore();
@@ -220,24 +288,16 @@ export default function WorkspacePage() {
 
       {/* 3열 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 왼쪽: 출처 */}
-        <div className="w-[300px] shrink-0 border-r border-slate-200 flex flex-col overflow-hidden">
-          <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-700">출처</span>
-            <span className="text-xs text-slate-400">{docCount}개</span>
-          </div>
-          <div className="px-4 pb-3">
-            <FilePicker onFilesSelected={handleUpload} loading={uploading} />
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
-            <div className="text-xs text-slate-400 mb-2">
-              {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : '전체 선택됨'}
-            </div>
-            <FolderTree tree={tree} projectName={currentProject} selectable
-              selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
-              onDocDownload={(doc) => api.downloadDoc(currentProject, doc)} />
-          </div>
-        </div>
+        {/* 왼쪽: 출처 + 위키 (상하 리사이즈) */}
+        <LeftPanel
+          docCount={docCount}
+          uploading={uploading}
+          handleUpload={handleUpload}
+          tree={tree}
+          currentProject={currentProject}
+          selectedDocs={selectedDocs}
+          setSelectedDocs={setSelectedDocs}
+        />
 
         {/* 가운데: 채팅 또는 활성 도구 */}
         <div className="flex-1 flex flex-col overflow-hidden">
