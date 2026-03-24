@@ -92,6 +92,21 @@ export default function ProjectDashboard() {
 
       {/* Content */}
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+        {/* 독립 도구 */}
+        <h2 className="text-xl font-bold text-slate-800 mb-4">도구</h2>
+        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3 mb-10">
+          {STANDALONE_TOOLS.map((tool) => (
+            <button
+              key={tool.id}
+              onClick={() => openLegacyTool(tool.id)}
+              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center gap-2 transition-all hover:shadow-sm group"
+            >
+              <span className="text-2xl">{tool.icon}</span>
+              <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 text-center leading-tight">{tool.label}</span>
+            </button>
+          ))}
+        </div>
+
         <h2 className="text-xl font-bold text-slate-800 mb-6">최근 프로젝트</h2>
 
         {loading ? (
@@ -157,20 +172,6 @@ export default function ProjectDashboard() {
           </div>
         )}
 
-        {/* 독립 도구 */}
-        <h2 className="text-xl font-bold text-slate-800 mt-10 mb-4">도구</h2>
-        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
-          {STANDALONE_TOOLS.map((tool) => (
-            <button
-              key={tool.id}
-              onClick={() => openLegacyTool(tool.id)}
-              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center gap-2 transition-all hover:shadow-sm group"
-            >
-              <span className="text-2xl">{tool.icon}</span>
-              <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 text-center leading-tight">{tool.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );
