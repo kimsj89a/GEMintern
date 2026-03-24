@@ -73,15 +73,19 @@ NP_THEME = PptTheme(
 
 IM_THEME = PptTheme(
     "IM",
-    aspect="16:9",
-    font_kr="Malgun Gothic",
-    font_en="Malgun Gothic",
-    font_heading="Malgun Gothic",
-    font_body="Malgun Gothic",
-    title_size=Pt(36),
-    subtitle_size=Pt(20),
+    aspect="custom",  # 11.93" × 8.50" NP IM 커스텀 비율
+    font_kr="맑은 고딕",
+    font_en="Arial",
+    font_heading="Arial",
+    font_body="Arial",
+    title_size=Pt(24),
+    subtitle_size=Pt(12),
     body_size=Pt(11),
+    note_size=Pt(9),
 )
+# IM 테마는 커스텀 슬라이드 크기 사용
+IM_THEME.slide_width = Inches(11.93)
+IM_THEME.slide_height = Inches(8.50)
 
 THEMES = {
     "np": NP_THEME,
