@@ -261,6 +261,7 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
   const [wiki, setWiki] = useState<WikiData | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [addingSection, setAddingSection] = useState(false);
   const [newTitle, setNewTitle] = useState('');
 
@@ -280,19 +281,33 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
 
   const handleGenerate = async () => {
     setGenerating(true);
+    setError(null);
     try {
       const data = await api.generateWiki(projectName);
-      if (!data.error) setWiki(data);
-    } catch {}
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setWiki(data);
+      }
+    } catch (e: any) {
+      setError(e.message || '위키 생성 실패');
+    }
     setGenerating(false);
   };
 
   const handleUpdate = async () => {
     setGenerating(true);
+    setError(null);
     try {
       const data = await api.updateWiki(projectName);
-      if (!data.error) setWiki(data);
-    } catch {}
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setWiki(data);
+      }
+    } catch (e: any) {
+      setError(e.message || '위키 갱신 실패');
+    }
     setGenerating(false);
   };
 
@@ -325,6 +340,11 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
       <div className="flex flex-col items-center py-6 px-4 text-center">
         <span className="text-3xl mb-2 opacity-50">📖</span>
         <span className="text-xs text-slate-500 mb-3">자료를 분석하여 위키를 생성합니다</span>
+        {error && (
+          <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 w-full">
+            {error}
+          </div>
+        )}
         <button
           onClick={handleGenerate}
           disabled={generating}
