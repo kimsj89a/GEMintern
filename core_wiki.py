@@ -73,6 +73,19 @@ def _build_source_context(docs: Dict[str, str]) -> tuple[str, list[tuple[str, st
     return "\n\n---\n\n".join(parts), doc_list
 
 
+def _get_model() -> str:
+    """Read model name from settings.json, matching the rest of the app."""
+    try:
+        import json as _json
+        settings_path = os.path.join(os.path.dirname(__file__), "settings.json")
+        if os.path.exists(settings_path):
+            with open(settings_path, "r", encoding="utf-8") as f:
+                return _json.load(f).get("model_name", "") or "gemini-2.5-flash"
+    except Exception:
+        pass
+    return "gemini-2.5-flash"
+
+
 def generate_wiki(
     api_key: str,
     project_name: str,
@@ -129,7 +142,7 @@ def generate_wiki(
 ```"""
 
     client = AIClient(api_key)
-    model = "gemini-3-pro-preview"
+    model = _get_model()
     config = types.GenerateContentConfig(temperature=0.2, max_output_tokens=16384)
 
     try:
@@ -259,7 +272,7 @@ def suggest_sections(
     config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=4096)
     try:
         resp = client.models.generate_content(
-            model="gemini-3-pro-preview", contents=prompt, config=config
+            model=_get_model(), contents=prompt, config=config
         )
         raw = resp.text.strip()
         m = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL)
