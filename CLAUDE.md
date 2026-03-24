@@ -2,10 +2,11 @@
 
 ## Project Overview
 
-**GEM Intern** (2026.03.13)은 투자 분석 업무를 지원하는 AI 기반 웹 애플리케이션입니다.
-Google Gemini API를 활용하여 투자심의보고서 작성, 문서 분석, PPT 생성 등 PE/VC 투자 프로세스 전반을 자동화합니다.
+**GEM Intern** (2026.03.25)은 투자 분석 업무를 지원하는 AI 기반 웹 애플리케이션입니다.
+Google Gemini API와 Anthropic Claude API를 활용하여 투자심의보고서 작성, 문서 분석, PPT 생성, 프로젝트 위키 등 PE/VC 투자 프로세스 전반을 자동화합니다.
 
-**아키텍처**: FastAPI 백엔드 + React (Vite) 프론트엔드, localhost 전용.
+**아키텍처**: FastAPI 백엔드 + React (Vite) 프론트엔드 + SQLite DB.
+**PPT 스타일**: Noh & Partners IM (11.93"×8.50" 커스텀, Navy #0C3064 브랜드 팔레트).
 
 ## Technical Stack
 
@@ -59,10 +60,12 @@ GEMintern/
 │   ├── core_rfi.py             # RFI (Request for Information) processing
 │   ├── core_chained.py         # Chained prompting logic
 │   ├── core_im.py              # Investment Memorandum 생성
-│   ├── core_im_ppt.py          # IM PPT 생성
+│   ├── core_im_ppt.py          # IM PPT 생성 (NP IM 스타일 11.93"×8.50")
+│   ├── core_wiki.py            # 프로젝트 위키 (AI 자동 생성 + CRUD)
 │   ├── ai_client.py            # AI Client 어댑터 (Gemini/Claude 라우팅)
 │   ├── core_ppt_updater.py     # PPT update automation
 │   ├── core_doc_updater.py     # Document update automation
+│   ├── ppt_themes.py           # PPT 테마 설정 (NP 4:3, IM 커스텀)
 │   └── prompts.py              # AI prompt templates
 │
 ├── Utility Modules (유틸리티)
@@ -79,16 +82,27 @@ GEMintern/
 │   ├── local_storage.py        # Local file storage
 │   └── cloud_sync.py           # Cloud sync utilities
 │
-├── requirements.txt            # Python dependencies
+├── dartwings/                  # 한국 금융 데이터 (DART, PyKRX)
+│   ├── dart_service.py         # DART 공시 검색/재무제표
+│   ├── stock_service.py        # 주가/시가총액 조회
+│   └── analysis_service.py     # 통합 분석 래퍼
+│
+├── rag_storage/                # 프로젝트별 문서 저장소
+│   ├── _projects.json          # 프로젝트 레지스트리
+│   └── {project}/docs/*.md     # 프로젝트 문서 (gitignored)
+│
+├── requirements.txt            # Python dependencies (54개)
 ├── run_gemintern.bat           # Windows 실행 스크립트
-├── settings.json               # 앱 설정
+├── settings.json               # 앱 설정 (API key, model 등)
 ├── .env                        # Environment variables (API keys)
-├── template/                   # Document templates
+├── template/                   # Document templates (Normal.docx)
 ├── scripts/                    # Utility scripts
-├── docs/                       # Documentation
-│   └── plans/                  # Design & implementation plans
-├── .venv/                      # Python virtual environment
-└── .git/                       # Git repository
+├── docs/                       # Documentation + GitHub Pages
+│   ├── plans/                  # Design & implementation plans
+│   ├── index.html              # Standalone PPT 생성기 (GitHub Pages)
+│   └── noh-partners-im-style.md # NP IM 스타일 레퍼런스
+├── Dockerfile                  # Railway 배포용 Docker 설정
+└── generate_pptx_dynamic.js    # Node.js PPT 렌더러 (pptxgenjs)
 ```
 
 ## Running the Application
@@ -124,15 +138,27 @@ python -m backend.main --dev
 ### 3. Utilities
 - **오디오 전사**: 음성 파일을 텍스트로 변환
 - **웹 크롤러**: 웹사이트 정보 수집
-- **문서 OCR**: 이미지/스캔 문서에서 텍스트 추출
-- **MD to Word**: Markdown을 Word 문서로 변환
+- **문서 OCR**: 이미지/스캔 문서에서 텍스트 추출 (Gemini Vision / Document AI)
+- **MD to Word**: Markdown을 Word 문서로 변환 (pypandoc)
 - **문서양식**: 표준 문서 템플릿 관리
 - **문장 정리기**: 텍스트 정리 및 요약
+- **DartWings**: 한국 금융 데이터 (DART 공시, PyKRX 주가)
+- **PDF Unlock**: 암호 걸린 PDF 해제
+- **Quick Mail**: 이메일 초안 생성
 
 ### 4. Project Management & RAG
-- 프로젝트별 문서 저장소
-- RAG 기반 문서 검색
+- 프로젝트별 문서 저장소 (`rag_storage/`)
+- 하이브리드 RAG 검색 (BM25 + Vector RRF 퓨전)
+- **프로젝트 위키**: AI 자동 생성 + 섹션별 편집/수정 (`core_wiki.py`)
 - 프로젝트 컨텍스트 관리 (`core_rag.py`)
+
+### 5. PPT Generation (NP IM Style)
+- **슬라이드 크기**: 11.93" × 8.50" (NP IM 커스텀 비율)
+- **브랜드 팔레트**: Navy #0C3064, Gold #CCA000, Blue #005DA2
+- **5-Zone 레이아웃**: Title, Section Tab, Governing, Content, Footer
+- **서브섹션 바**: Gold stripe + Navy bar + White text
+- **테이블**: Navy 헤더, 교차행, 11pt Arial
+- **스타일 레퍼런스**: `docs/noh-partners-im-style.md`
 
 ## Environment Variables (.env)
 
@@ -183,9 +209,10 @@ ONEDRIVE_CLIENT_SECRET=your_client_secret
 ## Working with AI (Gemini)
 
 ### Model Configuration
-- Default Model: `gemini-3.1-pro-preview`
-- Thinking Levels: MINIMAL, MEDIUM, MAXIMUM
-- Structured output support (JSON schemas)
+- Default Model: `gemini-2.5-flash` (설정에서 변경 가능)
+- Thinking Levels: MINIMAL, LOW, HIGH
+- AI Client 어댑터 (`ai_client.py`): Gemini / Claude 자동 라우팅
+- Claude 429 시 Gemini fallback 자동 전환
 
 ### Prompt Engineering
 - `prompts.py`에 모든 프롬프트 템플릿 정의
@@ -226,7 +253,7 @@ python -m backend.main --dev
 
 ---
 
-**Last Updated**: 2026-03-21
-**Version**: 2026.03.21
+**Last Updated**: 2026-03-25
+**Version**: 2026.03.25
 **Maintained by**: kimsj
 **Project Path**: `C:\Users\kimsj\GEMintern\GEMintern`
