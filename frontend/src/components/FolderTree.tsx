@@ -131,7 +131,7 @@ export default function FolderTree({
                       />
                     )}
                     <span className="text-[#9B9A97]">📄</span>
-                    <span className="text-[#37352F] truncate flex-1">{doc}</span>
+                    <span className="text-[#37352F] truncate flex-1" title={doc}>{doc}</span>
                     {onDocDelete && (
                       <button
                         className="text-[#9B9A97] hover:text-red-500 opacity-0 group-hover:opacity-100 text-xs"

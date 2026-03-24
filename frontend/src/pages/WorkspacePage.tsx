@@ -33,6 +33,7 @@ export default function WorkspacePage() {
   const [docCount, setDocCount] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [showSlideModal, setShowSlideModal] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(300);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -220,8 +221,8 @@ export default function WorkspacePage() {
 
       {/* 3열 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 왼쪽: 출처 */}
-        <div className="w-[300px] shrink-0 border-r border-slate-200 flex flex-col overflow-hidden">
+        {/* 왼쪽: 출처 (리사이즈 가능) */}
+        <div style={{ width: leftWidth }} className="shrink-0 border-r border-slate-200 flex flex-col overflow-hidden">
           <div className="px-4 pt-4 pb-2 flex items-center justify-between">
             <span className="text-sm font-bold text-slate-700">출처</span>
             <span className="text-xs text-slate-400">{docCount}개</span>
@@ -238,6 +239,19 @@ export default function WorkspacePage() {
               onDocDownload={(doc) => api.downloadDoc(currentProject, doc)} />
           </div>
         </div>
+        {/* 좌측 패널 리사이즈 핸들 */}
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startW = leftWidth;
+            const onMove = (ev: MouseEvent) => setLeftWidth(Math.min(500, Math.max(200, startW + ev.clientX - startX)));
+            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+          className="w-1 shrink-0 cursor-col-resize hover:bg-blue-200 transition-colors"
+        />
 
         {/* 가운데: 채팅 또는 활성 도구 */}
         <div className="flex-1 flex flex-col overflow-hidden">

@@ -54,9 +54,20 @@ def load_wiki(project_name: str, owner_id: int | None = None) -> Optional[dict]:
 def save_wiki(project_name: str, wiki_data: dict, owner_id: int | None = None):
     storage = _get_storage_name(project_name, owner_id=owner_id)
     path = _wiki_path(storage)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(wiki_data, f, ensure_ascii=False, indent=2)
+    logger.info(f"save_wiki: storage={storage}, path={path}")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(wiki_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"save_wiki: OK, size={os.path.getsize(path)}")
+    except Exception as e:
+        logger.error(f"save_wiki FAILED: {e}")
+        # Fallback: try saving directly under project name
+        fallback = _wiki_path(project_name)
+        logger.info(f"save_wiki fallback: {fallback}")
+        os.makedirs(os.path.dirname(fallback), exist_ok=True)
+        with open(fallback, "w", encoding="utf-8") as f:
+            json.dump(wiki_data, f, ensure_ascii=False, indent=2)
 
 
 # ── Generation ───────────────────────────────────────────
