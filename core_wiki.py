@@ -152,14 +152,31 @@ def generate_wiki(
         return {"error": f"AI 호출 실패: {e}"}
 
     raw = resp.text.strip()
-    # Strip markdown code fence if present
+    # Try multiple extraction strategies
+    result = None
+    # 1) Markdown code fence
     m = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL)
     if m:
-        raw = m.group(1).strip()
-
-    try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
+        try:
+            result = json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    # 2) Direct parse
+    if result is None:
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    # 3) Find outermost { ... }
+    if result is None:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                result = json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+    if result is None:
         logger.error(f"Wiki JSON parse failed: {raw[:500]}")
         return {"error": "AI 응답 파싱 실패", "raw": raw[:2000]}
 
