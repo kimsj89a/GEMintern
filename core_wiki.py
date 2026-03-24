@@ -488,7 +488,7 @@ def add_section(
     if any(s["id"] == section_id for s in wiki["sections"]):
         return {"error": f"'{section_id}' 섹션이 이미 존재합니다."}
 
-    max_order = max((s["order"] for s in wiki["sections"]), default=-1)
+    max_order = max((s.get("order", i) for i, s in enumerate(wiki["sections"])), default=-1)
     now = datetime.datetime.utcnow().isoformat() + "Z"
     wiki["sections"].append({
         "id": section_id,
