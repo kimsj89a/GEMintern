@@ -779,6 +779,30 @@ def update_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     return {"task_id": task_id}
 
 
+@router.post("/projects/{name}/wiki/sections/{section_id}/revise")
+def revise_wiki_section(name: str, section_id: str, body: dict, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    owner_id = user["id"]
+    instruction = body.get("instruction", "")
+
+    task_id = str(uuid.uuid4())
+    task = create_task(task_id)
+
+    import threading
+    def _run():
+        try:
+            import core_wiki
+            result = core_wiki.revise_section(api_key, name, section_id, instruction, owner_id=owner_id)
+            task["status"] = "complete"
+            task["result"] = result
+        except Exception as e:
+            task["status"] = "error"
+            task["error"] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
+
+
 @router.post("/projects/{name}/wiki/suggest-sections")
 def suggest_wiki_sections(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])

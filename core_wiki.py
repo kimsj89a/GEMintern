@@ -138,6 +138,7 @@ def generate_wiki(
 ## 서식 규칙 (반드시 준수)
 - 취소선(~~)은 절대 사용하지 마세요.
 - 재무 데이터(매출, 이익, 자산, 부채 등 숫자가 포함된 항목)는 반드시 마크다운 표(| 헤더 | ... |)로 작성하세요.
+- Financial Overview 섹션은 표를 메인으로 구성하고, 표 아래에 핵심 설명을 간결하게 추가하세요. 예: 손익 요약 표 → 설명, 재무상태 요약 표 → 설명 순서.
 - 각 문장/항목 사이에 빈 줄을 넣어 문단을 구분하세요. 한 문단에 너무 많은 내용을 넣지 마세요.
 - 나열 항목은 불릿 리스트(- 항목) 또는 번호 리스트(1. 항목)를 사용하세요.
 
@@ -331,6 +332,119 @@ def suggest_sections(
     except Exception as e:
         logger.error(f"suggest_sections failed: {e}")
         return DEFAULT_SECTIONS
+
+
+def revise_section(
+    api_key: str,
+    project_name: str,
+    section_id: str,
+    instruction: str,
+    owner_id: int | None = None,
+) -> dict:
+    """AI로 특정 섹션을 수정 지시에 따라 다시 작성."""
+    from ai_client import AIClient
+    from google.genai import types
+
+    wiki = load_wiki(project_name, owner_id=owner_id)
+    if not wiki:
+        return {"error": "위키가 없습니다."}
+
+    section = None
+    for s in wiki["sections"]:
+        if s["id"] == section_id:
+            section = s
+            break
+    if not section:
+        return {"error": f"섹션 '{section_id}'를 찾을 수 없습니다."}
+
+    # 프로젝트 문서 로드 (출처 참조용)
+    docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    doc_list = list(docs.items())
+    n = len(doc_list)
+    per_doc = max(2000, _TOTAL_BUDGET // max(n, 1))
+    source_brief = "\n".join(
+        f"[DOC-{i+1}] {name}\n{content[:per_doc]}"
+        for i, (name, content) in enumerate(doc_list)
+    )
+
+    prompt = f"""아래 위키 섹션을 수정 지시에 따라 다시 작성하세요.
+
+## 섹션: {section['title']}
+### 현재 내용
+{section['content']}
+
+## 프로젝트 자료 (출처 참조용)
+{source_brief}
+
+## 수정 지시
+{instruction}
+
+## 규칙
+- 출처 각주 [1], [2] 등을 유지하세요. 새 출처 추가 시 기존 번호 이후로 부여하세요.
+- 취소선(~~)은 사용하지 마세요.
+- 재무 데이터는 마크다운 표로 작성하세요.
+- 항목별 줄바꿈을 해주세요.
+
+## 출력 (JSON만)
+```json
+{{
+  "content": "수정된 섹션 내용",
+  "new_citations": [
+    {{"id": 번호, "doc_ref": DOC번호, "excerpt": "발췌"}}
+  ]
+}}
+```"""
+
+    client = AIClient(api_key)
+    model = _get_model()
+    config = types.GenerateContentConfig(
+        temperature=0.2,
+        max_output_tokens=8192,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+    )
+
+    try:
+        resp = client.models.generate_content(model=model, contents=prompt, config=config)
+    except Exception as e:
+        return {"error": f"AI 호출 실패: {e}"}
+
+    raw = resp.text.strip()
+    result = None
+    m = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL)
+    if m:
+        try:
+            result = json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    if result is None:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                result = json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+    if result is None:
+        return {"error": "AI 응답 파싱 실패"}
+
+    # 섹션 업데이트
+    new_content = re.sub(r"~~(.*?)~~", r"\1", result.get("content", section["content"]))
+    section["content"] = new_content
+    section["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+
+    # 새 citations 추가
+    for nc in result.get("new_citations", []):
+        doc_idx = int(nc.get("doc_ref", 0)) - 1
+        source_doc = doc_list[doc_idx][0] if 0 <= doc_idx < len(doc_list) else "unknown"
+        wiki["citations"].append({
+            "id": nc["id"],
+            "source_doc": source_doc,
+            "page": None,
+            "excerpt": nc.get("excerpt", ""),
+        })
+
+    save_wiki(project_name, wiki, owner_id=owner_id)
+    return wiki
 
 
 def update_section(

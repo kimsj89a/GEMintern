@@ -224,6 +224,9 @@ function WikiSectionItem({
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(section.content);
+  const [revising, setRevising] = useState(false);
+  const [reviseInput, setReviseInput] = useState('');
+  const [reviseLoading, setReviseLoading] = useState(false);
   const [tooltip, setTooltip] = useState<{ citation: Citation; pos: { x: number; y: number } } | null>(null);
   const [preview, setPreview] = useState<Citation | null>(null);
 
@@ -231,6 +234,30 @@ function WikiSectionItem({
     await api.patchWikiSection(projectName, section.id, { content: editContent });
     setEditing(false);
     onUpdate();
+  };
+
+  const handleRevise = async () => {
+    if (!reviseInput.trim()) return;
+    setReviseLoading(true);
+    try {
+      const { task_id } = await api.reviseWikiSection(projectName, section.id, reviseInput);
+      const poll = async () => {
+        const status = await api.getTaskStatus(task_id);
+        if (status.status === 'complete') {
+          if (!status.result?.error) onUpdate();
+          setReviseLoading(false);
+          setRevising(false);
+          setReviseInput('');
+        } else if (status.status === 'error') {
+          setReviseLoading(false);
+        } else {
+          setTimeout(poll, 2000);
+        }
+      };
+      poll();
+    } catch {
+      setReviseLoading(false);
+    }
   };
 
   const handleDownload = (cit: Citation) => {
@@ -251,7 +278,13 @@ function WikiSectionItem({
         </svg>
         <span className="text-xs font-semibold text-slate-700 flex-1">{section.title}</span>
         <button
-          onClick={(e) => { e.stopPropagation(); setEditing(!editing); }}
+          onClick={(e) => { e.stopPropagation(); setRevising(!revising); setEditing(false); }}
+          className="text-[10px] text-slate-400 hover:text-purple-500 px-1"
+        >
+          {revising ? '취소' : 'AI 수정'}
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); setEditing(!editing); setRevising(false); }}
           className="text-[10px] text-slate-400 hover:text-blue-500 px-1"
         >
           {editing ? '취소' : '편집'}
@@ -279,6 +312,42 @@ function WikiSectionItem({
               >
                 저장
               </button>
+            </div>
+          ) : revising ? (
+            <div className="space-y-2">
+              <div className="flex gap-1.5">
+                <input
+                  autoFocus
+                  value={reviseInput}
+                  onChange={(e) => setReviseInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleRevise()}
+                  placeholder="수정 지시 (예: 표로 정리해줘, 더 간결하게)"
+                  className="flex-1 px-2 py-1.5 text-xs border border-purple-200 rounded-lg focus:outline-none focus:border-purple-400"
+                  disabled={reviseLoading}
+                />
+                <button
+                  onClick={handleRevise}
+                  disabled={reviseLoading || !reviseInput.trim()}
+                  className="px-3 py-1.5 text-xs bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {reviseLoading ? (
+                    <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> 수정 중...</>
+                  ) : 'AI 수정'}
+                </button>
+              </div>
+              <div
+                className="text-xs text-slate-600 leading-relaxed"
+                onMouseLeave={() => setTooltip(null)}
+              >
+                <RenderContent
+                  content={section.content}
+                  citations={citations}
+                  onCitationHover={(c, e) =>
+                    setTooltip({ citation: c, pos: { x: e.clientX, y: e.clientY } })
+                  }
+                  onCitationClick={(c) => { setTooltip(null); setPreview(c); }}
+                />
+              </div>
             </div>
           ) : (
             <div
