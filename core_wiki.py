@@ -135,6 +135,12 @@ def generate_wiki(
 4. 해당 섹션에 관련 자료가 없으면 content를 "관련 자료 없음"으로 표시하세요.
 5. citations 배열에 각 각주의 상세 정보를 반드시 포함하세요.
 
+## 서식 규칙 (반드시 준수)
+- 취소선(~~)은 절대 사용하지 마세요.
+- 재무 데이터(매출, 이익, 자산, 부채 등 숫자가 포함된 항목)는 반드시 마크다운 표(| 헤더 | ... |)로 작성하세요.
+- 각 문장/항목 사이에 빈 줄을 넣어 문단을 구분하세요. 한 문단에 너무 많은 내용을 넣지 마세요.
+- 나열 항목은 불릿 리스트(- 항목) 또는 번호 리스트(1. 항목)를 사용하세요.
+
 ## 출력 (JSON만 출력)
 ```json
 {{
@@ -212,6 +218,11 @@ def generate_wiki(
             "page": None,
             "excerpt": c.get("excerpt", ""),
         })
+
+    # Post-process: strip strikethrough markers
+    for s in result.get("sections", []):
+        if "content" in s:
+            s["content"] = re.sub(r"~~(.*?)~~", r"\1", s["content"])
 
     now = datetime.datetime.utcnow().isoformat() + "Z"
     wiki_data = {
