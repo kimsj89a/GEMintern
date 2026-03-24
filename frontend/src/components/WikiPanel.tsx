@@ -279,36 +279,54 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
 
   useEffect(() => { loadWiki(); }, [loadWiki]);
 
+  const pollTask = useCallback(async (taskId: string) => {
+    const poll = async () => {
+      try {
+        const status = await api.getTaskStatus(taskId);
+        if (status.status === 'complete') {
+          const result = status.result;
+          if (result?.error) {
+            setError(result.error);
+          } else {
+            setWiki(result);
+          }
+          setGenerating(false);
+        } else if (status.status === 'error') {
+          setError(status.error || '위키 생성 실패');
+          setGenerating(false);
+        } else {
+          setTimeout(poll, 2000);
+        }
+      } catch {
+        setError('상태 확인 실패');
+        setGenerating(false);
+      }
+    };
+    poll();
+  }, []);
+
   const handleGenerate = async () => {
     setGenerating(true);
     setError(null);
     try {
-      const data = await api.generateWiki(projectName);
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setWiki(data);
-      }
+      const { task_id } = await api.generateWiki(projectName);
+      pollTask(task_id);
     } catch (e: any) {
       setError(e.message || '위키 생성 실패');
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   const handleUpdate = async () => {
     setGenerating(true);
     setError(null);
     try {
-      const data = await api.updateWiki(projectName);
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setWiki(data);
-      }
+      const { task_id } = await api.updateWiki(projectName);
+      pollTask(task_id);
     } catch (e: any) {
       setError(e.message || '위키 갱신 실패');
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   const handleAddSection = async () => {

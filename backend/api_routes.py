@@ -734,19 +734,49 @@ def get_wiki(name: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/projects/{name}/wiki/generate")
-def generate_wiki(name: str, user: dict = Depends(get_current_user)):
+def generate_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
-    import core_wiki
     api_key = _get_api_key()
-    return core_wiki.generate_wiki(api_key, name, owner_id=user["id"])
+    owner_id = user["id"]
+
+    task_id = str(uuid.uuid4())
+    task = create_task(task_id)
+
+    import threading
+    def _run():
+        try:
+            import core_wiki
+            result = core_wiki.generate_wiki(api_key, name, owner_id=owner_id)
+            task["status"] = "complete"
+            task["result"] = result
+        except Exception as e:
+            task["status"] = "error"
+            task["error"] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
 
 
 @router.post("/projects/{name}/wiki/update")
-def update_wiki(name: str, user: dict = Depends(get_current_user)):
+def update_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
-    import core_wiki
     api_key = _get_api_key()
-    return core_wiki.update_wiki(api_key, name, owner_id=user["id"])
+    owner_id = user["id"]
+
+    task_id = str(uuid.uuid4())
+    task = create_task(task_id)
+
+    import threading
+    def _run():
+        try:
+            import core_wiki
+            result = core_wiki.update_wiki(api_key, name, owner_id=owner_id)
+            task["status"] = "complete"
+            task["result"] = result
+        except Exception as e:
+            task["status"] = "error"
+            task["error"] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
 
 
 @router.post("/projects/{name}/wiki/suggest-sections")
