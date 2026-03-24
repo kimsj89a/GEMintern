@@ -16,21 +16,21 @@ const _pres = new pptxgen();
 const SHAPES = _pres.shapes;
 const CHARTS = _pres.charts;
 
-// ── 기본 팔레트 (Deloitte-inspired design system) ──
+// ── 기본 팔레트 (Noh & Partners IM Brand) ──
 const PALETTE = {
-  primary: "1B2A4A",
-  accent: "86BC25",
-  secondary: "0076A8",
-  alert: "C4262E",
-  bg_dark: "1B2A4A",
-  bg_light: "F6F6F6",
-  text_dark: "2D2D2D",
-  text_secondary: "6B6B6B",
+  primary: "0C3064",       // Navy (main)
+  accent: "CCA000",        // Gold (subsection stripe, highlight)
+  secondary: "005DA2",     // Blue
+  alert: "C00000",         // Red (key figures, warning)
+  bg_dark: "0C3064",       // Navy background
+  bg_light: "F2F2F2",      // Light grey (table alt rows)
+  text_dark: "404040",     // Dark grey (body text, NOT #000)
+  text_secondary: "64748B", // Muted slate (footnotes, source)
   text_light: "FFFFFF",
-  chart_colors: ["1B2A4A", "0076A8", "86BC25", "C4262E", "F2A900", "6B6B6B"],
-  gray: "6B6B6B",
-  border: "E0E0E0",
-  table_alt: "F2F5F7",
+  chart_colors: ["0C3064", "005DA2", "00A2E8", "CCA000", "C00000", "404040"],
+  gray: "64748B",
+  border: "BFBFBF",
+  table_alt: "F2F2F2",
   card_bg: "FFFFFF",
 };
 
@@ -43,7 +43,7 @@ function renderText(slide, el) {
     w: el.w ?? 9,
     h: el.h ?? 0.5,
     fontSize: el.fontSize ?? 12,
-    fontFace: el.fontFace ?? "Calibri",
+    fontFace: el.fontFace ?? "Arial",
     color: el.color ?? PALETTE.text_dark,
     bold: el.bold ?? false,
     italic: el.italic ?? false,
@@ -351,7 +351,7 @@ function renderIconText(slide, el) {
   // Text beside icon
   slide.addText(el.text || "", {
     x: x + iconW, y: y, w: w - iconW, h: h,
-    fontSize: el.fontSize ?? 11, fontFace: el.fontFace ?? "Calibri",
+    fontSize: el.fontSize ?? 11, fontFace: el.fontFace ?? "Arial",
     color: el.color ?? PALETTE.text_dark,
     bold: el.bold ?? false,
     valign: "middle",
