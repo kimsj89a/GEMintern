@@ -236,7 +236,15 @@ export default function WorkspacePage() {
             </div>
             <FolderTree tree={tree} projectName={currentProject} selectable
               selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
-              onDocDownload={(doc) => api.downloadDoc(currentProject, doc)} />
+              onDocDownload={(doc) => api.downloadDoc(currentProject, doc)}
+              onDocDelete={async (doc) => {
+                if (!confirm(`'${doc}' 파일을 삭제하시겠습니까?`)) return;
+                try { await api.trashDoc(currentProject, doc); loadDocs(); } catch {}
+              }}
+              onFolderDelete={async (folder) => {
+                if (!confirm(`'${folder}' 폴더를 삭제하시겠습니까?`)) return;
+                try { await api.deleteFolder(currentProject, folder); loadDocs(); } catch {}
+              }} />
           </div>
         </div>
         {/* 좌측 패널 리사이즈 핸들 */}
