@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api } from '../api/client';
 
 interface Citation {
@@ -106,6 +108,28 @@ function CitationPreview({
 
 // ── Inline citation renderer ──
 
+function CitationBadge({
+  id,
+  citation,
+  onHover,
+  onClick,
+}: {
+  id: number;
+  citation: Citation;
+  onHover: (c: Citation, e: React.MouseEvent) => void;
+  onClick: (c: Citation) => void;
+}) {
+  return (
+    <sup
+      className="inline-flex items-center justify-center min-w-[16px] h-4 px-0.5 text-[9px] font-bold text-blue-600 bg-blue-50 rounded cursor-pointer hover:bg-blue-100 mx-0.5"
+      onMouseEnter={(e) => onHover(citation, e)}
+      onClick={() => onClick(citation)}
+    >
+      {id}
+    </sup>
+  );
+}
+
 function RenderContent({
   content,
   citations,
@@ -117,32 +141,69 @@ function RenderContent({
   onCitationHover: (c: Citation, e: React.MouseEvent) => void;
   onCitationClick: (c: Citation) => void;
 }) {
-  // Split content by [n] patterns
-  const parts = content.split(/(\[\d+\])/g);
+  // Replace [n] with placeholder, render markdown, then inject citation badges
+  // Strategy: use react-markdown with custom text renderer
   return (
-    <span>
-      {parts.map((part, i) => {
-        const m = part.match(/^\[(\d+)\]$/);
-        if (m) {
-          const id = parseInt(m[1]);
-          const cit = citations.find((c) => c.id === id);
-          if (cit) {
-            return (
-              <sup
-                key={i}
-                className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-bold text-blue-600 bg-blue-50 rounded cursor-pointer hover:bg-blue-100 mx-0.5"
-                onMouseEnter={(e) => onCitationHover(cit, e)}
-                onClick={() => onCitationClick(cit)}
-              >
-                {id}
-              </sup>
-            );
-          }
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </span>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Override text nodes to inject citation badges
+        p: ({ children }) => <p className="mb-2 last:mb-0">{injectCitations(children)}</p>,
+        li: ({ children }) => <li>{injectCitations(children)}</li>,
+        td: ({ children }) => <td className="border border-slate-200 px-2 py-1">{injectCitations(children)}</td>,
+        th: ({ children }) => <th className="border border-slate-200 px-2 py-1 bg-slate-50 font-semibold">{injectCitations(children)}</th>,
+        table: ({ children }) => <table className="w-full text-xs border-collapse border border-slate-200 my-2">{children}</table>,
+        thead: ({ children }) => <thead>{children}</thead>,
+        tbody: ({ children }) => <tbody>{children}</tbody>,
+        tr: ({ children }) => <tr className="even:bg-slate-50">{children}</tr>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        h1: ({ children }) => <h3 className="font-bold text-sm mt-3 mb-1">{children}</h3>,
+        h2: ({ children }) => <h3 className="font-bold text-sm mt-3 mb-1">{children}</h3>,
+        h3: ({ children }) => <h4 className="font-semibold text-xs mt-2 mb-1">{children}</h4>,
+        ul: ({ children }) => <ul className="list-disc pl-4 my-1 space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-4 my-1 space-y-0.5">{children}</ol>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
+
+  function injectCitations(children: React.ReactNode): React.ReactNode {
+    if (!children) return children;
+    if (typeof children === 'string') {
+      return splitCitations(children);
+    }
+    if (Array.isArray(children)) {
+      return children.map((child, i) => {
+        if (typeof child === 'string') return <span key={i}>{splitCitations(child)}</span>;
+        return child;
+      });
+    }
+    return children;
+  }
+
+  function splitCitations(text: string): React.ReactNode {
+    const parts = text.split(/(\[\d+(?:,\s*\d+)*\])/g);
+    return parts.map((part, i) => {
+      // Match single [n] or grouped [n, m, ...]
+      const m = part.match(/^\[([\d,\s]+)\]$/);
+      if (m) {
+        const ids = m[1].split(',').map((s) => parseInt(s.trim()));
+        return (
+          <span key={i}>
+            {ids.map((id) => {
+              const cit = citations.find((c) => c.id === id);
+              if (cit) {
+                return <CitationBadge key={id} id={id} citation={cit} onHover={onCitationHover} onClick={onCitationClick} />;
+              }
+              return <sup key={id} className="text-[9px] text-slate-400">[{id}]</sup>;
+            })}
+          </span>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  }
 }
 
 // ── WikiSection component ──
