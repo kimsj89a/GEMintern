@@ -1,4 +1,4 @@
-import{u as Ue,r as l,a as d,j as e,F as Se,b as Ce,M as w,c as z,d as U,g as I,C as _e,s as Qe,e as ae}from"./index-CSEYhoip.js";import{G as Ke}from"./GenerationProgress-wSjeQVcj.js";function qe(r,h){if(!r||!h||r===h)return h;const g=x=>x.split(/\n{2,}/).map(m=>m.trim()).filter(Boolean),u=g(r),S=g(h),v=x=>x.replace(/\s+/g," ").trim(),Q=new Set(u.map(v));return S.map(x=>{const m=v(x);if(Q.has(m))return x;if(/^#{1,6}\s/.test(x)){const K=v(x.replace(/^#{1,6}\s+/,""));if(u.some(le=>v(le.replace(/^#{1,6}\s+/,""))===K))return x}return`<div class="diff-highlight">
+import{u as Ue,r as l,a as d,j as e,F as Se,b as Ce,M as w,c as z,d as U,g as I,C as _e,s as Qe,e as ae}from"./index-Uav5nYZS.js";import{G as Ke}from"./GenerationProgress-C33s-p0C.js";function qe(r,h){if(!r||!h||r===h)return h;const g=x=>x.split(/\n{2,}/).map(m=>m.trim()).filter(Boolean),u=g(r),S=g(h),v=x=>x.replace(/\s+/g," ").trim(),Q=new Set(u.map(v));return S.map(x=>{const m=v(x);if(Q.has(m))return x;if(/^#{1,6}\s/.test(x)){const K=v(x.replace(/^#{1,6}\s+/,""));if(u.some(le=>v(le.replace(/^#{1,6}\s+/,""))===K))return x}return`<div class="diff-highlight">
 
 ${x}
 

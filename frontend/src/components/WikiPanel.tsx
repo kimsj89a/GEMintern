@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { marked } from 'marked';
 import { api } from '../api/client';
 
 interface Citation {
@@ -135,31 +136,31 @@ function RenderContent({
   citations,
   onCitationHover,
   onCitationClick,
+  fontSize,
 }: {
   content: string;
   citations: Citation[];
   onCitationHover: (c: Citation, e: React.MouseEvent) => void;
   onCitationClick: (c: Citation) => void;
+  fontSize?: number;
 }) {
-  // Replace [n] with placeholder, render markdown, then inject citation badges
-  // Strategy: use react-markdown with custom text renderer
+  const fs = fontSize || 14;
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        // Override text nodes to inject citation badges
         p: ({ children }) => <p className="mb-2 last:mb-0">{injectCitations(children)}</p>,
         li: ({ children }) => <li>{injectCitations(children)}</li>,
         td: ({ children }) => <td className="border border-slate-200 px-2 py-1">{injectCitations(children)}</td>,
         th: ({ children }) => <th className="border border-slate-200 px-2 py-1 bg-slate-50 font-semibold">{injectCitations(children)}</th>,
-        table: ({ children }) => <table className="w-full text-xs border-collapse border border-slate-200 my-2">{children}</table>,
+        table: ({ children }) => <table style={{ fontSize: fs }} className="w-full border-collapse border border-slate-200 my-2">{children}</table>,
         thead: ({ children }) => <thead>{children}</thead>,
         tbody: ({ children }) => <tbody>{children}</tbody>,
         tr: ({ children }) => <tr className="even:bg-slate-50">{children}</tr>,
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        h1: ({ children }) => <h3 className="font-bold text-sm mt-3 mb-1">{children}</h3>,
-        h2: ({ children }) => <h3 className="font-bold text-sm mt-3 mb-1">{children}</h3>,
-        h3: ({ children }) => <h4 className="font-semibold text-xs mt-2 mb-1">{children}</h4>,
+        h1: ({ children }) => <h3 style={{ fontSize: fs + 4 }} className="font-bold mt-3 mb-1">{children}</h3>,
+        h2: ({ children }) => <h3 style={{ fontSize: fs + 4 }} className="font-bold mt-3 mb-1">{children}</h3>,
+        h3: ({ children }) => <h4 style={{ fontSize: fs + 2 }} className="font-semibold mt-2 mb-1">{children}</h4>,
         ul: ({ children }) => <ul className="list-disc pl-4 my-1 space-y-0.5">{children}</ul>,
         ol: ({ children }) => <ol className="list-decimal pl-4 my-1 space-y-0.5">{children}</ol>,
       }}
@@ -214,12 +215,14 @@ function WikiSectionItem({
   projectName,
   onUpdate,
   onDelete,
+  fontSize,
 }: {
   section: WikiSection;
   citations: Citation[];
   projectName: string;
   onUpdate: () => void;
   onDelete: () => void;
+  fontSize: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -336,12 +339,14 @@ function WikiSectionItem({
                 </button>
               </div>
               <div
-                className="text-xs text-slate-600 leading-relaxed"
+                style={{ fontSize }}
+                className="text-slate-600 leading-relaxed"
                 onMouseLeave={() => setTooltip(null)}
               >
                 <RenderContent
                   content={section.content}
                   citations={citations}
+                  fontSize={fontSize}
                   onCitationHover={(c, e) =>
                     setTooltip({ citation: c, pos: { x: e.clientX, y: e.clientY } })
                   }
@@ -351,12 +356,14 @@ function WikiSectionItem({
             </div>
           ) : (
             <div
-              className="text-xs text-slate-600 leading-relaxed"
+              style={{ fontSize }}
+              className="text-slate-600 leading-relaxed"
               onMouseLeave={() => setTooltip(null)}
             >
               <RenderContent
                 content={section.content}
                 citations={citations}
+                fontSize={fontSize}
                 onCitationHover={(c, e) =>
                   setTooltip({ citation: c, pos: { x: e.clientX, y: e.clientY } })
                 }
@@ -387,6 +394,17 @@ function WikiSectionItem({
 
 // ── Main WikiPanel ──
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function WikiPanel({ projectName }: { projectName: string }) {
   const [wiki, setWiki] = useState<WikiData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -394,6 +412,9 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
   const [error, setError] = useState<string | null>(null);
   const [addingSection, setAddingSection] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [fontSize, setFontSize] = useState(14);
+  const [showExport, setShowExport] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   const loadWiki = useCallback(async () => {
     if (!projectName) return;
@@ -481,6 +502,66 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
     loadWiki();
   };
 
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!showExport) return;
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setShowExport(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showExport]);
+
+  const exportAsHtml = () => {
+    if (!wiki) return;
+    const sorted = [...wiki.sections].sort((a, b) => a.order - b.order);
+    const body = sorted.map(s => `<h2>${s.title}</h2>\n${marked(s.content)}`).join('\n<hr>\n');
+    const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>Wiki – ${projectName}</title>
+<style>
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:800px;margin:0 auto;padding:40px 24px;color:#222;line-height:1.7}
+h2{margin-top:32px;padding-bottom:6px;border-bottom:1px solid #e2e8f0}
+table{border-collapse:collapse;width:100%;margin:12px 0}
+th,td{border:1px solid #cbd5e1;padding:6px 10px;text-align:left}
+th{background:#f1f5f9;font-weight:600}
+tr:nth-child(even){background:#f8fafc}
+hr{border:none;border-top:1px solid #e2e8f0;margin:24px 0}
+ul,ol{padding-left:1.5em}
+</style></head><body>
+<h1>📖 ${projectName} Wiki</h1>
+${body}
+<footer style="margin-top:48px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
+Generated by GEMintern · ${new Date().toLocaleDateString('ko-KR')}
+</footer>
+</body></html>`;
+    downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), `wiki-${projectName}.html`);
+    setShowExport(false);
+  };
+
+  const exportAsWord = () => {
+    if (!wiki) return;
+    const stripRefs = (text: string) => text.replace(/\s*\[\d+(?:,\s*\d+)*\]/g, '');
+    const sorted = [...wiki.sections].sort((a, b) => a.order - b.order);
+    const body = sorted.map(s => `<h2>${s.title}</h2>\n${marked(stripRefs(s.content))}`).join('\n<br>\n');
+    const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Wiki – ${projectName}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;line-height:1.7;color:#222}
+h1{font-size:20pt}
+h2{font-size:14pt;margin-top:18pt;padding-bottom:4pt;border-bottom:1px solid #ccc}
+table{border-collapse:collapse;width:100%;margin:8pt 0}
+th,td{border:1px solid #999;padding:4pt 8pt}
+th{background:#f0f0f0;font-weight:bold}
+ul,ol{padding-left:1.5em}
+</style></head><body>
+<h1>${projectName} Wiki</h1>
+${body}
+</body></html>`;
+    downloadBlob(new Blob(['\ufeff' + doc], { type: 'application/msword' }), `wiki-${projectName}.doc`);
+    setShowExport(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -523,8 +604,48 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200">
         <span className="text-xs font-bold text-slate-700">위키</span>
+        {/* Font size control */}
+        <div className="flex items-center gap-0.5 ml-1">
+          <button
+            onClick={() => setFontSize(s => Math.max(10, s - 1))}
+            className="w-5 h-5 flex items-center justify-center text-[10px] text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded"
+            title="글씨 축소"
+          >A-</button>
+          <span className="text-[9px] text-slate-400 w-5 text-center tabular-nums">{fontSize}</span>
+          <button
+            onClick={() => setFontSize(s => Math.min(22, s + 1))}
+            className="w-5 h-5 flex items-center justify-center text-[10px] text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded"
+            title="글씨 확대"
+          >A+</button>
+        </div>
+        <div className="flex-1" />
+        {/* Export dropdown */}
+        <div ref={exportRef} className="relative">
+          <button
+            onClick={() => setShowExport(!showExport)}
+            className="text-[10px] text-slate-500 hover:text-slate-700 px-1.5 py-0.5 rounded hover:bg-slate-100"
+          >
+            내보내기 ▾
+          </button>
+          {showExport && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-30 py-1 min-w-[140px]">
+              <button
+                onClick={exportAsHtml}
+                className="w-full text-left px-3 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50"
+              >
+                HTML로 내보내기
+              </button>
+              <button
+                onClick={exportAsWord}
+                className="w-full text-left px-3 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50"
+              >
+                Word로 내보내기
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={handleUpdate}
           disabled={generating}
@@ -544,6 +665,7 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
             projectName={projectName}
             onUpdate={loadWiki}
             onDelete={() => handleDeleteSection(s.id)}
+            fontSize={fontSize}
           />
         ))}
 
