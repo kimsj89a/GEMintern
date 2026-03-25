@@ -21,7 +21,6 @@ const STUDIO_TOOLS = [
   { id: 'analysis', label: '자료 분석', icon: '📥', desc: '사전 정보 수집', page: 'phase1' },
   { id: 'report', label: '보고서', icon: '📄', desc: '투심보고서, IM 등', page: 'phase2' },
   { id: 'qa', label: '질의회신', icon: '💬', desc: 'LP 질의 대응', page: 'lp_qa' },
-  { id: 'doc_update', label: '문서 업데이트', icon: '🔄', desc: '기존 문서 수정', page: 'doc_updater' },
   { id: 'ppt', label: 'PPT 생성', icon: '📊', desc: '발표자료 슬라이드', page: 'ppt_tools' },
 ];
 
@@ -300,7 +299,6 @@ export default function WorkspacePage() {
                         {activeTool === 'report' && '프로젝트 자료를 기반으로 투심보고서, IM 등을 작성합니다. 원하는 보고서 유형과 요구사항을 입력하세요.'}
                         {activeTool === 'analysis' && '프로젝트 자료를 분석하여 핵심 인사이트를 도출합니다. 분석 관점이나 질문을 입력하세요.'}
                         {activeTool === 'qa' && 'LP 질의에 대한 답변을 프로젝트 자료 기반으로 작성합니다. LP의 질문을 입력하세요.'}
-                        {activeTool === 'doc_update' && '기존 문서의 내용을 업데이트합니다. 수정할 내용을 설명하세요.'}
                       </div>
                     </div>
                   )}
