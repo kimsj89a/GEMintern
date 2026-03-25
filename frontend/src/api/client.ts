@@ -124,6 +124,10 @@ export const api = {
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections/${encodeURIComponent(sectionId)}`, {
       method: 'DELETE',
     }),
+  getCitationContext: (project: string, source_doc: string, excerpt: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/citation-context`, {
+      method: 'POST', body: JSON.stringify({ source_doc, excerpt }),
+    }),
 
   extractExcelCells: async (files: File[]) => {
     const formData = new FormData();

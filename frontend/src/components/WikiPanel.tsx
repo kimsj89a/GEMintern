@@ -9,6 +9,10 @@ interface Citation {
   source_doc: string;
   page: number | null;
   excerpt: string;
+  heading?: string | null;
+  context?: string | null;
+  context_excerpt_range?: [number, number] | null;
+  position?: number | null;
 }
 
 interface WikiSection {
@@ -42,13 +46,16 @@ function CitationTooltip({
       className="fixed z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs"
       style={{ left: position.x, top: position.y + 8 }}
     >
-      <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="flex items-center gap-1.5 mb-1">
         <span className="text-base">📄</span>
         <span className="font-semibold text-slate-700 truncate">{citation.source_doc.replace('.md', '')}</span>
         {citation.page != null && (
           <span className="text-slate-400 shrink-0">p.{citation.page}</span>
         )}
       </div>
+      {citation.heading && (
+        <div className="text-[10px] text-slate-400 mb-1.5 truncate">📍 {citation.heading}</div>
+      )}
       <div className="text-slate-500 leading-relaxed border-l-2 border-blue-200 pl-2 mb-2">
         "{citation.excerpt}"
       </div>
@@ -56,7 +63,7 @@ function CitationTooltip({
         onClick={onDownload}
         className="text-blue-500 hover:text-blue-700 text-[11px] font-medium"
       >
-        원문 다운로드 →
+        클릭하여 원문 위치 확인 →
       </button>
     </div>
   );
@@ -66,34 +73,74 @@ function CitationTooltip({
 
 function CitationPreview({
   citation,
+  enrichedContext,
+  loadingContext,
   onClose,
   onDownload,
 }: {
   citation: Citation;
+  enrichedContext?: { context: string; context_excerpt_range: [number, number]; heading?: string; position?: number; page?: number } | null;
+  loadingContext?: boolean;
   onClose: () => void;
   onDownload: () => void;
 }) {
+  const ctx = enrichedContext || (citation.context ? {
+    context: citation.context,
+    context_excerpt_range: citation.context_excerpt_range!,
+    heading: citation.heading,
+    position: citation.position,
+    page: citation.page,
+  } : null);
+  const heading = ctx?.heading || citation.heading;
+  const page = ctx?.page ?? citation.page;
+  const position = ctx?.position ?? citation.position;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl w-[480px] max-h-[70vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-[520px] max-h-[75vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <span className="text-lg">📄</span>
             <span className="font-bold text-slate-800">{citation.source_doc.replace('.md', '')}</span>
-            {citation.page != null && (
-              <span className="text-sm text-slate-400">p.{citation.page}</span>
-            )}
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-            {citation.excerpt}
-          </div>
+
+        {/* Location bar */}
+        <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+          {heading && <span className="flex items-center gap-1"><span>📍</span><span className="font-medium text-slate-600">{heading}</span></span>}
+          {page != null && <span>p.{page}</span>}
+          {position != null && <span>문서의 약 {position}% 위치</span>}
+          {!heading && page == null && position == null && !loadingContext && <span className="text-slate-400">위치 정보 없음</span>}
+          {loadingContext && <span className="text-slate-400">위치 검색 중...</span>}
         </div>
+
+        {/* Context body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {loadingContext ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : ctx?.context && ctx.context_excerpt_range ? (
+            <div className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-lg p-4 border border-slate-200">
+              <span className="text-slate-400">…</span>
+              {ctx.context.slice(0, ctx.context_excerpt_range[0])}
+              <mark className="bg-yellow-200/70 text-slate-800 px-0.5 rounded-sm">{ctx.context.slice(ctx.context_excerpt_range[0], ctx.context_excerpt_range[1])}</mark>
+              {ctx.context.slice(ctx.context_excerpt_range[1])}
+              <span className="text-slate-400">…</span>
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+              "{citation.excerpt}"
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
           <button
             onClick={onDownload}
@@ -232,6 +279,23 @@ function WikiSectionItem({
   const [reviseLoading, setReviseLoading] = useState(false);
   const [tooltip, setTooltip] = useState<{ citation: Citation; pos: { x: number; y: number } } | null>(null);
   const [preview, setPreview] = useState<Citation | null>(null);
+  const [enrichedContext, setEnrichedContext] = useState<any>(null);
+  const [loadingContext, setLoadingContext] = useState(false);
+
+  // Fetch context on-demand when preview opens
+  useEffect(() => {
+    if (!preview) {
+      setEnrichedContext(null);
+      return;
+    }
+    // Already has context embedded
+    if (preview.context && preview.context_excerpt_range) return;
+    setLoadingContext(true);
+    api.getCitationContext(projectName, preview.source_doc, preview.excerpt)
+      .then((data: any) => { if (data.found) setEnrichedContext(data); })
+      .catch(() => {})
+      .finally(() => setLoadingContext(false));
+  }, [preview, projectName]);
 
   const handleSave = async () => {
     await api.patchWikiSection(projectName, section.id, { content: editContent });
@@ -384,6 +448,8 @@ function WikiSectionItem({
       {preview && (
         <CitationPreview
           citation={preview}
+          enrichedContext={enrichedContext}
+          loadingContext={loadingContext}
           onClose={() => setPreview(null)}
           onDownload={() => handleDownload(preview)}
         />

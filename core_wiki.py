@@ -109,6 +109,116 @@ def _build_source_context(docs: Dict[str, str]) -> tuple[str, list[tuple[str, st
     return "\n\n---\n\n".join(parts), doc_list
 
 
+def _find_excerpt(content: str, excerpt: str) -> int:
+    """Find excerpt position in content with progressive fallback."""
+    if not excerpt:
+        return -1
+    idx = content.find(excerpt)
+    if idx >= 0:
+        return idx
+    for length in [60, 30]:
+        if len(excerpt) > length:
+            idx = content.find(excerpt[:length])
+            if idx >= 0:
+                return idx
+    lower = content.lower()
+    idx = lower.find(excerpt.lower())
+    if idx >= 0:
+        return idx
+    if len(excerpt) > 30:
+        idx = lower.find(excerpt[:30].lower())
+        if idx >= 0:
+            return idx
+    return -1
+
+
+def _build_citation_context(content: str, idx: int, excerpt_len: int) -> dict:
+    """Build context dict: surrounding text, heading, position, page."""
+    ctx_start = max(0, idx - 500)
+    ctx_end = min(len(content), idx + excerpt_len + 500)
+    if ctx_start > 0:
+        nl = content.rfind('\n', max(0, ctx_start - 100), ctx_start)
+        if nl >= 0:
+            ctx_start = nl + 1
+    if ctx_end < len(content):
+        nl = content.find('\n', ctx_end, min(len(content), ctx_end + 100))
+        if nl >= 0:
+            ctx_end = nl
+
+    context = content[ctx_start:ctx_end]
+    excerpt_start = idx - ctx_start
+    excerpt_end = excerpt_start + excerpt_len
+
+    heading = None
+    text_before = content[:idx]
+    headings = list(re.finditer(r'^#+\s+(.+)$', text_before, re.MULTILINE))
+    if headings:
+        heading = headings[-1].group(1).strip()
+
+    position = round(idx / max(len(content), 1) * 100)
+
+    page = None
+    page_matches = list(re.finditer(
+        r'(?:---\s*[Pp]age\s*(\d+)|(?:^|\n)\[?[Pp]\.?\s*(\d+)\]?)',
+        text_before,
+    ))
+    if page_matches:
+        m = page_matches[-1]
+        page = int(next(g for g in m.groups() if g))
+
+    return {
+        "context": context,
+        "context_excerpt_range": [excerpt_start, excerpt_end],
+        "heading": heading,
+        "position": position,
+        "page": page,
+    }
+
+
+def _enrich_citations(citations: list, doc_list: list) -> list:
+    """Enrich citations with context from source docs."""
+    doc_dict = {name: content for name, content in doc_list}
+    for cit in citations:
+        source = cit.get("source_doc", "")
+        excerpt = cit.get("excerpt", "")
+        content = doc_dict.get(source) or doc_dict.get(source.replace('.md', ''))
+        if not content or not excerpt:
+            continue
+        idx = _find_excerpt(content, excerpt)
+        if idx < 0:
+            continue
+        enriched = _build_citation_context(content, idx, len(excerpt))
+        if not cit.get("heading"):
+            cit["heading"] = enriched.get("heading")
+        cit["context"] = enriched["context"]
+        cit["context_excerpt_range"] = enriched["context_excerpt_range"]
+        cit["position"] = enriched["position"]
+        if cit.get("page") is None:
+            cit["page"] = enriched.get("page")
+    return citations
+
+
+def get_citation_context(
+    project_name: str,
+    source_doc: str,
+    excerpt: str,
+    owner_id: int | None = None,
+) -> dict:
+    """On-demand: find excerpt in source document, return context."""
+    docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    content = (docs.get(source_doc)
+               or docs.get(source_doc.replace('.md', ''))
+               or docs.get(source_doc + '.md'))
+    if not content:
+        return {"found": False}
+    idx = _find_excerpt(content, excerpt)
+    if idx < 0:
+        return {"found": False}
+    result = _build_citation_context(content, idx, len(excerpt))
+    result["found"] = True
+    return result
+
+
 def _get_model() -> str:
     """Read model name from settings.json, matching the rest of the app."""
     try:
@@ -156,6 +266,7 @@ def generate_wiki(
 3. 자료에 없는 내용은 절대 작성하지 마세요.
 4. 해당 섹션에 관련 자료가 없으면 content를 "관련 자료 없음"으로 표시하세요.
 5. citations 배열에 각 각주의 상세 정보를 반드시 포함하세요.
+6. excerpt는 반드시 원문 그대로 복사하세요 (요약/변형 금지). heading은 해당 내용이 위치한 원문의 섹션/항목 제목입니다.
 
 ## 서식 규칙 (반드시 준수)
 - 취소선(~~)은 절대 사용하지 마세요.
@@ -178,7 +289,8 @@ def generate_wiki(
     {{
       "id": 1,
       "doc_ref": 1,
-      "excerpt": "원문에서 발췌한 1-2문장"
+      "heading": "원문에서 해당 내용이 포함된 섹션/항목 제목",
+      "excerpt": "원문에서 정확히 발췌한 1-2문장 (그대로 복사)"
     }}
   ]
 }}
@@ -239,8 +351,12 @@ def generate_wiki(
             "id": c["id"],
             "source_doc": source_doc,
             "page": None,
+            "heading": c.get("heading"),
             "excerpt": c.get("excerpt", ""),
         })
+
+    # Enrich citations with context from source docs
+    _enrich_citations(citations, doc_list)
 
     # Post-process: strip strikethrough markers
     for s in result.get("sections", []):
@@ -455,15 +571,21 @@ def revise_section(
     section["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
 
     # 새 citations 추가
+    new_cits = []
     for nc in result.get("new_citations", []):
         doc_idx = int(nc.get("doc_ref", 0)) - 1
         source_doc = doc_list[doc_idx][0] if 0 <= doc_idx < len(doc_list) else "unknown"
-        wiki["citations"].append({
+        cit = {
             "id": nc["id"],
             "source_doc": source_doc,
             "page": None,
+            "heading": nc.get("heading"),
             "excerpt": nc.get("excerpt", ""),
-        })
+        }
+        new_cits.append(cit)
+        wiki["citations"].append(cit)
+    if new_cits:
+        _enrich_citations(new_cits, doc_list)
 
     save_wiki(project_name, wiki, owner_id=owner_id)
     return wiki

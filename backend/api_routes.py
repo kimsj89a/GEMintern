@@ -832,6 +832,16 @@ def delete_wiki_section(name: str, section_id: str, user: dict = Depends(get_cur
     return core_wiki.delete_section(name, section_id, owner_id=user["id"])
 
 
+@router.post("/projects/{name}/wiki/citation-context")
+def citation_context(name: str, body: dict, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_wiki
+    return core_wiki.get_citation_context(
+        name, body.get("source_doc", ""), body.get("excerpt", ""),
+        owner_id=user["id"],
+    )
+
+
 # ========================================
 # Local Folder Scan — Preview & Ingest
 # ========================================
