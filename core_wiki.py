@@ -40,34 +40,56 @@ def _wiki_path(project_name: str) -> str:
 # ── Load / Save ──────────────────────────────────────────
 
 def load_wiki(project_name: str, owner_id: int | None = None) -> Optional[dict]:
+    # 1) Try DB first (persistent on Railway)
+    if owner_id is not None:
+        try:
+            from backend.database import load_wiki_from_db
+            data = load_wiki_from_db(project_name, owner_id)
+            if data:
+                return data
+        except Exception as e:
+            logger.warning(f"load_wiki DB read failed: {e}")
+
+    # 2) Fallback to JSON file
     storage = _get_storage_name(project_name, owner_id=owner_id)
     path = _wiki_path(storage)
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            # Backfill DB from file if we have owner_id
+            if data and owner_id is not None:
+                try:
+                    from backend.database import save_wiki_to_db
+                    save_wiki_to_db(project_name, owner_id, data)
+                    logger.info(f"load_wiki: backfilled DB from file for {project_name}")
+                except Exception:
+                    pass
+            return data
         except (json.JSONDecodeError, IOError):
             pass
     return None
 
 
 def save_wiki(project_name: str, wiki_data: dict, owner_id: int | None = None):
+    # 1) Save to DB (primary, persistent)
+    if owner_id is not None:
+        try:
+            from backend.database import save_wiki_to_db
+            save_wiki_to_db(project_name, owner_id, wiki_data)
+            logger.info(f"save_wiki DB: OK for {project_name}")
+        except Exception as e:
+            logger.error(f"save_wiki DB failed: {e}")
+
+    # 2) Also save to JSON file (cache / backward compat)
     storage = _get_storage_name(project_name, owner_id=owner_id)
     path = _wiki_path(storage)
-    logger.info(f"save_wiki: storage={storage}, path={path}")
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(wiki_data, f, ensure_ascii=False, indent=2)
-        logger.info(f"save_wiki: OK, size={os.path.getsize(path)}")
     except Exception as e:
-        logger.error(f"save_wiki FAILED: {e}")
-        # Fallback: try saving directly under project name
-        fallback = _wiki_path(project_name)
-        logger.info(f"save_wiki fallback: {fallback}")
-        os.makedirs(os.path.dirname(fallback), exist_ok=True)
-        with open(fallback, "w", encoding="utf-8") as f:
-            json.dump(wiki_data, f, ensure_ascii=False, indent=2)
+        logger.warning(f"save_wiki file failed (non-critical): {e}")
 
 
 # ── Generation ───────────────────────────────────────────

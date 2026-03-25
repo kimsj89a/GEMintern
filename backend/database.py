@@ -132,6 +132,15 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (session_id) REFERENCES qa_sessions(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS wiki_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                data_json TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(project_id)
+            );
         """)
 
     # Bootstrap admin user from env vars
@@ -178,6 +187,8 @@ def init_db():
     migrate_rag_projects_to_db()
     # Sync documents from disk to SQLite (for Railway ephemeral FS recovery)
     sync_docs_from_disk()
+    # Sync wiki JSON files to SQLite
+    sync_wiki_from_disk()
 
 
 def migrate_rag_projects_to_db():
@@ -273,6 +284,41 @@ def sync_docs_from_disk():
         print(f"[DB] Synced {synced} documents from disk to SQLite.")
 
 
+def sync_wiki_from_disk():
+    """Migrate existing _wiki.json files into SQLite wiki_data table."""
+    rag_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rag_storage")
+    if not os.path.isdir(rag_root):
+        return
+    synced = 0
+    with get_db() as conn:
+        projects = conn.execute("SELECT id, storage_name FROM projects").fetchall()
+        for proj in projects:
+            # Skip if already has wiki in DB
+            existing = conn.execute(
+                "SELECT id FROM wiki_data WHERE project_id = ?", (proj["id"],)
+            ).fetchone()
+            if existing:
+                continue
+            wiki_path = os.path.join(rag_root, proj["storage_name"], "_wiki.json")
+            if not os.path.exists(wiki_path):
+                continue
+            try:
+                with open(wiki_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data and data.get("generated_at"):
+                    conn.execute(
+                        """INSERT INTO wiki_data (project_id, data_json)
+                           VALUES (?, ?)
+                           ON CONFLICT(project_id) DO NOTHING""",
+                        (proj["id"], json.dumps(data, ensure_ascii=False)),
+                    )
+                    synced += 1
+            except (json.JSONDecodeError, OSError):
+                pass
+    if synced:
+        print(f"[DB] Synced {synced} wikis from disk to SQLite.")
+
+
 def log_usage(user_id: int, endpoint: str, model: str | None = None):
     with get_db() as conn:
         conn.execute(
@@ -366,4 +412,44 @@ def save_user_settings(user_id: int, settings: dict):
                VALUES (?, ?)
                ON CONFLICT(user_id) DO UPDATE SET settings_json = ?""",
             (user_id, settings_json, settings_json),
+        )
+
+
+# ── Wiki DB helpers ──────────────────────────────────────
+
+def _get_project_id(conn, project_name: str, owner_id: int) -> int | None:
+    row = conn.execute(
+        "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+        (project_name, owner_id),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def load_wiki_from_db(project_name: str, owner_id: int) -> dict | None:
+    with get_db() as conn:
+        pid = _get_project_id(conn, project_name, owner_id)
+        if not pid:
+            return None
+        row = conn.execute(
+            "SELECT data_json FROM wiki_data WHERE project_id = ?", (pid,)
+        ).fetchone()
+        if row:
+            try:
+                return json.loads(row["data_json"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return None
+
+
+def save_wiki_to_db(project_name: str, owner_id: int, wiki_data: dict):
+    data_json = json.dumps(wiki_data, ensure_ascii=False)
+    with get_db() as conn:
+        pid = _get_project_id(conn, project_name, owner_id)
+        if not pid:
+            return
+        conn.execute(
+            """INSERT INTO wiki_data (project_id, data_json, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(project_id) DO UPDATE SET data_json = ?, updated_at = CURRENT_TIMESTAMP""",
+            (pid, data_json, data_json),
         )
