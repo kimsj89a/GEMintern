@@ -17,7 +17,6 @@ const NAV_SECTIONS = [
     items: [
       { label: '자유양식 문서', id: 'freedoc', icon: '📝' },
       { label: '기안문 작성', id: 'draftdoc', icon: '📄' },
-      { label: '문서 업데이트', id: 'doc_updater', icon: '🔄' },
       { label: '발표자료 (PPT)', id: 'ppt_tools', icon: '📊' },
     ],
   },

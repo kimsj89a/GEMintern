@@ -15,7 +15,6 @@ const SECTIONS = [
     items: [
       { label: '자유양식', id: 'freedoc', icon: '📝' },
       { label: '기안문', id: 'draftdoc', icon: '📄' },
-      { label: '문서 업데이트', id: 'doc_updater', icon: '🔄' },
       { label: 'PPT', id: 'ppt_tools', icon: '📊' },
     ],
   },

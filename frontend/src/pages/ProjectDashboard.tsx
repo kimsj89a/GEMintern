@@ -6,6 +6,7 @@ import { api } from '../api/client';
 const STANDALONE_TOOLS = [
   { id: 'draftdoc', label: '기안문', icon: '📝', desc: '기안문 작성' },
   { id: 'freedoc', label: '자유양식', icon: '✏️', desc: '자유 구조 문서' },
+  { id: 'doc_updater', label: '문서 업데이트', icon: '🔄', desc: '기존 문서 수정' },
   { id: 'ocr', label: 'OCR', icon: '👁', desc: '문서 텍스트 추출' },
   { id: 'audio', label: '오디오 전사', icon: '🎙', desc: '음성→텍스트' },
   { id: 'crawler', label: '웹 크롤러', icon: '🌐', desc: '웹사이트 수집' },
