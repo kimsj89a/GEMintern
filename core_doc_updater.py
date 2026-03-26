@@ -238,9 +238,23 @@ def call_update_ai(document_map: str, supplementary: str, instruction: str,
     last_error = None
 
     for attempt in range(max_retries):
-        response = client.models.generate_content(
-            model=model, contents=user_prompt, config=config
-        )
+        try:
+            response = client.models.generate_content(
+                model=model, contents=user_prompt, config=config
+            )
+        except Exception as api_err:
+            err_str = str(api_err)
+            if '503' in err_str or 'overloaded' in err_str.lower() or 'unavailable' in err_str.lower():
+                import time
+                wait = 5 * (attempt + 1)
+                logger.warning(
+                    f"API 503 오류 (attempt {attempt + 1}/{max_retries}), "
+                    f"{wait}초 후 재시도: {err_str[:200]}"
+                )
+                last_error = api_err
+                time.sleep(wait)
+                continue
+            raise
 
         raw, finish_reason = _extract_response_text(response)
 
