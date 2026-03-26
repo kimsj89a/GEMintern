@@ -2417,12 +2417,15 @@ async def freedoc_upload(files: List[UploadFile] = File(...), user: dict = Depen
     """자유양식 문서작성: 파일 업로드 → 파싱된 텍스트 반환."""
     api_key = _get_api_key()
     parsed_parts = []
+    warnings = []
     for f in files:
         content_bytes = await f.read()
         parsed = _parse_file_bytes(f.filename, content_bytes, api_key)
         if parsed:
             parsed_parts.append(f"--- [{f.filename}] ---\n{parsed}")
-    return {"file_text": "\n\n".join(parsed_parts), "count": len(parsed_parts)}
+        else:
+            warnings.append(f"{f.filename}: 텍스트를 추출할 수 없습니다. 스캔 PDF인 경우 이미지 품질을 확인해주세요.")
+    return {"file_text": "\n\n".join(parsed_parts), "count": len(parsed_parts), "warnings": warnings}
 
 
 @router.post("/freedoc/generate")
@@ -2475,18 +2478,38 @@ def freedoc_generate(req: FreeDocRequest, user: dict = Depends(get_current_user)
                 system_instruction=system_prompt,
             )
 
-            stream = client.models.generate_content_stream(
-                model=model, contents=prompt, config=config
-            )
-            full_text = ""
-            for chunk in stream:
-                text = chunk.text or "" if hasattr(chunk, "text") else ""
-                if text:
-                    full_text += text
-                    task["chunks"].append(text)
-            task["result"] = full_text
-            task["status"] = "complete"
-            _save_inline_task_history(task, full_text)
+            import time as _time
+            max_retries = 3
+            last_err = None
+            for attempt in range(max_retries):
+                try:
+                    stream = client.models.generate_content_stream(
+                        model=model, contents=prompt, config=config
+                    )
+                    full_text = ""
+                    for chunk in stream:
+                        text = chunk.text or "" if hasattr(chunk, "text") else ""
+                        if text:
+                            full_text += text
+                            task["chunks"].append(text)
+                    task["result"] = full_text
+                    task["status"] = "complete"
+                    _save_inline_task_history(task, full_text)
+                    last_err = None
+                    break
+                except Exception as api_err:
+                    err_str = str(api_err)
+                    if ('503' in err_str or 'overloaded' in err_str.lower() or 'unavailable' in err_str.lower()) and attempt < max_retries - 1:
+                        wait = 5 * (attempt + 1)
+                        logger.warning(f"기안문 생성 API 503 (attempt {attempt + 1}/{max_retries}), {wait}초 후 재시도")
+                        task["chunks"].append(f"\n[서버 과부하로 {wait}초 후 재시도 중...]\n")
+                        _time.sleep(wait)
+                        task["chunks"] = []  # 이전 청크 초기화
+                        last_err = api_err
+                        continue
+                    raise
+            if last_err:
+                raise last_err
         except Exception as e:
             task["error"] = str(e)
             task["status"] = "error"

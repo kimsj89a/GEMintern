@@ -11,6 +11,7 @@ export default function DraftDocPage() {
   const { currentProject } = useAppStore();
   const [fileText, setFileText] = useState('');
   const [fileNames, setFileNames] = useState<string[]>([]);
+  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [instruction, setInstruction] = useState('');
@@ -30,6 +31,9 @@ export default function DraftDocPage() {
         setFileText((prev) => (prev ? prev + '\n\n' + res.file_text : res.file_text));
         setFileNames((prev) => [...prev, ...files.map((f) => f.name)]);
       }
+      if (res.warnings && res.warnings.length > 0) {
+        setUploadWarnings((prev) => [...prev, ...res.warnings]);
+      }
     } catch {
       // ignore
     }
@@ -39,6 +43,7 @@ export default function DraftDocPage() {
   const handleClearFiles = () => {
     setFileText('');
     setFileNames([]);
+    setUploadWarnings([]);
   };
 
   const handleGenerate = async () => {
@@ -185,6 +190,13 @@ export default function DraftDocPage() {
                 <button onClick={handleClearFiles} className="text-xs text-[#EB5757] hover:underline ml-1">
                   전체 삭제
                 </button>
+              </div>
+            )}
+            {uploadWarnings.length > 0 && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                {uploadWarnings.map((w, i) => (
+                  <p key={i}>{w}</p>
+                ))}
               </div>
             )}
           </div>
