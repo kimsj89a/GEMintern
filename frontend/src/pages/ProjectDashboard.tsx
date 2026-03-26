@@ -11,9 +11,9 @@ const STANDALONE_TOOLS = [
   { id: 'audio', label: '오디오 전사', icon: '🎙', desc: '음성→텍스트' },
   { id: 'crawler', label: '웹 크롤러', icon: '🌐', desc: '웹사이트 수집' },
   { id: 'markdown', label: 'MD → Word', icon: '📄', desc: '마크다운 변환' },
-  { id: 'doc_template', label: '문서양식', icon: '📋', desc: '표준 템플릿' },
+  { id: 'doctemplate', label: '문서양식', icon: '📋', desc: '표준 템플릿' },
   { id: 'text_organizer', label: '문장 정리기', icon: '✂️', desc: '텍스트 정리' },
-  { id: 'quick_mail', label: '메일 작성', icon: '📧', desc: '이메일 생성' },
+  { id: 'quickmail', label: '메일 작성', icon: '📧', desc: '이메일 생성' },
 ];
 
 export default function ProjectDashboard() {
