@@ -739,8 +739,9 @@ def generate_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
     owner_id = user["id"]
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/wiki/generate")
+    task = _tasks[task_id]
 
     import threading
     def _run():
@@ -762,8 +763,9 @@ def update_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
     owner_id = user["id"]
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/wiki/update")
+    task = _tasks[task_id]
 
     import threading
     def _run():
@@ -786,8 +788,9 @@ def revise_wiki_section(name: str, section_id: str, body: dict, user: dict = Dep
     owner_id = user["id"]
     instruction = body.get("instruction", "")
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/wiki/revise")
+    task = _tasks[task_id]
 
     import threading
     def _run():
@@ -853,8 +856,9 @@ def extract_rfi_endpoint(name: str, user: dict = Depends(get_current_user)):
     model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
     owner_id = user["id"]
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/review/extract-rfi", model=model)
+    task = _tasks[task_id]
 
     import threading
     def _run():
@@ -880,8 +884,9 @@ def crosscheck_rfi_endpoint(name: str, body: dict, user: dict = Depends(get_curr
     owner_id = user["id"]
     items = body.get("items", [])
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/review/crosscheck", model=model)
+    task = _tasks[task_id]
 
     import threading
     def _run():
@@ -907,8 +912,9 @@ def generate_external_rfi_endpoint(name: str, body: dict, user: dict = Depends(g
     owner_id = user["id"]
     gap_items = body.get("gap_items", [])
 
-    task_id = str(uuid.uuid4())
-    task = create_task(task_id)
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/review/generate-external-rfi", model=model)
+    task = _tasks[task_id]
 
     import threading
     def _run():
