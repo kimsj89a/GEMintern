@@ -15,6 +15,7 @@ import type { ChatMessage } from '../components/ChatWidget';
 import SlideGeneratorModal from '../components/SlideGeneratorModal';
 import WikiPanel from '../components/WikiPanel';
 import ReviewWorkflowPanel from '../components/ReviewWorkflowPanel';
+import ReportPanel from '../components/ReportPanel';
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
@@ -33,6 +34,7 @@ export default function WorkspacePage() {
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [docCount, setDocCount] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadFolder, setUploadFolder] = useState('__root__');
   const [showSlideModal, setShowSlideModal] = useState(false);
   const [leftWidth, setLeftWidth] = useState(300);
 
@@ -61,10 +63,17 @@ export default function WorkspacePage() {
     if (!currentProject) return;
     setUploading(true);
     try {
-      await api.uploadFiles(currentProject, files);
+      await api.uploadFiles(currentProject, files, uploadFolder !== '__root__' ? uploadFolder : undefined);
       loadDocs();
     } catch {}
     setUploading(false);
+  }, [currentProject, loadDocs, uploadFolder]);
+
+  // Folder management
+  const handleCreateFolder = useCallback(async (name: string) => {
+    if (!currentProject) return;
+    await api.createFolder(currentProject, name);
+    loadDocs();
   }, [currentProject, loadDocs]);
 
   // Chat send
@@ -228,8 +237,21 @@ export default function WorkspacePage() {
             <span className="text-sm font-bold text-slate-700">출처</span>
             <span className="text-xs text-slate-400">{docCount}개</span>
           </div>
-          <div className="px-4 pb-3">
+          <div className="px-4 pb-2 space-y-2">
             <FilePicker onFilesSelected={handleUpload} loading={uploading} />
+            {/* 업로드 대상 폴더 선택 */}
+            {Object.keys(tree).filter(f => f !== '__root__').length > 0 && (
+              <select
+                value={uploadFolder}
+                onChange={e => setUploadFolder(e.target.value)}
+                className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400"
+              >
+                <option value="__root__">루트에 업로드</option>
+                {Object.keys(tree).filter(f => f !== '__root__').sort().map(f => (
+                  <option key={f} value={f}>{f}에 업로드</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-4">
             <div className="text-xs text-slate-400 mb-2">
@@ -237,6 +259,7 @@ export default function WorkspacePage() {
             </div>
             <FolderTree tree={tree} projectName={currentProject} selectable
               selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
+              onCreateFolder={handleCreateFolder}
               onDocDownload={(doc) => api.downloadDoc(currentProject, doc)}
               onDocDelete={async (doc) => {
                 if (!confirm(`'${doc}' 파일을 삭제하시겠습니까?`)) return;
@@ -262,78 +285,88 @@ export default function WorkspacePage() {
           className="w-1 shrink-0 cursor-col-resize hover:bg-blue-200 transition-colors"
         />
 
-        {/* 가운데: 채팅 또는 활성 도구 */}
+        {/* 가운데: 채팅 또는 활성 도구 (wiki/review는 항상 마운트, display로 전환) */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {activeTool ? (
-            activeTool === 'wiki' ? (
-              /* 위키 전체 화면 */
-              <>
-                <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
-                  <button onClick={() => setActiveTool(null)}
-                    className="text-slate-400 hover:text-slate-600">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-                  </button>
-                  <span className="text-sm font-bold text-slate-700">📖 위키</span>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <WikiPanel projectName={currentProject} />
-                </div>
-              </>
-            ) : activeTool === 'review' ? (
-              /* 검토 워크플로 */
-              <>
-                <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
-                  <button onClick={() => setActiveTool(null)}
-                    className="text-slate-400 hover:text-slate-600">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-                  </button>
-                  <span className="text-sm font-bold text-slate-700">🔄 검토 워크플로</span>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <ReviewWorkflowPanel projectName={currentProject} />
-                </div>
-              </>
-            ) : (
-              /* 다른 도구: 채팅 인터페이스 */
-              <>
-                <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
-                  <button onClick={() => setActiveTool(null)}
-                    className="text-slate-400 hover:text-slate-600">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-                  </button>
-                  <span className="text-sm font-bold text-slate-700">
-                    {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label || activeTool}
-                  </span>
-                </div>
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  {messages.length === 0 && (
-                    <div className="px-6 py-4 bg-blue-50/50 border-b border-blue-100">
-                      <div className="text-sm text-blue-700 font-medium mb-1">
-                        {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label}
-                      </div>
-                      <div className="text-xs text-blue-500">
-                        {activeTool === 'report' && '프로젝트 자료를 기반으로 투심보고서, IM 등을 작성합니다. 원하는 보고서 유형과 요구사항을 입력하세요.'}
-                        {activeTool === 'analysis' && '프로젝트 자료를 분석하여 핵심 인사이트를 도출합니다. 분석 관점이나 질문을 입력하세요.'}
-                        {activeTool === 'qa' && 'LP 질의에 대한 답변을 프로젝트 자료 기반으로 작성합니다. LP의 질문을 입력하세요.'}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex-1 overflow-hidden">
-                    <ChatWidget messages={messages} onSend={handleSend} loading={loading}
-                      onStop={handleStop}
-                      placeholder={
-                        activeTool === 'report' ? '보고서 유형과 요구사항을 입력하세요...' :
-                        activeTool === 'analysis' ? '분석할 내용을 입력하세요...' :
-                        activeTool === 'qa' ? 'LP 질문을 입력하세요...' :
-                        '요청 내용을 입력하세요...'
-                      } />
-                  </div>
-                </div>
-              </>
-            )
-          ) : (
+          {/* 위키 — 항상 마운트, display 토글 */}
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTool === 'wiki' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+              <button onClick={() => setActiveTool(null)}
+                className="text-slate-400 hover:text-slate-600">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">📖 위키</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <WikiPanel projectName={currentProject} />
+            </div>
+          </div>
+
+          {/* 검토 워크플로 — 항상 마운트, display 토글 */}
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTool === 'review' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+              <button onClick={() => setActiveTool(null)}
+                className="text-slate-400 hover:text-slate-600">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">🔄 검토 워크플로</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ReviewWorkflowPanel projectName={currentProject} />
+            </div>
+          </div>
+
+          {/* 보고서 — 항상 마운트, display 토글 */}
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTool === 'report' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+              <button onClick={() => setActiveTool(null)}
+                className="text-slate-400 hover:text-slate-600">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">📄 보고서</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ReportPanel projectName={currentProject} selectedDocs={selectedDocs} />
+            </div>
+          </div>
+
+          {/* 기타 채팅 도구 (analysis, qa) — 조건부 렌더링 */}
+          {activeTool && !['wiki', 'review', 'report'].includes(activeTool) ? (
             <>
-              <div className="px-4 pt-4 pb-2">
+              <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+                <button onClick={() => setActiveTool(null)}
+                  className="text-slate-400 hover:text-slate-600">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <span className="text-sm font-bold text-slate-700">
+                  {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label || activeTool}
+                </span>
+              </div>
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {messages.length === 0 && (
+                  <div className="px-6 py-4 bg-blue-50/50 border-b border-blue-100">
+                    <div className="text-sm text-blue-700 font-medium mb-1">
+                      {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label}
+                    </div>
+                    <div className="text-xs text-blue-500">
+                      {activeTool === 'analysis' && '프로젝트 자료를 분석하여 핵심 인사이트를 도출합니다. 분석 관점이나 질문을 입력하세요.'}
+                      {activeTool === 'qa' && 'LP 질의에 대한 답변을 프로젝트 자료 기반으로 작성합니다. LP의 질문을 입력하세요.'}
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden">
+                  <ChatWidget messages={messages} onSend={handleSend} loading={loading}
+                    onStop={handleStop}
+                    placeholder={
+                      activeTool === 'analysis' ? '분석할 내용을 입력하세요...' :
+                      activeTool === 'qa' ? 'LP 질문을 입력하세요...' :
+                      '요청 내용을 입력하세요...'
+                    } />
+                </div>
+              </div>
+            </>
+          ) : !activeTool ? (
+            <>
+              <div className="px-4 pt-4 pb-2 shrink-0">
                 <span className="text-sm font-bold text-slate-700">채팅</span>
               </div>
               {messages.length === 0 ? (
@@ -366,7 +399,7 @@ export default function WorkspacePage() {
                 </div>
               )}
             </>
-          )}
+          ) : null}
         </div>
 
         {/* 오른쪽: 스튜디오 */}

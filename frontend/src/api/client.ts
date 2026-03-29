@@ -84,9 +84,10 @@ export const api = {
       `/projects/${encodeURIComponent(project)}/docs/${encodeURIComponent(doc)}`,
       { method: 'DELETE' }
     ),
-  uploadFiles: async (project: string, files: File[]) => {
+  uploadFiles: async (project: string, files: File[], folder?: string) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));
+    if (folder) formData.append('folder', folder);
     const res = await fetchWithAuth(`${BASE}/projects/${encodeURIComponent(project)}/upload`, {
       method: 'POST',
       body: formData,

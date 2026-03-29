@@ -16,15 +16,6 @@ interface Props {
 type Format = 'detailed' | 'presentation';
 type Length = 'short' | 'default' | 'detailed';
 
-const TEMPLATES = [
-  { id: 'free', label: '자유양식', icon: '📝' },
-  { id: 'investment', label: '투심보고서', icon: '💰' },
-  { id: 'teaser', label: 'Teaser', icon: '🎯' },
-  { id: 'dd_report', label: 'DD 보고서', icon: '🔬' },
-  { id: 'im', label: 'IM', icon: '📖' },
-  { id: 'term_sheet', label: 'Term Sheet', icon: '📑' },
-];
-
 const LENGTH_OPTIONS: { id: Length; label: string; pages: string }[] = [
   { id: 'short', label: '짧게', pages: '5-8p' },
   { id: 'default', label: '기본값', pages: '10-15p' },
@@ -34,7 +25,6 @@ const LENGTH_OPTIONS: { id: Length; label: string; pages: string }[] = [
 export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const { currentProject } = useAppStore();
   const [format, setFormat] = useState<Format>('presentation');
-  const [template, setTemplate] = useState('free');
   const [length, setLength] = useState<Length>('default');
   const [description, setDescription] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -44,7 +34,6 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [step, setStep] = useState<'config' | 'preview'>('config');
 
   const lengthGuide = LENGTH_OPTIONS.find(l => l.id === length)?.pages || '10-15p';
-  const templateLabel = TEMPLATES.find(t => t.id === template)?.label || '자유양식';
 
   const handleGenerate = useCallback(async () => {
     if (!currentProject) { setError('프로젝트를 먼저 선택하세요'); return; }
@@ -53,9 +42,8 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
     setSlides([]);
 
     const query = [
-      description || `${templateLabel} 발표자료`,
+      description || '발표자료',
       `형식: ${format === 'detailed' ? '자세한 자료 (보고서형)' : '발표자 슬라이드 (시각적)'}`,
-      `템플릿: ${templateLabel}`,
       `길이: ${lengthGuide}`,
     ].join('\n');
 
@@ -92,7 +80,7 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
       setError(err.message);
       setGenerating(false);
     }
-  }, [currentProject, description, format, template, length, selectedDocs, templateLabel, lengthGuide]);
+  }, [currentProject, description, format, length, selectedDocs, lengthGuide]);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -160,20 +148,6 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">핵심 내용을 담은 깔끔하고 시각적인 슬라이드</p>
                 </button>
-              </div>
-            </div>
-
-            {/* 템플릿 */}
-            <div>
-              <div className="text-sm font-semibold text-slate-700 mb-3">템플릿</div>
-              <div className="grid grid-cols-3 gap-2">
-                {TEMPLATES.map(t => (
-                  <button key={t.id} onClick={() => setTemplate(t.id)}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all ${template === t.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
-                    <span>{t.icon}</span>
-                    <span className="text-xs font-medium">{t.label}</span>
-                  </button>
-                ))}
               </div>
             </div>
 

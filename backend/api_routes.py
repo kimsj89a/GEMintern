@@ -7,7 +7,7 @@ import uuid
 import tempfile
 from typing import List, Dict
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import Response
 
 from pydantic import BaseModel
@@ -668,7 +668,7 @@ def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_curr
 
 
 @router.post("/projects/{name}/upload")
-async def upload_files(name: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+async def upload_files(name: str, files: List[UploadFile] = File(...), folder: str = Form("__root__"), user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
     from backend.database import get_db
@@ -687,6 +687,15 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
         result["parse_errors"] = parse_errors
     result["parsed_texts"] = texts
 
+    # Move files to specified folder in folder tree
+    target_folder = folder or "__root__"
+    if target_folder != "__root__" and texts:
+        for fn in texts:
+            try:
+                core_rag.move_doc_to_folder(name, fn, target_folder, owner_id=user["id"])
+            except Exception:
+                pass
+
     # Store in SQLite documents table
     with get_db() as conn:
         project = conn.execute(
@@ -701,7 +710,7 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), user: dic
                        VALUES (?, ?, ?, ?, ?)
                        ON CONFLICT(project_id, folder, filename) DO UPDATE SET
                          parsed_text = excluded.parsed_text, size = excluded.size""",
-                    (project["id"], "__root__", fn, parsed_text, size),
+                    (project["id"], folder or "__root__", fn, parsed_text, size),
                 )
 
     # 자동 BM25 인덱싱 (백그라운드)

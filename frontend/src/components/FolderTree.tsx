@@ -9,13 +9,14 @@ interface FolderTreeProps {
   onDocDownload?: (doc: string) => void;
   onFolderDelete?: (folder: string) => void;
   onDocMove?: (doc: string, targetFolder: string) => void;
+  onCreateFolder?: (name: string) => void;
   selectable?: boolean;
   selectedDocs?: string[];
   onSelectionChange?: (selected: string[]) => void;
 }
 
 export default function FolderTree({
-  tree, projectName, onDocClick, onDocDelete, onDocDownload, onFolderDelete, onDocMove,
+  tree, projectName, onDocClick, onDocDelete, onDocDownload, onFolderDelete, onDocMove, onCreateFolder,
   selectable, selectedDocs = [], onSelectionChange,
 }: FolderTreeProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
@@ -66,6 +67,17 @@ export default function FolderTree({
     setContextMenu({ x: e.clientX, y: e.clientY, type, name });
   };
 
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+
+  const handleCreateFolder = () => {
+    if (newFolderName.trim() && onCreateFolder) {
+      onCreateFolder(newFolderName.trim());
+      setNewFolderName('');
+      setCreatingFolder(false);
+    }
+  };
+
   const folders = Object.keys(tree).sort((a, b) => {
     if (a === '__root__') return -1;
     if (b === '__root__') return 1;
@@ -74,6 +86,30 @@ export default function FolderTree({
 
   return (
     <div className="text-sm">
+      {/* 폴더 추가 */}
+      {onCreateFolder && (
+        creatingFolder ? (
+          <div className="flex items-center gap-1 px-2 py-1 mb-1">
+            <input
+              autoFocus
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setCreatingFolder(false); }}
+              placeholder="폴더명"
+              className="flex-1 px-2 py-0.5 text-xs border border-slate-300 rounded focus:outline-none focus:border-blue-400"
+            />
+            <button onClick={handleCreateFolder} className="text-xs text-blue-600 hover:text-blue-700">확인</button>
+            <button onClick={() => setCreatingFolder(false)} className="text-xs text-slate-400">취소</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setCreatingFolder(true)}
+            className="flex items-center gap-1 px-2 py-1 mb-1 text-xs text-slate-400 hover:text-blue-600 transition-colors"
+          >
+            <span>+</span> 폴더 추가
+          </button>
+        )
+      )}
       {folders.map((folder) => {
         const docs = tree[folder] || [];
         const isRoot = folder === '__root__';
