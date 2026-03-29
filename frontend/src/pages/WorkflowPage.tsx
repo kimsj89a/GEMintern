@@ -63,10 +63,10 @@ const TEMPLATE_SECTIONS: Record<string, TemplateSection[]> = {
 
 /* ─── Template definitions ─── */
 const REPORT_TEMPLATES = [
-  { id: 'simple_review', label: '간단 검토', desc: '예비투자심의 Quick Memo', icon: '📋' },
+  { id: 'simple_review', label: '예비검토보고서', desc: '예비투자심의 Quick Memo', icon: '📋' },
+  { id: 'investment', label: '투자심사보고서', desc: 'IC(투자위원회) 심의용', icon: '💰' },
   { id: 'free_summary', label: '자유 요약', desc: '자료 특성 맞춤 자유 구조화', icon: '📝' },
   { id: 'context_based', label: '컨텍스트 기반', desc: '사용자 지시 중심 보고서', icon: '🔍' },
-  { id: 'investment', label: '투자 보고서', desc: '투자위원회 심의용', icon: '💰' },
   { id: 'management', label: '경영 분석', desc: '투자 후 경영관리 보고서', icon: '📊' },
   { id: 'term_sheet', label: 'Term Sheet', desc: '투자조건 요약서', icon: '📑' },
   { id: 'loi_mou', label: 'LOI/MOU', desc: '인수의향서 초안', icon: '🤝' },

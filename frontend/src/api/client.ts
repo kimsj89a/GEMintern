@@ -129,6 +129,16 @@ export const api = {
       method: 'POST', body: JSON.stringify({ source_doc, excerpt }),
     }),
 
+  // Review Workflow
+  extractRfi: (project: string) =>
+    request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/review/extract-rfi`, {
+      method: 'POST',
+    }),
+  crosscheckRfi: (project: string, items: any[]) =>
+    request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/review/crosscheck`, {
+      method: 'POST', body: JSON.stringify({ items }),
+    }),
+
   extractExcelCells: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));

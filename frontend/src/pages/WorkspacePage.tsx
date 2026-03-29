@@ -14,12 +14,14 @@ import ChatWidget from '../components/ChatWidget';
 import type { ChatMessage } from '../components/ChatWidget';
 import SlideGeneratorModal from '../components/SlideGeneratorModal';
 import WikiPanel from '../components/WikiPanel';
+import ReviewWorkflowPanel from '../components/ReviewWorkflowPanel';
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
   { id: 'wiki', label: '위키', icon: '📖', desc: '프로젝트 위키' },
+  { id: 'review', label: '검토', icon: '🔄', desc: '투자검토 워크플로' },
   { id: 'analysis', label: '자료 분석', icon: '📥', desc: '사전 정보 수집', page: 'phase1' },
-  { id: 'report', label: '보고서', icon: '📄', desc: '투심보고서, IM 등', page: 'phase2' },
+  { id: 'report', label: '보고서', icon: '📄', desc: '예비검토·투심보고서 등', page: 'phase2' },
   { id: 'qa', label: '질의회신', icon: '💬', desc: 'LP 질의 대응', page: 'lp_qa' },
   { id: 'ppt', label: 'PPT 생성', icon: '📊', desc: '발표자료 슬라이드', page: 'ppt_tools' },
 ];
@@ -275,6 +277,20 @@ export default function WorkspacePage() {
                 </div>
                 <div className="flex-1 overflow-hidden">
                   <WikiPanel projectName={currentProject} />
+                </div>
+              </>
+            ) : activeTool === 'review' ? (
+              /* 검토 워크플로 */
+              <>
+                <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+                  <button onClick={() => setActiveTool(null)}
+                    className="text-slate-400 hover:text-slate-600">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <span className="text-sm font-bold text-slate-700">🔄 검토 워크플로</span>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ReviewWorkflowPanel projectName={currentProject} />
                 </div>
               </>
             ) : (
