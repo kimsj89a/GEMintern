@@ -2069,7 +2069,7 @@ async def update_pptx_history(file: UploadFile = File(...), user: dict = Depends
 def get_task_status(task_id: str, user: dict = Depends(get_current_user)):
     task = get_task(task_id)
     if not task:
-        return {"error": "Task not found"}
+        return {"task_id": task_id, "status": "error", "error": "Task not found", "result": None}
     resp = {
         "task_id": task_id,
         "status": task["status"],

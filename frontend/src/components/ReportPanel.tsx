@@ -50,35 +50,61 @@ export default function ReportPanel({ projectName, selectedDocs }: {
     setResult('');
 
     try {
+      // 위키를 우선 참조: 위키 전문을 file_context로 전달
+      let wikiContext = '';
+      try {
+        const wiki = await api.getWiki(projectName);
+        if (wiki?.sections?.length) {
+          wikiContext = wiki.sections
+            .map((s: any) => `## ${s.title}\n${s.content}`)
+            .join('\n\n');
+        }
+      } catch {}
+
+      const contextParts = [];
+      if (wikiContext) {
+        contextParts.push('[프로젝트 위키 — 이 내용을 보고서의 핵심 소스로 활용하십시오]\n' + wikiContext);
+      }
+      if (additionalContext) {
+        contextParts.push('[추가 지시사항]\n' + additionalContext);
+      }
+
       const { task_id } = await api.startGenerate({
         project_name: projectName,
         template_option: preset.template,
+        file_context: contextParts.join('\n\n---\n\n'),
         mode: preset.mode,
         inputs: {
           template_option: preset.template,
           selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
-          context_text: additionalContext || undefined,
         },
       });
 
+      let retries = 0;
       const poll = async () => {
         try {
-          const status = await api.getTaskStatus(task_id);
-          if (status.status === 'complete') {
-            const text = typeof status.result === 'string'
-              ? status.result
-              : status.result?.text || status.result?.result || JSON.stringify(status.result);
+          const res = await api.getTaskStatus(task_id);
+          if (res.status === 'complete') {
+            const text = typeof res.result === 'string'
+              ? res.result
+              : res.result?.text || res.result?.result || JSON.stringify(res.result);
             setResult(text);
             setGenerating(false);
-          } else if (status.status === 'error') {
-            setError(status.error || '생성 오류');
+          } else if (res.status === 'error') {
+            setError(res.error || '생성 오류');
             setGenerating(false);
           } else {
+            retries = 0;
             pollRef.current = setTimeout(poll, 2500);
           }
         } catch {
-          setError('폴링 오류');
-          setGenerating(false);
+          retries++;
+          if (retries >= 3) {
+            setError('서버 연결 오류 — 잠시 후 다시 시도해주세요');
+            setGenerating(false);
+          } else {
+            pollRef.current = setTimeout(poll, 3000);
+          }
         }
       };
       poll();

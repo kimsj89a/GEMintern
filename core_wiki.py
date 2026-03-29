@@ -109,27 +109,33 @@ def _build_source_context(docs: Dict[str, str]) -> tuple[str, list[tuple[str, st
     return "\n\n---\n\n".join(parts), doc_list
 
 
-def _find_excerpt(content: str, excerpt: str) -> int:
-    """Find excerpt position in content with progressive fallback."""
+def _find_excerpt(content: str, excerpt: str) -> tuple[int, int]:
+    """Find excerpt position in content with progressive fallback.
+    Returns (start_index, matched_length). (-1, 0) if not found.
+    """
     if not excerpt:
-        return -1
+        return -1, 0
+    # 1) 전체 정확 매칭
     idx = content.find(excerpt)
     if idx >= 0:
-        return idx
-    for length in [60, 30]:
-        if len(excerpt) > length:
-            idx = content.find(excerpt[:length])
-            if idx >= 0:
-                return idx
+        return idx, len(excerpt)
+    # 2) 대소문자 무시 전체 매칭
     lower = content.lower()
-    idx = lower.find(excerpt.lower())
+    excerpt_lower = excerpt.lower()
+    idx = lower.find(excerpt_lower)
     if idx >= 0:
-        return idx
-    if len(excerpt) > 30:
-        idx = lower.find(excerpt[:30].lower())
-        if idx >= 0:
-            return idx
-    return -1
+        return idx, len(excerpt)
+    # 3) prefix 매칭 (최소 50자 이상만 시도)
+    for length in [80, 50]:
+        if len(excerpt) > length:
+            prefix = excerpt[:length]
+            idx = content.find(prefix)
+            if idx >= 0:
+                return idx, length
+            idx = lower.find(prefix.lower())
+            if idx >= 0:
+                return idx, length
+    return -1, 0
 
 
 def _build_citation_context(content: str, idx: int, excerpt_len: int) -> dict:
@@ -184,10 +190,10 @@ def _enrich_citations(citations: list, doc_list: list) -> list:
         content = doc_dict.get(source) or doc_dict.get(source.replace('.md', ''))
         if not content or not excerpt:
             continue
-        idx = _find_excerpt(content, excerpt)
+        idx, matched_len = _find_excerpt(content, excerpt)
         if idx < 0:
             continue
-        enriched = _build_citation_context(content, idx, len(excerpt))
+        enriched = _build_citation_context(content, idx, matched_len)
         if not cit.get("heading"):
             cit["heading"] = enriched.get("heading")
         cit["context"] = enriched["context"]
@@ -211,10 +217,10 @@ def get_citation_context(
                or docs.get(source_doc + '.md'))
     if not content:
         return {"found": False}
-    idx = _find_excerpt(content, excerpt)
+    idx, matched_len = _find_excerpt(content, excerpt)
     if idx < 0:
         return {"found": False}
-    result = _build_citation_context(content, idx, len(excerpt))
+    result = _build_citation_context(content, idx, matched_len)
     result["found"] = True
     return result
 
