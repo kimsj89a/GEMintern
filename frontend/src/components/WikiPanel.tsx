@@ -487,7 +487,7 @@ export default function WikiPanel({ projectName }: { projectName: string }) {
     setLoading(true);
     try {
       const data = await api.getWiki(projectName);
-      setWiki(data?.generated_at ? data : null);
+      setWiki(data?.sections?.length > 0 ? data : null);
     } catch {
       setWiki(null);
     }
