@@ -268,6 +268,12 @@ export default function WorkspacePage() {
               onFolderDelete={async (folder) => {
                 if (!confirm(`'${folder}' 폴더를 삭제하시겠습니까?`)) return;
                 try { await api.deleteFolder(currentProject, folder); loadDocs(); } catch {}
+              }}
+              onBatchMove={async (docs, targetFolder) => {
+                for (const doc of docs) {
+                  try { await api.moveDoc(currentProject, doc, targetFolder); } catch {}
+                }
+                loadDocs();
               }} />
           </div>
         </div>

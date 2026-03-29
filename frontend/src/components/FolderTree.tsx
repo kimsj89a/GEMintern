@@ -9,6 +9,7 @@ interface FolderTreeProps {
   onDocDownload?: (doc: string) => void;
   onFolderDelete?: (folder: string) => void;
   onDocMove?: (doc: string, targetFolder: string) => void;
+  onBatchMove?: (docs: string[], targetFolder: string) => void;
   onCreateFolder?: (name: string) => void;
   selectable?: boolean;
   selectedDocs?: string[];
@@ -16,7 +17,7 @@ interface FolderTreeProps {
 }
 
 export default function FolderTree({
-  tree, projectName, onDocClick, onDocDelete, onDocDownload, onFolderDelete, onDocMove, onCreateFolder,
+  tree, projectName, onDocClick, onDocDelete, onDocDownload, onFolderDelete, onDocMove, onBatchMove, onCreateFolder,
   selectable, selectedDocs = [], onSelectionChange,
 }: FolderTreeProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
@@ -69,6 +70,7 @@ export default function FolderTree({
 
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [moveTarget, setMoveTarget] = useState<string | null>(null);
 
   const handleCreateFolder = () => {
     if (newFolderName.trim() && onCreateFolder) {
@@ -107,6 +109,45 @@ export default function FolderTree({
             className="flex items-center gap-1 px-2 py-1 mb-1 text-xs text-slate-400 hover:text-blue-600 transition-colors"
           >
             <span>+</span> 폴더 추가
+          </button>
+        )
+      )}
+      {/* 선택된 파일 일괄 이동 바 */}
+      {selectable && selectedDocs.length > 0 && (onBatchMove || onDocMove) && (
+        moveTarget !== null ? (
+          <div className="flex items-center gap-1 px-2 py-1.5 mb-1 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-xs text-blue-700 shrink-0">{selectedDocs.length}개 →</span>
+            <select
+              autoFocus
+              value={moveTarget}
+              onChange={e => setMoveTarget(e.target.value)}
+              className="flex-1 px-1.5 py-0.5 text-xs border border-blue-300 rounded focus:outline-none"
+            >
+              <option value="__root__">루트</option>
+              {Object.keys(tree).filter(f => f !== '__root__').sort().map(f => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                const target = moveTarget || '__root__';
+                if (onBatchMove) {
+                  onBatchMove(selectedDocs, target);
+                } else if (onDocMove) {
+                  selectedDocs.forEach(doc => onDocMove(doc, target));
+                }
+                setMoveTarget(null);
+              }}
+              className="px-2 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            >이동</button>
+            <button onClick={() => setMoveTarget(null)} className="text-xs text-slate-400 hover:text-slate-600">취소</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setMoveTarget('__root__')}
+            className="flex items-center gap-1 px-2 py-1 mb-1 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+          >
+            📁 선택 파일 이동 ({selectedDocs.length}개)
           </button>
         )
       )}
