@@ -138,6 +138,10 @@ export const api = {
     request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/review/crosscheck`, {
       method: 'POST', body: JSON.stringify({ items }),
     }),
+  generateExternalRfi: (project: string, gapItems: any[]) =>
+    request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/review/generate-external-rfi`, {
+      method: 'POST', body: JSON.stringify({ gap_items: gapItems }),
+    }),
 
   extractExcelCells: async (files: File[]) => {
     const formData = new FormData();

@@ -34,6 +34,8 @@ const STEPS = [
   { id: 1, label: '위키 생성', icon: '📖' },
   { id: 2, label: 'RFI 추출', icon: '📋' },
   { id: 3, label: '교차검증', icon: '🔍' },
+  { id: 4, label: '문서 생성', icon: '📄' },
+  { id: 5, label: '외부 요청', icon: '📨' },
 ];
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
@@ -74,6 +76,16 @@ export default function ReviewWorkflowPanel({ projectName }: { projectName: stri
   const [crosscheckItems, setCrosscheckItems] = useState<CrosscheckItem[]>([]);
   const [crosscheckSummary, setCrosscheckSummary] = useState<CrosscheckSummary | null>(null);
   const [crosscheckLoading, setCrosscheckLoading] = useState(false);
+
+  // Step 4 state
+  const [generatedDoc, setGeneratedDoc] = useState('');
+  const [docGenerating, setDocGenerating] = useState(false);
+  const [wikiSections, setWikiSections] = useState<{ id: string; title: string; order: number }[]>([]);
+  const [insertTarget, setInsertTarget] = useState<string | null>(null);
+
+  // Step 5 state
+  const [externalRfi, setExternalRfi] = useState('');
+  const [externalRfiLoading, setExternalRfiLoading] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -202,6 +214,82 @@ export default function ReviewWorkflowPanel({ projectName }: { projectName: stri
     store.openTab('phase2');
   };
 
+  // Step 4: Generate report
+  const handleGenerateReport = async (template: string) => {
+    setDocGenerating(true);
+    try {
+      const res = await api.startGenerate({
+        project_name: projectName,
+        template_option: template,
+        mode: 'chained',
+        inputs: { template_option: template },
+      });
+      pollTask(res.task_id,
+        (result) => {
+          setGeneratedDoc(typeof result === 'string' ? result : result?.text || result?.result || JSON.stringify(result));
+          setDocGenerating(false);
+        },
+        (err) => { alert(`보고서 생성 오류: ${err}`); setDocGenerating(false); },
+      );
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+      setDocGenerating(false);
+    }
+  };
+
+  // Load full wiki sections for step 4
+  const loadWikiSections = useCallback(async () => {
+    try {
+      const data = await api.getWiki(projectName);
+      if (data?.sections) {
+        setWikiSections(data.sections.map((s: any) => ({ id: s.id, title: s.title, order: s.order ?? 0 })));
+      }
+    } catch {}
+  }, [projectName]);
+
+  // Insert doc section into wiki
+  const handleInsertToWiki = async (content: string, _afterSectionId: string | null) => {
+    const sectionId = `inserted_${Date.now()}`;
+    const title = content.split('\n')[0]?.replace(/^#+\s*/, '').slice(0, 50) || '삽입된 섹션';
+    try {
+      await api.addWikiSection(projectName, { id: sectionId, title, content });
+      await loadWikiSections();
+      setInsertTarget(null);
+    } catch (e: any) {
+      alert(`위키 삽입 오류: ${e.message}`);
+    }
+  };
+
+  // Step 5: Generate external RFI document
+  const handleGenerateExternalRfi = async () => {
+    const gapItems = crosscheckItems.filter(it => it.coverage === 'gap' || it.coverage === 'partial');
+    if (gapItems.length === 0) { alert('미커버/부분 항목이 없습니다.'); return; }
+    setExternalRfiLoading(true);
+    try {
+      const res = await api.generateExternalRfi(projectName, gapItems);
+      pollTask(res.task_id,
+        (result) => {
+          setExternalRfi(result?.rfi_document || '');
+          setExternalRfiLoading(false);
+        },
+        (err) => { alert(`RFI 문서 생성 오류: ${err}`); setExternalRfiLoading(false); },
+      );
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+      setExternalRfiLoading(false);
+    }
+  };
+
+  const handleNewCycle = () => {
+    setCycle(c => c + 1);
+    setStep(1);
+    setRfiItems([]);
+    setCrosscheckItems([]);
+    setCrosscheckSummary(null);
+    setGeneratedDoc('');
+    setExternalRfi('');
+  };
+
   // Render
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -285,8 +373,29 @@ export default function ReviewWorkflowPanel({ projectName }: { projectName: stri
             loading={crosscheckLoading}
             rfiCount={rfiItems.length}
             onCrosscheck={handleCrosscheck}
+            onNextDoc={() => { loadWikiSections(); setStep(4); }}
+            onNextExternal={() => setStep(5)}
+          />
+        )}
+        {step === 4 && (
+          <Step4SplitDoc
+            generatedDoc={generatedDoc}
+            generating={docGenerating}
+            wikiSections={wikiSections}
+            insertTarget={insertTarget}
+            onGenerate={handleGenerateReport}
+            onInsert={handleInsertToWiki}
+            onSetInsertTarget={setInsertTarget}
             onGoToReport={goToReport}
-            onNewCycle={() => { setCycle(c => c + 1); setStep(1); setRfiItems([]); setCrosscheckItems([]); setCrosscheckSummary(null); }}
+          />
+        )}
+        {step === 5 && (
+          <Step5ExternalRequest
+            crosscheckItems={crosscheckItems}
+            externalRfi={externalRfi}
+            loading={externalRfiLoading}
+            onGenerate={handleGenerateExternalRfi}
+            onNewCycle={handleNewCycle}
           />
         )}
       </div>
@@ -538,14 +647,14 @@ function Step2Rfi({ items, loading, editingId, editText, addingItem, newQuestion
 
 /* ────── Step 3: Cross-check ────── */
 
-function Step3Crosscheck({ items, summary, loading, rfiCount, onCrosscheck, onGoToReport, onNewCycle }: {
+function Step3Crosscheck({ items, summary, loading, rfiCount, onCrosscheck, onNextDoc, onNextExternal }: {
   items: CrosscheckItem[];
   summary: CrosscheckSummary | null;
   loading: boolean;
   rfiCount: number;
   onCrosscheck: () => void;
-  onGoToReport: (template: string) => void;
-  onNewCycle: () => void;
+  onNextDoc: () => void;
+  onNextExternal: () => void;
 }) {
   const coverageIcon = (c: string) => {
     if (c === 'covered') return { icon: '✅', label: '커버됨', cls: 'text-green-600 bg-green-50' };
@@ -645,39 +754,266 @@ function Step3Crosscheck({ items, summary, loading, rfiCount, onCrosscheck, onGo
         </div>
       )}
 
-      {/* Report shortcuts + loop */}
+      {/* Next steps */}
       {items.length > 0 && (
-        <div className="space-y-3 pt-2">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">보고서 생성</div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => onGoToReport('simple_review')}
-              className="px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all flex items-center gap-2 group">
-              <span className="text-lg">📋</span>
-              <div className="text-left">
-                <div className="font-medium text-slate-700 group-hover:text-blue-700">예비검토보고서</div>
-                <div className="text-[10px] text-slate-400">Quick Memo</div>
-              </div>
-            </button>
-            <button onClick={() => onGoToReport('investment')}
-              className="px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all flex items-center gap-2 group">
-              <span className="text-lg">💰</span>
-              <div className="text-left">
-                <div className="font-medium text-slate-700 group-hover:text-blue-700">투자심사보고서</div>
-                <div className="text-[10px] text-slate-400">IC 심의용</div>
-              </div>
-            </button>
+        <div className="flex flex-wrap gap-2 pt-3">
+          <button onClick={onNextDoc}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1">
+            문서 생성 + 위키 삽입 <span className="text-xs">→</span>
+          </button>
+          <button onClick={onNextExternal}
+            className="px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1">
+            외부 자료 요청 <span className="text-xs">→</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ────── Step 4: Split Doc + Wiki Insertion ────── */
+
+function Step4SplitDoc({ generatedDoc, generating, wikiSections, insertTarget,
+  onGenerate, onInsert, onSetInsertTarget, onGoToReport }: {
+  generatedDoc: string;
+  generating: boolean;
+  wikiSections: { id: string; title: string; order: number }[];
+  insertTarget: string | null;
+  onGenerate: (template: string) => void;
+  onInsert: (content: string, afterSectionId: string | null) => void;
+  onSetInsertTarget: (id: string | null) => void;
+  onGoToReport: (template: string) => void;
+}) {
+  const [selectedText, setSelectedText] = useState('');
+  const [draggedSection, setDraggedSection] = useState<string | null>(null);
+
+  // Split generated doc into sections by headings
+  const docSections = generatedDoc
+    ? generatedDoc.split(/(?=^#{1,3}\s)/m).filter(s => s.trim())
+    : [];
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Template buttons */}
+      <div className="px-5 py-3 border-b border-slate-100 space-y-2 shrink-0">
+        <div className="text-sm text-slate-600">보고서를 생성한 후 원하는 섹션을 위키에 삽입합니다.</div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => onGenerate('simple_review')} disabled={generating}
+            className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg hover:border-blue-300 transition-all flex items-center gap-1.5 disabled:opacity-50">
+            <span>📋</span> 예비검토보고서
+          </button>
+          <button onClick={() => onGenerate('investment')} disabled={generating}
+            className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg hover:border-blue-300 transition-all flex items-center gap-1.5 disabled:opacity-50">
+            <span>💰</span> 투자심사보고서
+          </button>
+          <button onClick={() => onGoToReport('phase2')}
+            className="px-3 py-2 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all">
+            기타 보고서...
+          </button>
+        </div>
+      </div>
+
+      {generating && (
+        <div className="flex items-center justify-center gap-2 py-12 text-slate-400">
+          <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm">보고서 생성 중...</span>
+        </div>
+      )}
+
+      {/* Split view */}
+      {!generating && generatedDoc && (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Generated document sections */}
+          <div className="flex-1 overflow-y-auto border-r border-slate-200">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <span className="text-xs font-semibold text-slate-500">생성된 문서</span>
+              <span className="text-xs text-slate-400 ml-2">{docSections.length}개 섹션</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {docSections.map((sec, i) => {
+                const title = sec.split('\n')[0]?.replace(/^#+\s*/, '').trim() || `섹션 ${i + 1}`;
+                const isSelected = selectedText === sec;
+                return (
+                  <div
+                    key={i}
+                    draggable
+                    onDragStart={() => setDraggedSection(sec)}
+                    onDragEnd={() => setDraggedSection(null)}
+                    className={`px-4 py-3 cursor-grab active:cursor-grabbing hover:bg-blue-50/30 transition-colors ${isSelected ? 'bg-blue-50 ring-1 ring-blue-200' : ''}`}
+                    onClick={() => setSelectedText(isSelected ? '' : sec)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-slate-700 truncate">{title}</div>
+                        <div className="text-xs text-slate-400 mt-0.5 line-clamp-2">
+                          {sec.split('\n').slice(1).join(' ').trim().slice(0, 120)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedText(sec); onSetInsertTarget('__pick__'); }}
+                        className="shrink-0 px-2 py-1 text-[10px] text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                        title="위키에 삽입"
+                      >
+                        삽입 →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={onNewCycle}
-              className="px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1"
-            >
-              <span>🔄</span> 새 사이클 시작 (외부자료 수령 후)
-            </button>
+          {/* Right: Wiki sections with drop zones */}
+          <div className="w-[260px] shrink-0 overflow-y-auto">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <span className="text-xs font-semibold text-slate-500">위키 섹션</span>
+              <span className="text-xs text-slate-400 ml-2">{wikiSections.length}개</span>
+            </div>
+            {/* Top drop zone */}
+            <DropZone
+              active={!!draggedSection || insertTarget === '__pick__'}
+              onDrop={() => { if (draggedSection) onInsert(draggedSection, null); }}
+              onClick={() => { if (selectedText) { onInsert(selectedText, null); setSelectedText(''); } }}
+              showClick={insertTarget === '__pick__'}
+            />
+            {wikiSections.sort((a, b) => a.order - b.order).map(s => (
+              <div key={s.id}>
+                <div className="px-3 py-2 text-sm text-slate-700 border-b border-slate-100 bg-white">
+                  <span className="text-slate-400 mr-1">📄</span> {s.title}
+                </div>
+                <DropZone
+                  active={!!draggedSection || insertTarget === '__pick__'}
+                  onDrop={() => { if (draggedSection) onInsert(draggedSection, s.id); }}
+                  onClick={() => { if (selectedText) { onInsert(selectedText, s.id); setSelectedText(''); } }}
+                  showClick={insertTarget === '__pick__'}
+                />
+              </div>
+            ))}
           </div>
         </div>
       )}
+
+      {!generating && !generatedDoc && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-slate-400">
+            <span className="text-3xl block mb-2 opacity-40">📄</span>
+            <span className="text-sm">위에서 보고서 템플릿을 선택하여 문서를 생성하세요</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Drop zone component for wiki insertion */
+function DropZone({ active, onDrop, onClick, showClick }: {
+  active: boolean; onDrop: () => void; onClick: () => void; showClick: boolean;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      onDragOver={(e) => { if (active) { e.preventDefault(); setOver(true); } }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); onDrop(); }}
+      onClick={() => { if (showClick) onClick(); }}
+      className={`transition-all ${
+        over
+          ? 'h-10 bg-blue-100 border-2 border-dashed border-blue-400 flex items-center justify-center'
+          : active
+            ? 'h-7 bg-blue-50/50 border border-dashed border-blue-200 flex items-center justify-center cursor-pointer hover:bg-blue-100/50'
+            : 'h-0.5 bg-transparent'
+      }`}
+    >
+      {(over || (active && showClick)) && (
+        <span className="text-[10px] text-blue-500 font-medium truncate px-2">{over ? '여기에 놓기' : '클릭하여 삽입'}</span>
+      )}
+    </div>
+  );
+}
+
+
+/* ────── Step 5: External Request ────── */
+
+function Step5ExternalRequest({ crosscheckItems, externalRfi, loading, onGenerate, onNewCycle }: {
+  crosscheckItems: CrosscheckItem[];
+  externalRfi: string;
+  loading: boolean;
+  onGenerate: () => void;
+  onNewCycle: () => void;
+}) {
+  const gapCount = crosscheckItems.filter(it => it.coverage === 'gap' || it.coverage === 'partial').length;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(externalRfi);
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([externalRfi], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RFI_자료요청서_${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="text-sm text-slate-600">
+        교차검증에서 미커버/부분 항목({gapCount}건)을 기반으로 외부 자료요청서를 생성합니다.
+      </div>
+
+      <button
+        onClick={onGenerate}
+        disabled={loading || gapCount === 0}
+        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+      >
+        {loading ? (
+          <span className="flex items-center gap-2">
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            생성 중...
+          </span>
+        ) : externalRfi ? '다시 생성' : '자료요청서 생성'}
+      </button>
+
+      {gapCount === 0 && (
+        <div className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+          모든 항목이 소스 문서에서 커버됩니다. 외부 자료 요청이 필요하지 않습니다.
+        </div>
+      )}
+
+      {externalRfi && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">생성된 자료요청서</span>
+            <div className="ml-auto flex gap-1">
+              <button onClick={handleCopy} className="px-2 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                복사
+              </button>
+              <button onClick={handleDownload} className="px-2 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                다운로드
+              </button>
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-xl p-4 max-h-[400px] overflow-y-auto">
+            <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">{externalRfi}</pre>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+        <div className="text-sm font-medium text-amber-800">외부 자료 수령 후</div>
+        <div className="text-xs text-amber-600">
+          요청한 자료를 수령하면, 프로젝트 소스에 업로드한 후 "새 사이클 시작"을 눌러 위키를 갱신하고 다시 검토를 진행하세요.
+        </div>
+        <button
+          onClick={onNewCycle}
+          className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-1"
+        >
+          <span>🔄</span> 새 사이클 시작
+        </button>
+      </div>
     </div>
   );
 }

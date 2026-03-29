@@ -131,6 +131,43 @@ def crosscheck_rfi(api_key: str, model_name: str,
     }
 
 
+# ── External RFI Document Generation ─────────────────────
+
+def generate_external_rfi(api_key: str, model_name: str,
+                          gap_items: List[dict],
+                          project_name: str = "",
+                          owner_id: int | None = None) -> dict:
+    """미커버/부분커버 항목을 기반으로 외부 자료 요청 문서를 생성한다."""
+    if not gap_items:
+        return {"rfi_document": "요청할 항목이 없습니다."}
+
+    items_text = ""
+    for i, it in enumerate(gap_items, 1):
+        cov = it.get("coverage", "gap")
+        cov_label = "미제출" if cov == "gap" else "확인 필요"
+        items_text += f"{i}. [{cov_label}] {it.get('question', '')}\n"
+        if it.get("explanation"):
+            items_text += f"   비고: {it['explanation']}\n"
+
+    client = get_client(api_key)
+    prompt = f"""{prompts.REVIEW_WORKFLOW_PROMPTS['external_rfi']}
+
+[요청 대상 항목]
+{items_text}
+"""
+
+    resp = client.models.generate_content(
+        model=model_name,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=8192,
+        ),
+    )
+
+    return {"rfi_document": resp.text or ""}
+
+
 # ── Helpers ──────────────────────────────────────────────
 
 def _build_doc_summary(docs: Dict[str, str], budget: int = 150000) -> str:

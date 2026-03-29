@@ -899,6 +899,33 @@ def crosscheck_rfi_endpoint(name: str, body: dict, user: dict = Depends(get_curr
     return {"task_id": task_id}
 
 
+@router.post("/projects/{name}/review/generate-external-rfi")
+def generate_external_rfi_endpoint(name: str, body: dict, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    owner_id = user["id"]
+    gap_items = body.get("gap_items", [])
+
+    task_id = str(uuid.uuid4())
+    task = create_task(task_id)
+
+    import threading
+    def _run():
+        try:
+            import core_review_workflow
+            result = core_review_workflow.generate_external_rfi(
+                api_key, model, gap_items, project_name=name, owner_id=owner_id
+            )
+            task["status"] = "complete"
+            task["result"] = result
+        except Exception as e:
+            task["status"] = "error"
+            task["error"] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
+
+
 # ========================================
 # Local Folder Scan — Preview & Ingest
 # ========================================
