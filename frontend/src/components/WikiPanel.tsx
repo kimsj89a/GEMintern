@@ -194,7 +194,7 @@ function RenderContent({
   const fs = fontSize || 14;
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
       components={{
         p: ({ children }) => <p className="mb-2 last:mb-0">{injectCitations(children)}</p>,
         li: ({ children }) => <li>{injectCitations(children)}</li>,
@@ -205,6 +205,7 @@ function RenderContent({
         tbody: ({ children }) => <tbody>{children}</tbody>,
         tr: ({ children }) => <tr className="even:bg-slate-50">{children}</tr>,
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        del: ({ children }) => <span>~{children}~</span>,
         h1: ({ children }) => <h3 style={{ fontSize: fs + 4 }} className="font-bold mt-3 mb-1">{children}</h3>,
         h2: ({ children }) => <h3 style={{ fontSize: fs + 4 }} className="font-bold mt-3 mb-1">{children}</h3>,
         h3: ({ children }) => <h4 style={{ fontSize: fs + 2 }} className="font-semibold mt-2 mb-1">{children}</h4>,

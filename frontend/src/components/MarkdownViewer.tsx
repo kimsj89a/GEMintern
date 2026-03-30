@@ -41,7 +41,7 @@ export default function MarkdownViewer({ content, className = '' }: MarkdownView
           ),
           li: ({ children }) => <li className="leading-[1.75]">{children}</li>,
           strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
-          del: ({ children }) => <del className="line-through text-slate-500">{children}</del>,
+          del: ({ children }) => <span>~{children}~</span>,
           img: ({ src, alt }) => (
             <img src={src} alt={alt} className="max-w-full rounded-lg my-3 border border-slate-200" />
           ),
