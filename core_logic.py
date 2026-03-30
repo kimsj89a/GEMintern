@@ -458,6 +458,8 @@ def generate_qa_answer(api_key, model_name, file_context, question, prev_qa_cont
 - 자료에서 직접 확인되지 않는 내용은 "자료에서 직접 확인되지 않음"이라고 명시하세요
 - 핵심 내용을 먼저, 부연 설명을 뒤에 배치하세요
 - 관련 데이터가 있으면 표로 정리하세요
+- 답변 내용의 출처를 표기하세요. [DOC-n]으로 표시된 참조 자료를 인용할 때는 해당 번호를 대괄호로 표기하세요 (예: [1], [2])
+- 답변 마지막에 "**출처**" 섹션을 추가하여 인용한 문서명을 나열하세요 (예: [1] 파일명.pdf — p.3)
 """
     config = types.GenerateContentConfig(
         max_output_tokens=65536,

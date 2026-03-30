@@ -16,14 +16,15 @@ import SlideGeneratorModal from '../components/SlideGeneratorModal';
 import WikiPanel from '../components/WikiPanel';
 import ReviewWorkflowPanel from '../components/ReviewWorkflowPanel';
 import ReportPanel from '../components/ReportPanel';
+import QaPanel from '../components/QaPanel';
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
   { id: 'wiki', label: '위키', icon: '📖', desc: '프로젝트 위키' },
+  { id: 'chat', label: '채팅', icon: '💬', desc: '자료 기반 Q&A' },
   { id: 'review', label: '검토', icon: '🔄', desc: '투자검토 워크플로' },
-  { id: 'analysis', label: '자료 분석', icon: '📥', desc: '사전 정보 수집', page: 'phase1' },
   { id: 'report', label: '보고서', icon: '📄', desc: '예비검토·투심보고서 등', page: 'phase2' },
-  { id: 'qa', label: '질의회신', icon: '💬', desc: 'LP 질의 대응', page: 'lp_qa' },
+  { id: 'qa', label: '질의회신', icon: '📋', desc: '배치 Q&A 대응', page: 'lp_qa' },
   { id: 'ppt', label: 'PPT 생성', icon: '📊', desc: '발표자료 슬라이드', page: 'ppt_tools' },
 ];
 
@@ -138,6 +139,8 @@ export default function WorkspacePage() {
   const handleToolClick = (toolId: string) => {
     if (toolId === 'ppt') {
       setShowSlideModal(true);
+    } else if (toolId === 'chat') {
+      setActiveTool(null); // 기본 채팅 화면으로
     } else {
       setActiveTool(toolId);
     }
@@ -335,8 +338,22 @@ export default function WorkspacePage() {
             </div>
           </div>
 
-          {/* 기타 채팅 도구 (analysis, qa) — 조건부 렌더링 */}
-          {activeTool && !['wiki', 'review', 'report'].includes(activeTool) ? (
+          {/* 질의회신 — 항상 마운트, display 토글 */}
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTool === 'qa' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+              <button onClick={() => setActiveTool(null)}
+                className="text-slate-400 hover:text-slate-600">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">📋 질의회신</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <QaPanel projectName={currentProject} selectedDocs={selectedDocs} />
+            </div>
+          </div>
+
+          {/* 기타 도구 — 조건부 렌더링 */}
+          {activeTool && !['wiki', 'review', 'report', 'qa'].includes(activeTool) ? (
             <>
               <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
                 <button onClick={() => setActiveTool(null)}
@@ -353,20 +370,13 @@ export default function WorkspacePage() {
                     <div className="text-sm text-blue-700 font-medium mb-1">
                       {STUDIO_TOOLS.find(t => t.id === activeTool)?.icon} {STUDIO_TOOLS.find(t => t.id === activeTool)?.label}
                     </div>
-                    <div className="text-xs text-blue-500">
-                      {activeTool === 'analysis' && '프로젝트 자료를 분석하여 핵심 인사이트를 도출합니다. 분석 관점이나 질문을 입력하세요.'}
-                      {activeTool === 'qa' && 'LP 질의에 대한 답변을 프로젝트 자료 기반으로 작성합니다. LP의 질문을 입력하세요.'}
-                    </div>
+                    <div className="text-xs text-blue-500">도구를 사용합니다.</div>
                   </div>
                 )}
                 <div className="flex-1 overflow-hidden">
                   <ChatWidget messages={messages} onSend={handleSend} loading={loading}
                     onStop={handleStop}
-                    placeholder={
-                      activeTool === 'analysis' ? '분석할 내용을 입력하세요...' :
-                      activeTool === 'qa' ? 'LP 질문을 입력하세요...' :
-                      '요청 내용을 입력하세요...'
-                    } />
+                    placeholder="요청 내용을 입력하세요..." />
                 </div>
               </div>
             </>
