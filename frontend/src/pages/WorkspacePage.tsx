@@ -431,7 +431,7 @@ export default function WorkspacePage() {
                 <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                   <span className="text-5xl mb-4 opacity-50">💬</span>
                   <span className="text-sm">자료에 대해 질문하세요</span>
-                  <span className="text-xs mt-1">소스 {docCount}개가 참조됩니다</span>
+                  <span className="text-xs mt-1">소스 {selectedDocs.length || docCount}개가 참조됩니다</span>
                 </div>
               ) : null}
               <div className={messages.length > 0 ? 'flex-1 overflow-hidden' : 'hidden'}>
@@ -452,7 +452,7 @@ export default function WorkspacePage() {
                         }
                       }}
                     />
-                    <span className="text-xs text-slate-400">소스 {docCount}개</span>
+                    <span className="text-xs text-slate-400">소스 {selectedDocs.length || docCount}개</span>
                   </div>
                 </div>
               )}

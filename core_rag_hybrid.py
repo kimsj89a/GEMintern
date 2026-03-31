@@ -121,9 +121,36 @@ def hybrid_search(
             except Exception as e:
                 logger.warning(f"Hybrid search - {name} failed: {e}")
 
-    # selected_docs 필터 (벡터 결과에도 적용)
+    # selected_docs 필터 (벡터 결과에도 적용, stem 매칭)
     if selected_docs and vector_results:
-        vector_results = [c for c in vector_results if c.get("doc_name") in selected_docs]
+        sel_stems = set()
+        for s in selected_docs:
+            name = s
+            if name.endswith('.md'):
+                name = name[:-3]
+            stem = os.path.splitext(name)[0]
+            sel_stems.add(stem)
+            sel_stems.add(s)  # also allow exact match
+        def _match(doc_name: str) -> bool:
+            n = doc_name
+            if n.endswith('.md'):
+                n = n[:-3]
+            return os.path.splitext(n)[0] in sel_stems or doc_name in sel_stems
+        vector_results = [c for c in vector_results if _match(c.get("doc_name", ""))]
+    if selected_docs and bm25_results:
+        sel_stems2 = set()
+        for s in selected_docs:
+            name = s
+            if name.endswith('.md'):
+                name = name[:-3]
+            sel_stems2.add(os.path.splitext(name)[0])
+            sel_stems2.add(s)
+        def _match2(doc_name: str) -> bool:
+            n = doc_name
+            if n.endswith('.md'):
+                n = n[:-3]
+            return os.path.splitext(n)[0] in sel_stems2 or doc_name in sel_stems2
+        bm25_results = [c for c in bm25_results if _match2(c.get("doc_name", ""))]
 
     # 결과가 하나만 있으면 그대로 반환
     if bm25_results and not vector_results:

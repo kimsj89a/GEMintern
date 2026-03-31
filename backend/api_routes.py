@@ -139,8 +139,8 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
     max_chars = _max_chars_for_model(model)
     api_key = _get_api_key()
 
-    # 1. 하이브리드 검색 (query가 있고 문서 미선택 시)
-    if query and not selected_docs:
+    # 1. 하이브리드 검색
+    if query:
         try:
             import core_rag_hybrid
             hybrid_ctx = core_rag_hybrid.search_and_build_context(
@@ -149,13 +149,13 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
                 selected_docs=selected_docs,
             )
             if hybrid_ctx and len(hybrid_ctx.strip()) > 100:
-                logger.info(f"RAG: hybrid search OK for '{project_name}'")
+                logger.info(f"RAG: hybrid search OK for '{project_name}' (selected={len(selected_docs) if selected_docs else 'all'})")
                 return _truncate_context(hybrid_ctx, max_chars)
         except Exception as e:
             logger.debug(f"RAG: hybrid search failed, falling back: {e}")
 
     # 2. 기존 벡터 검색 폴백
-    if query and not selected_docs:
+    if query:
         vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs, owner_id=owner_id)
         if vector_ctx and len(vector_ctx.strip()) > 100:
             return _truncate_context(vector_ctx, max_chars)
@@ -166,6 +166,7 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
     if not docs_dict:
         return ""
 
+    # 선택된 문서만 필터링
     if selected_docs:
         sel_stems = {_strip_doc_stem(s) for s in selected_docs}
         docs_dict = {k: v for k, v in docs_dict.items()
@@ -174,7 +175,7 @@ def _select_relevant_docs(project_name: str, query: str, model: str = "",
     if not docs_dict:
         return ""
 
-    if query and not selected_docs and len(docs_dict) > 3:
+    if query and len(docs_dict) > 3:
         import re as _re
         query_lower = query.lower()
         keywords = set(_re.findall(r'[\w가-힣]{2,}', query_lower))
