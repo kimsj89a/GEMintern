@@ -179,7 +179,7 @@ export default function WorkspacePage() {
           {activePanel === 'chat' && (
             <div className="h-full flex flex-col">
               <ChatWidget messages={messages} onSend={handleSend} loading={loading}
-                onStop={handleStop} placeholder="자료에 대해 질문하세요..." />
+                onStop={handleStop} placeholder="자료에 대해 질문하세요..." projectName={currentProject} />
             </div>
           )}
           {activePanel === 'studio' && (
@@ -418,7 +418,7 @@ export default function WorkspacePage() {
                 <div className="flex-1 overflow-hidden">
                   <ChatWidget messages={messages} onSend={handleSend} loading={loading}
                     onStop={handleStop}
-                    placeholder="요청 내용을 입력하세요..." />
+                    placeholder="요청 내용을 입력하세요..." projectName={currentProject} />
                 </div>
               </div>
             </>
@@ -436,7 +436,7 @@ export default function WorkspacePage() {
               ) : null}
               <div className={messages.length > 0 ? 'flex-1 overflow-hidden' : 'hidden'}>
                 <ChatWidget messages={messages} onSend={handleSend} loading={loading}
-                  onStop={handleStop} placeholder="입력을 시작하세요..." />
+                  onStop={handleStop} placeholder="입력을 시작하세요..." projectName={currentProject} />
               </div>
               {messages.length === 0 && (
                 <div className="px-4 pb-4">
