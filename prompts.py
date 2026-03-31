@@ -3086,3 +3086,87 @@ Return a JSON object with this exact structure:
 7. Add speaker_notes with talking points the presenter should emphasize.
 
 Return ONLY the JSON object."""
+
+
+# --- Excel Model Prompts ---
+
+EXCEL_MODEL_PROMPTS = {
+    'extract_structure': """당신은 PE/VC 투자구조 분석 전문가입니다.
+아래 제공된 [위키 내용]과 [소스 문서]를 분석하여 투자구조 정보를 구조화된 JSON으로 추출하십시오.
+
+# 추출 대상 항목
+
+1. **기본 정보**
+   - 대상회사명, 투자자/펀드명, 투자 총 규모, 투자 일자, 만기
+
+2. **Tranche 구조** (각 Tranche별)
+   - 종류: CB/CPS/BW/Equity/Mezzanine 등
+   - 금액(억원), 이자율/Coupon(%), YTM(%) — Base + Step-up
+   - 전환가격/행사가격, Call/Put 조건, 만기(년)
+
+3. **우선배당** (CPS): 배당률(%), 누적적/비누적적, 참가적/비참가적
+
+4. **IRR 보장**: 보장 IRR(%), 정산 방식
+
+5. **Exit 시나리오**: IPO/M&A/Secondary, 예상 시점, 밸류에이션
+
+6. **담보/Covenants**: 물적 담보, Financial Covenants, 거버넌스
+
+7. **프로젝션**: 매출/EBITDA/순이익 전망 (연도별)
+
+# Output Format
+반드시 JSON 객체로만 출력하십시오. 정보가 없는 필드는 null.
+금액 단위는 억원, 비율은 % 숫자만 기재.
+
+```json
+{
+  "company_name": "대상회사명",
+  "investor_name": "투자자/펀드명",
+  "total_amount": 500,
+  "investment_date": "2026-06",
+  "max_maturity_years": 5,
+  "tranches": [
+    {
+      "name": "Tranche A",
+      "type": "CB",
+      "amount": 200,
+      "coupon_rate": 0,
+      "ytm_base": 6,
+      "ytm_stepup_per_year": 2,
+      "conversion_price": null,
+      "exercise_price": null,
+      "maturity_years": 5,
+      "call_year": 3,
+      "call_ytc": null,
+      "put_year": 3,
+      "put_settlement": "현금 정산",
+      "dividend_rate": null,
+      "dividend_cumulative": null,
+      "dividend_participating": null
+    }
+  ],
+  "irr_guarantee": {
+    "rate": 12,
+    "settlement": "현금 보전"
+  },
+  "exit_scenarios": [
+    {"name": "Base Case IPO Y3", "exit_year": 3, "multiple": 1.5},
+    {"name": "Upside IPO Y3", "exit_year": 3, "multiple": 2.0},
+    {"name": "Downside Put Y5", "exit_year": 5, "multiple": 1.0}
+  ],
+  "covenants": [
+    {"category": "financial", "description": "부채비율 300% 이하 유지"}
+  ],
+  "projections": {
+    "years": [2026, 2027, 2028, 2029, 2030],
+    "revenue": [100, 130, 170, 220, 280],
+    "ebitda": [15, 22, 30, 40, 55],
+    "net_income": [8, 14, 20, 28, 40]
+  }
+}
+```
+
+정보가 불충분해도 최대한 추론하여 채우되 숫자만 기재.
+Tranche가 1개면 배열에 1개만. exit_scenarios는 최소 3개, 최대 5개.
+"""
+}

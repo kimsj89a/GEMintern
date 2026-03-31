@@ -942,6 +942,52 @@ def generate_external_rfi_endpoint(name: str, body: dict, user: dict = Depends(g
 
 
 # ========================================
+# Excel Financial Model
+# ========================================
+
+@router.post("/projects/{name}/excel-model")
+def generate_excel_model_endpoint(name: str, user: dict = Depends(get_current_user)):
+    """Extract deal structure from wiki+docs and generate PEF cash flow Excel model."""
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    owner_id = user["id"]
+
+    from backend.api_ws import _tasks
+    task_id = create_task(user_id=user["id"], endpoint="/excel-model", model=model)
+    task = _tasks[task_id]
+
+    import threading
+    def _run():
+        try:
+            import core_excel_model
+            result = core_excel_model.generate_excel_model(
+                api_key, model, name, owner_id=owner_id
+            )
+            task["status"] = "complete"
+            task["result"] = result
+        except Exception as e:
+            task["status"] = "error"
+            task["error"] = str(e)
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id}
+
+
+@router.post("/projects/{name}/excel-model/download")
+def download_excel_model(name: str, body: dict, user: dict = Depends(get_current_user)):
+    """Download generated Excel model from base64 data."""
+    import base64
+    excel_b64 = body.get("excel_b64", "")
+    filename = body.get("filename", f"{name}_Model.xlsx")
+    excel_bytes = base64.b64decode(excel_b64)
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ========================================
 # Local Folder Scan — Preview & Ingest
 # ========================================
 

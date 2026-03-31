@@ -144,6 +144,27 @@ export const api = {
       method: 'POST', body: JSON.stringify({ gap_items: gapItems }),
     }),
 
+  // Excel Model
+  generateExcelModel: (project: string) =>
+    request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/excel-model`, {
+      method: 'POST',
+    }),
+  downloadExcelModel: async (project: string, excelB64: string, filename: string) => {
+    const res = await fetchWithAuth(`${BASE}/projects/${encodeURIComponent(project)}/excel-model/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excel_b64: excelB64, filename }),
+    });
+    if (!res.ok) throw new Error(`다운로드 실패: ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
   extractExcelCells: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((f) => formData.append('files', f));
