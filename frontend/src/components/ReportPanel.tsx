@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from './MarkdownViewer';
-import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, downloadAsMd, generateFilename } from '../utils/clipboard';
 
 const PRESETS = [
   {
@@ -116,7 +116,10 @@ export default function ReportPanel({ projectName, selectedDocs }: {
 
   const handleCopy = () => { if (result) copyRichText(result); };
   const handleDownloadWord = () => {
-    if (result) downloadAsWord(result, generateFilename('보고서', 'doc', projectName));
+    if (result) downloadAsWord(result, generateFilename('보고서', 'docx', projectName));
+  };
+  const handleDownloadMd = () => {
+    if (result) downloadAsMd(result, generateFilename('보고서', 'md', projectName));
   };
 
   // Config screen
@@ -212,6 +215,10 @@ export default function ReportPanel({ projectName, selectedDocs }: {
         <button onClick={handleCopy}
           className="text-xs text-slate-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50">
           복사
+        </button>
+        <button onClick={handleDownloadMd}
+          className="text-xs text-slate-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50">
+          MD
         </button>
         <button onClick={handleDownloadWord}
           className="text-xs text-slate-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50">

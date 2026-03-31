@@ -5,7 +5,7 @@ import type { Options as GfmOptions } from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
-import { copyRichText, extractTitle } from '../utils/clipboard';
+import { copyRichText, extractTitle, downloadAsWord, downloadAsMd, generateFilename } from '../utils/clipboard';
 
 const gfmOptions: GfmOptions = { singleTilde: false };
 
@@ -469,12 +469,15 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
     downloadText(text, `${title}.md`);
   };
 
-  const handleExportAll = () => {
+  const handleExportAll = (format: 'md' | 'word' = 'md') => {
     const parts = messages.map((msg) => {
       if (msg.role === 'user') return `**Q:** ${msg.content}`;
       return `**A:**\n\n${msg.content}`;
     });
-    downloadText(parts.join('\n\n---\n\n'), 'qa_conversation.md');
+    const md = parts.join('\n\n---\n\n');
+    const fname = generateFilename('채팅', format === 'word' ? 'docx' : 'md', projectName);
+    if (format === 'word') downloadAsWord(md, fname);
+    else downloadAsMd(md, fname);
   };
 
   const hasAssistantMessages = messages.some((m) => m.role === 'assistant');
@@ -482,9 +485,12 @@ export default function ChatWidget({ messages, onSend, loading, onStop, placehol
   return (
     <div className={externalInput ? '' : 'flex flex-col h-full'}>
       {hasAssistantMessages && (
-        <div className="flex justify-end mb-2">
-          <button onClick={handleExportAll} className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-colors">
-            전체 내보내기
+        <div className="flex justify-end gap-1 mb-2">
+          <button onClick={() => handleExportAll('md')} className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-colors">
+            MD
+          </button>
+          <button onClick={() => handleExportAll('word')} className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-colors">
+            Word
           </button>
         </div>
       )}

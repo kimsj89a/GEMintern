@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from './MarkdownViewer';
-import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, downloadAsMd, generateFilename } from '../utils/clipboard';
 
 interface QaItem {
   question: string;
@@ -120,11 +120,13 @@ export default function QaPanel({ projectName, selectedDocs }: {
     setUploading(false);
   };
 
-  const exportAll = () => {
+  const exportAll = (format: 'word' | 'md' = 'word') => {
     const done = qaItems.filter(it => it.status === 'done');
     if (!done.length) return;
     const md = done.map((it, i) => `## Q${i + 1}. ${it.question}\n\n${it.answer}`).join('\n\n---\n\n');
-    downloadAsWord(md, generateFilename('질의회신', 'doc', projectName));
+    const fname = generateFilename('질의회신', format === 'word' ? 'docx' : 'md', projectName);
+    if (format === 'word') downloadAsWord(md, fname);
+    else downloadAsMd(md, fname);
   };
 
   const doneCount = qaItems.filter(it => it.status === 'done').length;
@@ -158,9 +160,13 @@ export default function QaPanel({ projectName, selectedDocs }: {
             {/* 내보내기 */}
             {doneCount > 0 && !generating && (
               <div className="flex gap-2 justify-end">
-                <button onClick={exportAll}
+                <button onClick={() => exportAll('md')}
                   className="px-3 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
-                  전체 Word 내보내기
+                  MD
+                </button>
+                <button onClick={() => exportAll('word')}
+                  className="px-3 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                  Word
                 </button>
                 <button onClick={() => { queueRef.current = []; setQaItems([]); }}
                   className="px-3 py-1 text-xs text-slate-400 border border-slate-200 rounded-lg hover:bg-slate-50">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { useAppStore } from '../stores/appStore';
+import { downloadAsWord } from '../utils/clipboard';
 
 interface RfiItem {
   id: string;
@@ -948,7 +949,7 @@ function Step5ExternalRequest({ crosscheckItems, externalRfi, loading, onGenerat
     navigator.clipboard.writeText(externalRfi);
   };
 
-  const handleDownload = () => {
+  const handleDownloadMd = () => {
     const blob = new Blob([externalRfi], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -956,6 +957,9 @@ function Step5ExternalRequest({ crosscheckItems, externalRfi, loading, onGenerat
     a.download = `RFI_자료요청서_${new Date().toISOString().slice(0, 10)}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+  const handleDownloadWord = () => {
+    downloadAsWord(externalRfi, `RFI_자료요청서_${new Date().toISOString().slice(0, 10)}`);
   };
 
   return (
@@ -991,8 +995,11 @@ function Step5ExternalRequest({ crosscheckItems, externalRfi, loading, onGenerat
               <button onClick={handleCopy} className="px-2 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
                 복사
               </button>
-              <button onClick={handleDownload} className="px-2 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
-                다운로드
+              <button onClick={handleDownloadMd} className="px-2 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                MD
+              </button>
+              <button onClick={handleDownloadWord} className="px-2 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                Word
               </button>
             </div>
           </div>

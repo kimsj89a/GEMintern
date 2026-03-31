@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { api } from '../api/client';
 import MarkdownViewer from './MarkdownViewer';
-import { copyRichText, downloadAsWord, generateFilename } from '../utils/clipboard';
+import { copyRichText, downloadAsWord, downloadAsMd, generateFilename } from '../utils/clipboard';
 
 interface AnalysisEntry {
   filename: string;
@@ -119,11 +119,13 @@ export default function DocAnalysisPanel({ projectName, selectedDocs }: {
     setExpandedIdx(null);
   };
 
-  const handleExportAll = () => {
+  const handleExportAll = (format: 'word' | 'md' = 'word') => {
     const done = entries.filter(e => e.status === 'done' && e.result);
     if (!done.length) return;
     const md = done.map((e, i) => `# ${i + 1}. ${e.filename}\n\n${e.result}`).join('\n\n---\n\n');
-    downloadAsWord(md, generateFilename('자료분석', 'doc', projectName));
+    const fname = generateFilename('자료분석', format === 'word' ? 'docx' : 'md', projectName);
+    if (format === 'word') downloadAsWord(md, fname);
+    else downloadAsMd(md, fname);
   };
 
   const doneCount = entries.filter(e => e.status === 'done').length;
@@ -176,9 +178,13 @@ export default function DocAnalysisPanel({ projectName, selectedDocs }: {
             {/* Actions */}
             {doneCount > 0 && !generating && (
               <div className="flex gap-2 justify-end">
-                <button onClick={handleExportAll}
+                <button onClick={() => handleExportAll('md')}
                   className="px-3 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
-                  전체 Word 내보내기
+                  MD
+                </button>
+                <button onClick={() => handleExportAll('word')}
+                  className="px-3 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                  Word
                 </button>
                 <button onClick={handleReset}
                   className="px-3 py-1 text-xs text-slate-400 border border-slate-200 rounded-lg hover:bg-slate-50">

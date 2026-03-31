@@ -16,9 +16,10 @@ export function generateFilename(menuName: string, ext: string, project?: string
   const time = String(now.getHours()).padStart(2, '0')
     + String(now.getMinutes()).padStart(2, '0')
     + String(now.getSeconds()).padStart(2, '0');
-  const prefix = project ? `${project}_` : '';
+  const sanitize = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim();
+  const prefix = project ? `${sanitize(project)}_` : '';
   const cleanExt = ext.startsWith('.') ? ext.slice(1) : ext;
-  return `${prefix}${menuName}_${date}_${time}.${cleanExt}`;
+  return `${prefix}${sanitize(menuName)}_${date}_${time}.${cleanExt}`;
 }
 
 /** Simple markdown → HTML converter for clipboard (not for display). */
@@ -167,8 +168,10 @@ export async function copyRichText(markdown: string): Promise<void> {
  * Download markdown as Word (.docx) via backend API.
  */
 export async function downloadAsWord(markdown: string, filename?: string): Promise<void> {
-  const title = filename || (extractTitle(markdown) + '.docx');
-  const fname = title.endsWith('.docx') ? title : title + '.docx';
+  let title = filename || (extractTitle(markdown) + '.docx');
+  // Strip any existing doc/docx extension, then add .docx
+  title = title.replace(/\.(docx?|md)$/i, '');
+  const fname = title + '.docx';
   const token = (await import('../stores/authStore')).useAuthStore.getState().token;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -179,6 +182,23 @@ export async function downloadAsWord(markdown: string, filename?: string): Promi
   });
   if (!res.ok) throw new Error(`Word 변환 실패: ${res.status}`);
   const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fname;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
+/**
+ * Download markdown as .md file (client-side, no backend needed).
+ */
+export function downloadAsMd(markdown: string, filename?: string): void {
+  let title = filename || (extractTitle(markdown) + '.md');
+  title = title.replace(/\.(docx?|md)$/i, '');
+  const fname = title + '.md';
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
