@@ -15,6 +15,11 @@ class FolderCreate(BaseModel):
     name: str
 
 
+class FolderRename(BaseModel):
+    old_name: str
+    new_name: str  # leaf name only (parent path is preserved by backend)
+
+
 class DocMoveRequest(BaseModel):
     target_folder: str
 

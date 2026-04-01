@@ -12,7 +12,7 @@ from fastapi.responses import Response
 
 from pydantic import BaseModel
 from backend.api_models import (
-    ProjectCreate, ProjectRename, FolderCreate, DocMoveRequest,
+    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest,
     GenerateRequest, QaRequest, AnalysisRequest,
     CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
     SaveResearchRequest,
@@ -582,6 +582,16 @@ def create_folder(name: str, req: FolderCreate, user: dict = Depends(get_current
     _verify_project_ownership(name, user["id"])
     import core_rag
     return core_rag.create_folder(name, req.name, owner_id=user["id"])
+
+
+@router.post("/projects/{name}/folders/rename")
+def rename_folder_ep(name: str, req: FolderRename, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_rag
+    # Preserve parent path: "finance/reports" renamed to "Q1" → "finance/Q1"
+    parts = req.old_name.rsplit("/", 1)
+    new_full = f"{parts[0]}/{req.new_name}" if len(parts) > 1 else req.new_name
+    return core_rag.rename_folder(name, req.old_name, new_full, owner_id=user["id"])
 
 
 @router.delete("/projects/{name}/folders/{folder}")

@@ -126,6 +126,11 @@ export default function WorkspacePage() {
     loadDocs();
   }, [currentProject, loadDocs]);
 
+  const handleRenameFolder = useCallback(async (folder: string, newLeaf: string) => {
+    if (!currentProject) return;
+    try { await api.renameFolder(currentProject, folder, newLeaf); loadDocs(); } catch {}
+  }, [currentProject, loadDocs]);
+
   // Chat send
   const handleSend = useCallback(async (text: string) => {
     if (!text.trim() || loading || !currentProject) return;
@@ -328,6 +333,7 @@ export default function WorkspacePage() {
             <FolderTree tree={tree} projectName={currentProject} selectable
               selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
               onCreateFolder={handleCreateFolder}
+              onFolderRename={handleRenameFolder}
               onDocDownload={(doc) => api.downloadDoc(currentProject, doc)}
               onDocDelete={async (doc) => {
                 if (!confirm(`'${doc}' 파일을 삭제하시겠습니까?`)) return;

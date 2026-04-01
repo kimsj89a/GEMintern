@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 interface FolderTreeProps {
-  tree: Record<string, string[]>; // folder_name -> [doc_name, ...]
+  tree: Record<string, string[]>;
   projectName?: string;
   onDocClick?: (doc: string) => void;
   onDocDelete?: (doc: string) => void;
   onDocDownload?: (doc: string) => void;
   onFolderDelete?: (folder: string) => void;
+  onFolderRename?: (folder: string, newLeaf: string) => void;
   onDocMove?: (doc: string, targetFolder: string) => void;
   onBatchMove?: (docs: string[], targetFolder: string) => void;
   onCreateFolder?: (name: string) => void;
@@ -16,94 +17,87 @@ interface FolderTreeProps {
   onSelectionChange?: (selected: string[]) => void;
 }
 
+interface TreeNode {
+  path: string;   // full key in tree dict, e.g. "finance/reports"
+  label: string;  // last segment, e.g. "reports"
+  docs: string[];
+  children: TreeNode[];
+}
+
+function buildTree(flat: Record<string, string[]>): TreeNode[] {
+  const paths = Object.keys(flat).filter(k => k !== '__root__').sort();
+  const nodeMap = new Map<string, TreeNode>();
+  for (const p of paths) {
+    nodeMap.set(p, { path: p, label: p.split('/').at(-1)!, docs: flat[p] || [], children: [] });
+  }
+  const top: TreeNode[] = [];
+  for (const p of paths) {
+    const parts = p.split('/');
+    if (parts.length === 1) {
+      top.push(nodeMap.get(p)!);
+    } else {
+      const parentPath = parts.slice(0, -1).join('/');
+      const parent = nodeMap.get(parentPath);
+      if (parent) parent.children.push(nodeMap.get(p)!);
+      else top.push(nodeMap.get(p)!); // orphan subfolder → promote to top
+    }
+  }
+  return top;
+}
+
 export default function FolderTree({
-  tree, projectName, onDocClick, onDocDelete, onDocDownload, onFolderDelete, onDocMove, onBatchMove, onCreateFolder,
+  tree, projectName, onDocClick, onDocDelete, onDocDownload,
+  onFolderDelete, onFolderRename, onDocMove, onBatchMove, onCreateFolder,
   selectable, selectedDocs = [], onSelectionChange,
 }: FolderTreeProps) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    Object.keys(tree).forEach((f) => { init[f] = true; });
-    return init;
-  });
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; name: string } | null>(null);
-
-  // Drag-and-drop state
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number; type: 'folder' | 'doc' | 'empty'; name: string;
+  } | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [creatingIn, setCreatingIn] = useState<string | null>(null); // '__root__' or folder path
+  const [newFolderName, setNewFolderName] = useState('');
   const [dragDocs, setDragDocs] = useState<string[]>([]);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const dragImageRef = useRef<HTMLDivElement | null>(null);
-
-  // Shift-click range selection
   const lastClickedRef = useRef<string | null>(null);
 
-  // Expand new folders
+  // Auto-expand new folders
   useEffect(() => {
     setExpanded(prev => {
       const next = { ...prev };
-      for (const f of Object.keys(tree)) {
-        if (!(f in next)) next[f] = true;
-      }
+      Object.keys(tree).forEach(f => { if (!(f in next)) next[f] = true; });
       return next;
     });
   }, [tree]);
 
-  // Close context menu on outside click or scroll
+  // Close context menu on outside click/scroll
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
     window.addEventListener('click', close);
     window.addEventListener('scroll', close, true);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('scroll', close, true);
-    };
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
   }, [contextMenu]);
 
-  const toggleFolder = (folder: string) => {
-    setExpanded((prev) => ({ ...prev, [folder]: !prev[folder] }));
-  };
-
-  // Build flat doc list for shift-click range selection
   const flatDocs = useCallback(() => {
     const result: string[] = [];
-    const folders = Object.keys(tree).sort((a, b) => {
-      if (a === '__root__') return -1;
-      if (b === '__root__') return 1;
-      return a.localeCompare(b);
-    });
-    for (const f of folders) {
-      for (const d of (tree[f] || [])) {
-        result.push(d);
-      }
-    }
+    const sorted = Object.keys(tree).sort((a, b) => a === '__root__' ? -1 : b === '__root__' ? 1 : a.localeCompare(b));
+    for (const f of sorted) for (const d of (tree[f] || [])) result.push(d);
     return result;
   }, [tree]);
 
   const handleDocClick = (doc: string, e: React.MouseEvent) => {
     if (!onSelectionChange) return;
-
     if (e.shiftKey && lastClickedRef.current) {
-      // Range select
       const all = flatDocs();
-      const lastIdx = all.indexOf(lastClickedRef.current);
-      const curIdx = all.indexOf(doc);
-      if (lastIdx >= 0 && curIdx >= 0) {
-        const start = Math.min(lastIdx, curIdx);
-        const end = Math.max(lastIdx, curIdx);
-        const range = all.slice(start, end + 1);
-        const newSet = new Set([...selectedDocs, ...range]);
-        onSelectionChange([...newSet]);
+      const a = all.indexOf(lastClickedRef.current), b = all.indexOf(doc);
+      if (a >= 0 && b >= 0) {
+        onSelectionChange([...new Set([...selectedDocs, ...all.slice(Math.min(a, b), Math.max(a, b) + 1)])]);
       }
-    } else if (e.ctrlKey || e.metaKey) {
-      // Toggle single
-      const next = selectedDocs.includes(doc)
-        ? selectedDocs.filter((d) => d !== doc)
-        : [...selectedDocs, doc];
-      onSelectionChange(next);
     } else {
-      // Toggle single (checkbox behavior)
-      const next = selectedDocs.includes(doc)
-        ? selectedDocs.filter((d) => d !== doc)
-        : [...selectedDocs, doc];
+      const next = selectedDocs.includes(doc) ? selectedDocs.filter(d => d !== doc) : [...selectedDocs, doc];
       onSelectionChange(next);
     }
     lastClickedRef.current = doc;
@@ -112,301 +106,321 @@ export default function FolderTree({
   const toggleFolderDocs = (folder: string) => {
     if (!onSelectionChange) return;
     const docs = tree[folder] || [];
-    const allSelected = docs.every((d) => selectedDocs.includes(d));
-    if (allSelected) {
-      onSelectionChange(selectedDocs.filter((d) => !docs.includes(d)));
-    } else {
-      const newSet = new Set([...selectedDocs, ...docs]);
-      onSelectionChange([...newSet]);
-    }
+    if (docs.every(d => selectedDocs.includes(d)))
+      onSelectionChange(selectedDocs.filter(d => !docs.includes(d)));
+    else
+      onSelectionChange([...new Set([...selectedDocs, ...docs])]);
   };
 
-  const handleContextMenu = (e: React.MouseEvent, type: string, name: string) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, type, name });
-  };
-
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-
-  const handleCreateFolder = () => {
-    if (newFolderName.trim() && onCreateFolder) {
-      onCreateFolder(newFolderName.trim());
-      setNewFolderName('');
-      setCreatingFolder(false);
-    }
-  };
-
-  // ── Drag-and-drop handlers ──
-
+  // ── DnD ──
   const handleDragStart = (e: React.DragEvent, doc: string) => {
-    // If dragged doc is already selected, drag all selected; otherwise just this one
-    let docs: string[];
-    if (selectedDocs.includes(doc) && selectedDocs.length > 1) {
-      docs = [...selectedDocs];
-    } else {
-      docs = [doc];
-    }
+    const docs = selectedDocs.includes(doc) && selectedDocs.length > 1 ? [...selectedDocs] : [doc];
     setDragDocs(docs);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', JSON.stringify(docs));
-
-    // Custom drag image
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;top:-1000px;left:-1000px;padding:6px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;font-size:12px;color:#1D4ED8;white-space:nowrap;z-index:99999;pointer-events:none';
     el.textContent = docs.length > 1 ? `📄 ${docs.length}개 파일` : `📄 ${doc}`;
     document.body.appendChild(el);
     dragImageRef.current = el;
     e.dataTransfer.setDragImage(el, 0, 0);
-
-    // Cleanup drag image after a short delay
-    setTimeout(() => {
-      if (dragImageRef.current) {
-        document.body.removeChild(dragImageRef.current);
-        dragImageRef.current = null;
-      }
-    }, 0);
+    setTimeout(() => { if (dragImageRef.current) { document.body.removeChild(dragImageRef.current); dragImageRef.current = null; } }, 0);
   };
 
   const handleDragEnd = () => {
-    setDragDocs([]);
-    setDropTarget(null);
-    if (dragImageRef.current) {
-      try { document.body.removeChild(dragImageRef.current); } catch {}
-      dragImageRef.current = null;
-    }
-  };
-
-  const handleFolderDragOver = (e: React.DragEvent, folder: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropTarget(folder);
-  };
-
-  const handleFolderDragLeave = (e: React.DragEvent) => {
-    // Only clear if actually leaving the folder (not entering a child)
-    const related = e.relatedTarget as HTMLElement | null;
-    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
-    setDropTarget(null);
+    setDragDocs([]); setDropTarget(null);
+    if (dragImageRef.current) { try { document.body.removeChild(dragImageRef.current); } catch {} dragImageRef.current = null; }
   };
 
   const handleFolderDrop = (e: React.DragEvent, targetFolder: string) => {
-    e.preventDefault();
-    setDropTarget(null);
-    const docs = dragDocs.length > 0 ? dragDocs : (() => {
-      try { return JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return []; }
-    })();
+    e.preventDefault(); setDropTarget(null);
+    const docs = dragDocs.length > 0 ? dragDocs : (() => { try { return JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return []; } })();
     setDragDocs([]);
-
     if (!docs.length) return;
-
-    // Filter out docs already in target folder
-    const targetDocs = tree[targetFolder] || [];
-    const docsToMove = docs.filter((d: string) => !targetDocs.includes(d));
-    if (!docsToMove.length) return;
-
-    if (onBatchMove) {
-      onBatchMove(docsToMove, targetFolder);
-    } else if (onDocMove) {
-      docsToMove.forEach((d: string) => onDocMove(d, targetFolder));
-    }
+    const toMove = docs.filter((d: string) => !(tree[targetFolder] || []).includes(d));
+    if (!toMove.length) return;
+    if (onBatchMove) onBatchMove(toMove, targetFolder);
+    else if (onDocMove) toMove.forEach((d: string) => onDocMove(d, targetFolder));
   };
 
-  // ── Find which folder a doc is in ──
   const docFolderMap = useCallback(() => {
     const map: Record<string, string> = {};
-    for (const [folder, docs] of Object.entries(tree)) {
-      for (const d of docs) { map[d] = folder; }
-    }
+    for (const [f, docs] of Object.entries(tree)) for (const d of docs) map[d] = f;
     return map;
   }, [tree]);
 
-  const folders = Object.keys(tree).sort((a, b) => {
-    if (a === '__root__') return -1;
-    if (b === '__root__') return 1;
-    return a.localeCompare(b);
-  });
+  // ── Folder / doc creation & rename ──
+  const handleCreateFolder = () => {
+    if (!newFolderName.trim() || !onCreateFolder) return;
+    const fullName = creatingIn && creatingIn !== '__root__'
+      ? `${creatingIn}/${newFolderName.trim()}`
+      : newFolderName.trim();
+    onCreateFolder(fullName);
+    setNewFolderName(''); setCreatingIn(null);
+  };
+
+  const handleRenameConfirm = () => {
+    if (!renamingFolder) return;
+    const v = renameValue.trim();
+    if (v) onFolderRename?.(renamingFolder, v);
+    setRenamingFolder(null);
+  };
 
   const isDragging = dragDocs.length > 0;
+  const topNodes = buildTree(tree);
+  const allFolderPaths = Object.keys(tree).filter(k => k !== '__root__');
 
-  return (
-    <div className="text-sm select-none">
-      {/* 폴더 추가 */}
-      {onCreateFolder && (
-        creatingFolder ? (
-          <div className="flex items-center gap-1 px-2 py-1 mb-1">
-            <input
-              autoFocus
-              value={newFolderName}
-              onChange={e => setNewFolderName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setCreatingFolder(false); }}
-              placeholder="폴더명"
-              className="flex-1 px-2 py-0.5 text-xs border border-slate-300 rounded focus:outline-none focus:border-blue-400"
+  // Inline folder-create input
+  const CreateInput = ({ parentPath }: { parentPath: string }) => {
+    if (creatingIn !== parentPath) return null;
+    return (
+      <div className="flex items-center gap-1 px-2 py-1">
+        <input autoFocus value={newFolderName}
+          onChange={e => setNewFolderName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setCreatingIn(null); }}
+          placeholder={parentPath !== '__root__' ? '하위 폴더명' : '폴더명'}
+          className="flex-1 px-2 py-0.5 text-xs border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+        />
+        <button onClick={handleCreateFolder} className="text-xs text-blue-600 hover:text-blue-800">확인</button>
+        <button onClick={() => setCreatingIn(null)} className="text-xs text-slate-400">취소</button>
+      </div>
+    );
+  };
+
+  // Doc row
+  const renderDoc = (doc: string, indent = 0) => {
+    const isDrag = dragDocs.includes(doc);
+    return (
+      <div key={doc} draggable
+        onDragStart={e => handleDragStart(e, doc)}
+        onDragEnd={handleDragEnd}
+        style={{ paddingLeft: indent + 8 }}
+        className={`flex items-center gap-1 pr-2 py-0.5 rounded cursor-grab group transition-all ${
+          isDrag ? 'opacity-40 bg-blue-50' : 'hover:bg-[#F7F6F3]'
+        } ${selectedDocs.includes(doc) && !isDrag ? 'bg-blue-50/50' : ''}`}
+        onClick={e => { e.stopPropagation(); if (selectable) handleDocClick(doc, e); else onDocClick?.(doc); }}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, type: 'doc', name: doc }); }}
+      >
+        {selectable && (
+          <input type="checkbox" checked={selectedDocs.includes(doc)} onChange={() => {}}
+            onClick={e => e.stopPropagation()} className="rounded pointer-events-none" readOnly />
+        )}
+        <span className="text-[#9B9A97] text-xs shrink-0">📄</span>
+        <span className="text-[#37352F] truncate flex-1 text-xs" title={doc}>{doc}</span>
+        {onDocDelete && !isDragging && (
+          <button className="text-[#9B9A97] hover:text-red-500 opacity-0 group-hover:opacity-100 text-xs shrink-0"
+            onClick={e => { e.stopPropagation(); onDocDelete(doc); }}>🗑</button>
+        )}
+      </div>
+    );
+  };
+
+  // Recursive folder node renderer
+  const renderFolder = (node: TreeNode, indent = 0): React.ReactNode => {
+    const isExp = expanded[node.path] !== false;
+    const isDropHov = dropTarget === node.path && isDragging;
+    const isRenaming = renamingFolder === node.path;
+
+    return (
+      <div key={node.path}>
+        <div
+          style={{ paddingLeft: indent + 8 }}
+          className={`flex items-center gap-1 pr-2 py-1 rounded cursor-pointer group transition-colors ${
+            isDropHov ? 'bg-blue-100 border border-blue-300 border-dashed' : 'hover:bg-[#F7F6F3] border border-transparent'
+          }`}
+          onClick={() => setExpanded(p => ({ ...p, [node.path]: !isExp }))}
+          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, type: 'folder', name: node.path }); }}
+          onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTarget(node.path); }}
+          onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as HTMLElement)) setDropTarget(null); }}
+          onDrop={e => handleFolderDrop(e, node.path)}
+        >
+          <span className="text-xs text-[#9B9A97] shrink-0">{isExp ? '▼' : '▶'}</span>
+          {selectable && (
+            <input type="checkbox"
+              checked={node.docs.length > 0 && node.docs.every(d => selectedDocs.includes(d))}
+              onChange={() => toggleFolderDocs(node.path)}
+              onClick={e => e.stopPropagation()}
+              className="rounded"
             />
-            <button onClick={handleCreateFolder} className="text-xs text-blue-600 hover:text-blue-700">확인</button>
-            <button onClick={() => setCreatingFolder(false)} className="text-xs text-slate-400">취소</button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setCreatingFolder(true)}
-            className="flex items-center gap-1 px-2 py-1 mb-1 text-xs text-slate-400 hover:text-blue-600 transition-colors"
-          >
-            <span>+</span> 폴더 추가
-          </button>
-        )
-      )}
-      {folders.map((folder) => {
-        const docs = tree[folder] || [];
-        const isRoot = folder === '__root__';
-        const label = isRoot ? (projectName || '전체 문서') : folder;
-        const isExpanded = expanded[folder] !== false;
-        const isDropHover = dropTarget === folder && isDragging;
+          )}
+          <span className="shrink-0">{isDropHov ? '📂' : '📁'}</span>
+          {isRenaming ? (
+            <input autoFocus value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') handleRenameConfirm(); if (e.key === 'Escape') setRenamingFolder(null); }}
+              onBlur={handleRenameConfirm}
+              onClick={e => e.stopPropagation()}
+              className="flex-1 min-w-0 px-1 py-0 text-xs border border-blue-400 rounded focus:outline-none bg-white"
+            />
+          ) : (
+            <span className={`font-medium text-xs truncate flex-1 ${isDropHov ? 'text-blue-700' : 'text-[#37352F]'}`}>{node.label}</span>
+          )}
+          <span className="text-xs text-[#9B9A97] shrink-0">({node.docs.length})</span>
+        </div>
 
-        return (
-          <div key={folder} className="mb-0.5">
-            {/* Folder header — drop zone */}
-            <div
-              className={`flex items-center gap-1 px-2 py-1 rounded cursor-pointer group transition-colors ${
-                isDropHover
-                  ? 'bg-blue-100 border border-blue-300 border-dashed'
-                  : 'hover:bg-[#F7F6F3] border border-transparent'
-              }`}
-              onClick={() => toggleFolder(folder)}
-              onContextMenu={(e) => !isRoot && handleContextMenu(e, 'folder', folder)}
-              onDragOver={(e) => handleFolderDragOver(e, folder)}
-              onDragLeave={handleFolderDragLeave}
-              onDrop={(e) => handleFolderDrop(e, folder)}
-            >
-              <span className="text-xs text-[#9B9A97]">{isExpanded ? '▼' : '▶'}</span>
-              {selectable && (
-                <input
-                  type="checkbox"
-                  checked={docs.length > 0 && docs.every((d) => selectedDocs.includes(d))}
-                  onChange={() => toggleFolderDocs(folder)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="rounded"
-                />
-              )}
-              <span className={isDropHover ? 'text-blue-600' : 'text-[#787774]'}>
-                {isDropHover ? '📂' : '📁'}
-              </span>
-              <span className={`font-medium ${isDropHover ? 'text-blue-700' : 'text-[#37352F]'}`}>{label}</span>
-              <span className="text-xs text-[#9B9A97] ml-1">({docs.length})</span>
-              {!isRoot && onFolderDelete && !isDragging && (
-                <button
-                  className="ml-auto text-[#9B9A97] hover:text-red-500 opacity-0 group-hover:opacity-100 text-xs"
-                  onClick={(e) => { e.stopPropagation(); onFolderDelete(folder); }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Documents */}
-            {isExpanded && (
-              <div
-                className="pl-5"
-                onDragOver={(e) => handleFolderDragOver(e, folder)}
-                onDrop={(e) => handleFolderDrop(e, folder)}
-              >
-                {docs.map((doc) => {
-                  const isBeingDragged = dragDocs.includes(doc);
-                  return (
-                    <div
-                      key={doc}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, doc)}
-                      onDragEnd={handleDragEnd}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded cursor-grab group transition-all ${
-                        isBeingDragged ? 'opacity-40 bg-blue-50' : 'hover:bg-[#F7F6F3]'
-                      } ${selectedDocs.includes(doc) && !isBeingDragged ? 'bg-blue-50/50' : ''}`}
-                      onClick={(e) => {
-                        if (selectable) handleDocClick(doc, e);
-                        else onDocClick?.(doc);
-                      }}
-                      onContextMenu={(e) => handleContextMenu(e, 'doc', doc)}
-                    >
-                      {selectable && (
-                        <input
-                          type="checkbox"
-                          checked={selectedDocs.includes(doc)}
-                          onChange={() => {}}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded pointer-events-none"
-                          readOnly
-                        />
-                      )}
-                      <span className="text-[#9B9A97]">📄</span>
-                      <span className="text-[#37352F] truncate flex-1" title={doc}>{doc}</span>
-                      {onDocDelete && !isDragging && (
-                        <button
-                          className="text-[#9B9A97] hover:text-red-500 opacity-0 group-hover:opacity-100 text-xs"
-                          onClick={(e) => { e.stopPropagation(); onDocDelete(doc); }}
-                        >
-                          🗑
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                {docs.length === 0 && !isDragging && (
-                  <div className="px-2 py-1 text-xs text-[#9B9A97] italic">비어있음</div>
-                )}
-                {docs.length === 0 && isDragging && (
-                  <div className={`px-2 py-2 text-xs italic rounded border border-dashed transition-colors ${
-                    isDropHover ? 'text-blue-600 border-blue-300 bg-blue-50' : 'text-[#9B9A97] border-slate-200'
-                  }`}>
-                    여기에 놓기
-                  </div>
-                )}
-              </div>
+        {isExp && (
+          <div onDragOver={e => { e.preventDefault(); setDropTarget(node.path); }} onDrop={e => handleFolderDrop(e, node.path)}>
+            <CreateInput parentPath={node.path} />
+            {node.children.map(child => renderFolder(child, indent + 12))}
+            {node.docs.map(doc => renderDoc(doc, indent + 12))}
+            {node.docs.length === 0 && node.children.length === 0 && creatingIn !== node.path && !isDragging && (
+              <div style={{ paddingLeft: indent + 20 }} className="py-1 text-xs text-[#9B9A97] italic">비어있음</div>
+            )}
+            {isDragging && isDropHov && node.docs.length === 0 && (
+              <div style={{ paddingLeft: indent + 20 }} className="py-2 mx-2 text-xs italic rounded border border-dashed text-blue-600 border-blue-300 bg-blue-50">여기에 놓기</div>
             )}
           </div>
-        );
-      })}
+        )}
+      </div>
+    );
+  };
 
-      {/* Drag hint */}
+  const rootDocs = tree['__root__'] || [];
+  const rootExp = expanded['__root__'] !== false;
+  const rootDropHov = dropTarget === '__root__' && isDragging;
+
+  return (
+    <div
+      className="text-sm select-none"
+      onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, type: 'empty', name: '' }); }}
+    >
+      {/* Root section */}
+      <div>
+        <div
+          className={`flex items-center gap-1 px-2 py-1 rounded cursor-pointer group transition-colors ${
+            rootDropHov ? 'bg-blue-100 border border-blue-300 border-dashed' : 'hover:bg-[#F7F6F3] border border-transparent'
+          }`}
+          onClick={() => setExpanded(p => ({ ...p, __root__: !rootExp }))}
+          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, type: 'empty', name: '' }); }}
+          onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTarget('__root__'); }}
+          onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as HTMLElement)) setDropTarget(null); }}
+          onDrop={e => handleFolderDrop(e, '__root__')}
+        >
+          <span className="text-xs text-[#9B9A97]">{rootExp ? '▼' : '▶'}</span>
+          {selectable && (
+            <input type="checkbox"
+              checked={rootDocs.length > 0 && rootDocs.every(d => selectedDocs.includes(d))}
+              onChange={() => toggleFolderDocs('__root__')}
+              onClick={e => e.stopPropagation()}
+              className="rounded"
+            />
+          )}
+          <span>{rootDropHov ? '📂' : '📁'}</span>
+          <span className="font-medium text-xs text-[#37352F] flex-1">{projectName || '전체 문서'}</span>
+          <span className="text-xs text-[#9B9A97]">({rootDocs.length})</span>
+        </div>
+
+        {rootExp && (
+          <div className="pl-2"
+            onDragOver={e => { e.preventDefault(); setDropTarget('__root__'); }}
+            onDrop={e => handleFolderDrop(e, '__root__')}
+          >
+            <CreateInput parentPath="__root__" />
+            {topNodes.map(n => renderFolder(n, 4))}
+            {rootDocs.map(doc => renderDoc(doc, 4))}
+          </div>
+        )}
+      </div>
+
       {isDragging && (
         <div className="mt-2 px-2 py-1.5 text-xs text-blue-500 bg-blue-50 rounded-lg text-center border border-blue-200">
           📁 폴더 위에 놓아서 이동
         </div>
       )}
 
-      {/* Context Menu — rendered via portal to avoid parent transform issues */}
+      {/* Context Menu */}
       {contextMenu && createPortal(
         <div
-          className="fixed bg-white border border-[#E9E9E7] rounded-lg shadow-lg py-1 z-[9999] text-sm"
+          className="fixed bg-white border border-[#E9E9E7] rounded-xl shadow-xl py-1.5 z-[9999] min-w-[168px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
         >
+          {/* Empty area */}
+          {contextMenu.type === 'empty' && onCreateFolder && (
+            <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#F7F6F3] flex items-center gap-2"
+              onClick={() => { setCreatingIn('__root__'); setNewFolderName(''); setContextMenu(null); }}>
+              📁 폴더 추가
+            </button>
+          )}
+
+          {/* Folder */}
           {contextMenu.type === 'folder' && (
             <>
-              <button className="w-full text-left px-4 py-1.5 hover:bg-[#F7F6F3]"
-                onClick={() => { onFolderDelete?.(contextMenu.name); setContextMenu(null); }}>
-                🗑 폴더 삭제
-              </button>
+              {onCreateFolder && (
+                <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#F7F6F3] flex items-center gap-2"
+                  onClick={() => { setCreatingIn(contextMenu.name); setNewFolderName(''); setContextMenu(null); }}>
+                  📁 하위 폴더 추가
+                </button>
+              )}
+              {onFolderRename && (
+                <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#F7F6F3] flex items-center gap-2"
+                  onClick={() => {
+                    setRenamingFolder(contextMenu.name);
+                    setRenameValue(contextMenu.name.split('/').at(-1) || contextMenu.name);
+                    setContextMenu(null);
+                  }}>
+                  ✏️ 이름 변경
+                </button>
+              )}
+              {onFolderDelete && (
+                <>
+                  <div className="border-t border-[#E9E9E7] my-1" />
+                  <button className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+                    onClick={() => { onFolderDelete(contextMenu.name); setContextMenu(null); }}>
+                    🗑 폴더 삭제
+                  </button>
+                </>
+              )}
             </>
           )}
+
+          {/* Doc */}
           {contextMenu.type === 'doc' && (
             <>
-              <button className="w-full text-left px-4 py-1.5 hover:bg-[#F7F6F3]"
-                onClick={() => { onDocDownload?.(contextMenu.name); setContextMenu(null); }}>
-                ⬇ 다운로드
-              </button>
-              <button className="w-full text-left px-4 py-1.5 hover:bg-[#F7F6F3]"
-                onClick={() => { onDocDelete?.(contextMenu.name); setContextMenu(null); }}>
-                🗑 문서 삭제
-              </button>
-              {Object.keys(tree).filter((f) => {
-                // Only show folders the doc is NOT currently in
-                const currentFolder = docFolderMap()[contextMenu.name];
-                return f !== currentFolder;
-              }).sort().map((f) => (
-                <button key={f} className="w-full text-left px-4 py-1.5 hover:bg-[#F7F6F3]"
-                  onClick={() => { onDocMove?.(contextMenu.name, f); setContextMenu(null); }}>
-                  📁 {f === '__root__' ? '루트' : f}로 이동
+              {onDocDownload && (
+                <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#F7F6F3] flex items-center gap-2"
+                  onClick={() => { onDocDownload(contextMenu.name); setContextMenu(null); }}>
+                  ⬇ 다운로드
                 </button>
-              ))}
+              )}
+              {allFolderPaths.length > 0 && onDocMove && (
+                <>
+                  <div className="border-t border-[#E9E9E7] my-1" />
+                  <div className="px-4 py-1 text-[11px] text-[#9B9A97] font-medium">폴더로 이동</div>
+                  {docFolderMap()[contextMenu.name] !== '__root__' && (
+                    <button className="w-full text-left px-4 py-1.5 text-sm hover:bg-[#F7F6F3]"
+                      onClick={() => { onDocMove(contextMenu.name, '__root__'); setContextMenu(null); }}>
+                      <span className="text-xs">📁 루트</span>
+                    </button>
+                  )}
+                  {allFolderPaths
+                    .filter(f => f !== docFolderMap()[contextMenu.name])
+                    .sort()
+                    .map(f => {
+                      const depth = (f.match(/\//g) || []).length;
+                      const label = f.split('/').at(-1)!;
+                      return (
+                        <button key={f} className="w-full text-left px-4 py-1.5 text-sm hover:bg-[#F7F6F3] flex items-center gap-1"
+                          style={{ paddingLeft: 16 + depth * 8 }}
+                          onClick={() => { onDocMove(contextMenu.name, f); setContextMenu(null); }}>
+                          <span className="text-xs shrink-0">📁</span>
+                          <span className="text-xs truncate">{label}</span>
+                          {depth > 0 && <span className="text-[10px] text-slate-400 shrink-0 ml-1">{f}</span>}
+                        </button>
+                      );
+                    })
+                  }
+                </>
+              )}
+              {onDocDelete && (
+                <>
+                  <div className="border-t border-[#E9E9E7] my-1" />
+                  <button className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+                    onClick={() => { onDocDelete(contextMenu.name); setContextMenu(null); }}>
+                    🗑 삭제
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>,

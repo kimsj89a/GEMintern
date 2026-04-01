@@ -77,6 +77,11 @@ export const api = {
       `/projects/${encodeURIComponent(project)}/folders/${encodeURIComponent(folder)}`,
       { method: 'DELETE' }
     ),
+  renameFolder: (project: string, oldName: string, newLeaf: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/folders/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ old_name: oldName, new_name: newLeaf }),
+    }),
   moveDoc: (project: string, doc: string, targetFolder: string) =>
     request<any>(
       `/projects/${encodeURIComponent(project)}/docs/${encodeURIComponent(doc)}/move`,
