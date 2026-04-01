@@ -34,6 +34,9 @@ nul
 
 # Database
 data/
+*.db
+*.db-journal
+*.db-wal
 
 # RAG storage large files (문서 원본 — DB로 관리)
 rag_storage/*/docs/*.md
