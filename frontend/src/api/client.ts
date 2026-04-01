@@ -149,6 +149,13 @@ export const api = {
     request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/excel-model`, {
       method: 'POST',
     }),
+  // Contract Comparison
+  contractCompare: (project: string, selectedDocs?: string[]) =>
+    request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/contract-compare`, {
+      method: 'POST',
+      body: JSON.stringify({ selected_docs: selectedDocs }),
+    }),
+
   downloadExcelModel: async (project: string, excelB64: string, filename: string) => {
     const res = await fetchWithAuth(`${BASE}/projects/${encodeURIComponent(project)}/excel-model/download`, {
       method: 'POST',
