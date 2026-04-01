@@ -307,7 +307,7 @@ def generate_wiki(
     # 위키 생성은 thinking 끄고 빠르게
     config = types.GenerateContentConfig(
         temperature=0.2,
-        max_output_tokens=16384,
+        max_output_tokens=65536,
         thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 

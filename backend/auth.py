@@ -10,7 +10,7 @@ from backend.database import get_db
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS", "168"))
+JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS", "720"))  # 30 days
 
 _bearer_scheme = HTTPBearer()
 

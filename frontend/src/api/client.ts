@@ -19,7 +19,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { ...headers, ...(options?.headers as Record<string, string>) },
   });
   if (res.status === 401) {
-    useAuthStore.getState().logout();
+    // Refresh failure should not cascade to logout — only real API calls should
+    if (!path.includes('/auth/refresh')) {
+      useAuthStore.getState().logout();
+    }
     throw new Error('Unauthorized');
   }
   if (!res.ok) throw new Error(`API error: ${res.status}`);
