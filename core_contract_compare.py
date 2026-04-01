@@ -61,7 +61,7 @@ def compare_contracts(
         display = fname.replace('.md', '').replace('.txt', '')
         truncated = content[:per_doc]
         doc_parts.append(f"[DOC-{i}] {display}\n{truncated}")
-    doc_text = "\n\n{'='*60}\n\n".join(doc_parts)
+    doc_text = ("\n\n" + "=" * 60 + "\n\n").join(doc_parts)
 
     # Build user prompt
     wiki_section = f"[위키 요약]\n{wiki_text}\n\n" if wiki_text else ""

@@ -15,7 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt || \
+    (echo "Some packages failed, installing core only..." && \
+     pip install --no-cache-dir fastapi uvicorn[standard] websockets python-multipart PyJWT \
+       google-genai openai anthropic python-docx python-pptx pypdf PyMuPDF pandas openpyxl \
+       XlsxWriter python-dotenv requests beautifulsoup4 lxml Pillow httpx rank-bm25)
 
 # Copy backend and core modules
 COPY backend/ ./backend/
