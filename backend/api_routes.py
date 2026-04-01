@@ -1464,6 +1464,9 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
     kwargs = dict(req.kwargs)
     max_chars = _max_chars_for_model(model)
 
+    # Inline docs from local folder (client-side, not stored on server)
+    inline_docs = kwargs.pop("inline_docs", None) or {}
+
     # Batch mode: pass individual docs_dict instead of combined file_context
     if req.task_type == 'material_summary_batch' and "project_name" in kwargs:
         import core_rag
@@ -1490,6 +1493,16 @@ def start_analysis(req: AnalysisRequest, user: dict = Depends(get_current_user))
             print(f"[analyze] doc selection error: {e}")
             if kwargs.get("file_context"):
                 kwargs["file_context"] = _truncate_context(kwargs["file_context"], max_chars)
+
+    # Append inline local docs to file_context
+    if inline_docs and isinstance(inline_docs, dict):
+        inline_text = "\n\n".join(
+            f"[로컬 파일: {k}]\n{v}" for k, v in inline_docs.items()
+        )
+        if kwargs.get("file_context"):
+            kwargs["file_context"] += "\n\n" + inline_text
+        else:
+            kwargs["file_context"] = inline_text
 
     task_id = create_task(
         user_id=user["id"], endpoint=f"/analyze/{req.task_type}", model=model,

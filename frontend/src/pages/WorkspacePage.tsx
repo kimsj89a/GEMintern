@@ -48,38 +48,21 @@ export default function WorkspacePage() {
 
   // Local folder connection
   const localFolder = useLocalFolder();
+  const [selectedLocalDocs, setSelectedLocalDocs] = useState<Set<string>>(new Set());
 
   const handleConnectFolder = useCallback(async () => {
     if (!currentProject) return;
-    setUploading(true);
     try {
-      const scannedFiles = await localFolder.connect();
-      if (scannedFiles.length > 0) {
-        // Upload scanned files to project
-        const files = scannedFiles.map(f => f.file);
-        await api.uploadFiles(currentProject, files);
-        loadDocs();
-      }
+      await localFolder.connect();
+      // Index only — no upload. Files are read on-demand at analysis time.
     } catch (err: any) {
       if (err.message) alert(err.message);
     }
-    setUploading(false);
   }, [currentProject, localFolder]);
 
   const handleRescanFolder = useCallback(async () => {
     if (!currentProject) return;
-    setUploading(true);
-    try {
-      const scannedFiles = await localFolder.rescan();
-      if (scannedFiles.length > 0) {
-        const files = scannedFiles.map(f => f.file);
-        await api.uploadFiles(currentProject, files);
-        loadDocs();
-      }
-    } catch (err: any) {
-      if (err.message) alert(err.message);
-    }
-    setUploading(false);
+    await localFolder.rescan();
   }, [currentProject, localFolder]);
 
   // Chat state
@@ -101,6 +84,29 @@ export default function WorkspacePage() {
   }, [currentProject]);
 
   useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  // Read selected local files at analysis time.
+  // Text files (.txt/.md/.csv/.json) → inline_docs dict passed in kwargs.
+  // Binary files (.pdf/.docx/etc.) → upload on-demand, then RAG picks them up.
+  const readLocalFilesForAnalysis = useCallback(async (): Promise<Record<string, string>> => {
+    if (!localFolder.connected || selectedLocalDocs.size === 0) return {};
+    const TEXT_EXTS = new Set(['.txt', '.md', '.csv', '.json']);
+    const inline_docs: Record<string, string> = {};
+    const binaryFiles: File[] = [];
+    for (const lf of localFolder.files) {
+      if (!selectedLocalDocs.has(lf.name)) continue;
+      if (TEXT_EXTS.has(lf.ext)) {
+        try { inline_docs[lf.name] = await lf.file.text(); } catch {}
+      } else {
+        binaryFiles.push(lf.file);
+      }
+    }
+    if (binaryFiles.length > 0 && currentProject) {
+      await api.uploadFiles(currentProject, binaryFiles);
+      loadDocs();
+    }
+    return inline_docs;
+  }, [localFolder, selectedLocalDocs, currentProject, loadDocs]);
 
   // Upload
   const handleUpload = useCallback(async (files: File[]) => {
@@ -130,6 +136,7 @@ export default function WorkspacePage() {
     cancelledRef.current = false;
 
     try {
+      const inlineDocs = await readLocalFilesForAnalysis();
       const { task_id } = await api.startAnalysis({
         task_type: 'qa_answer',
         project_name: currentProject,
@@ -137,6 +144,7 @@ export default function WorkspacePage() {
           question: text,
           selected_docs: selectedDocs.length > 0 ? selectedDocs : undefined,
           project_name: currentProject,
+          ...(Object.keys(inlineDocs).length > 0 ? { inline_docs: inlineDocs } : {}),
         },
       });
       activeTaskRef.current = task_id;
@@ -361,6 +369,61 @@ export default function WorkspacePage() {
                 // Resync in case of errors
                 loadDocs();
               }} />
+            {/* 로컬 폴더 파일 목록 */}
+            {localFolder.connected && localFolder.files.length > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold text-emerald-700">💻 로컬 파일</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400">{localFolder.files.length}개</span>
+                    <button
+                      onClick={() => setSelectedLocalDocs(prev =>
+                        prev.size === localFolder.files.length ? new Set() : new Set(localFolder.files.map(f => f.name))
+                      )}
+                      className="text-[10px] text-blue-500 hover:text-blue-700"
+                    >
+                      {selectedLocalDocs.size === localFolder.files.length ? '전체 해제' : '전체 선택'}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-0.5 max-h-52 overflow-y-auto">
+                  {localFolder.files.map(lf => (
+                    <label key={lf.path} className="flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-slate-50 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={selectedLocalDocs.has(lf.name)}
+                        onChange={e => setSelectedLocalDocs(prev => {
+                          const next = new Set(prev);
+                          e.target.checked ? next.add(lf.name) : next.delete(lf.name);
+                          return next;
+                        })}
+                        className="w-3 h-3 accent-emerald-500 shrink-0"
+                      />
+                      <span className="text-[11px] text-slate-600 truncate flex-1" title={lf.path}>{lf.name}</span>
+                      <span className="text-[10px] text-slate-300 shrink-0">{(lf.size / 1024).toFixed(0)}K</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedLocalDocs.size > 0 && (
+                  <button
+                    onClick={async () => {
+                      const toUpload = localFolder.files.filter(f => selectedLocalDocs.has(f.name)).map(f => f.file);
+                      if (!toUpload.length || !currentProject) return;
+                      setUploading(true);
+                      try { await api.uploadFiles(currentProject, toUpload); loadDocs(); } catch {}
+                      setUploading(false);
+                    }}
+                    disabled={uploading}
+                    className="mt-1.5 w-full px-2 py-1 text-[11px] text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+                  >
+                    ☁ 선택 파일 서버 업로드 ({selectedLocalDocs.size}개)
+                  </button>
+                )}
+                <p className="mt-1.5 text-[10px] text-slate-400 leading-tight">
+                  체크된 파일은 분석 시 자동 포함됩니다
+                </p>
+              </div>
+            )}
           </div>
         </div>
         {/* 좌측 패널 리사이즈 핸들 */}
