@@ -281,7 +281,7 @@ export default function FolderTree({
 
   return (
     <div
-      className="text-sm select-none"
+      className="text-sm select-none min-h-[80px]"
       onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, type: 'empty', name: '' }); }}
     >
       {/* Root section */}
@@ -383,35 +383,68 @@ export default function FolderTree({
                   ⬇ 다운로드
                 </button>
               )}
-              {allFolderPaths.length > 0 && onDocMove && (
-                <>
-                  <div className="border-t border-[#E9E9E7] my-1" />
-                  <div className="px-4 py-1 text-[11px] text-[#9B9A97] font-medium">폴더로 이동</div>
-                  {docFolderMap()[contextMenu.name] !== '__root__' && (
-                    <button className="w-full text-left px-4 py-1.5 text-sm hover:bg-[#F7F6F3]"
-                      onClick={() => { onDocMove(contextMenu.name, '__root__'); setContextMenu(null); }}>
-                      <span className="text-xs">📁 루트</span>
+              {allFolderPaths.length > 0 && onDocMove && (() => {
+                const curFolder = docFolderMap()[contextMenu.name];
+                const targets = allFolderPaths.filter(f => f !== curFolder).sort();
+                const hasRoot = curFolder !== '__root__';
+                const batchDocs = selectedDocs.length > 1 ? selectedDocs : [];
+
+                const FolderBtn = ({ folder, onClick }: { folder: string; onClick: () => void }) => {
+                  const depth = (folder.match(/\//g) || []).length;
+                  const label = folder.split('/').at(-1)!;
+                  return (
+                    <button className="w-full text-left py-1.5 text-sm hover:bg-[#F7F6F3] flex items-center gap-1"
+                      style={{ paddingLeft: 16 + depth * 8 }}
+                      onClick={onClick}>
+                      <span className="text-xs shrink-0">📁</span>
+                      <span className="text-xs truncate">{label}</span>
+                      {depth > 0 && <span className="text-[10px] text-slate-400 shrink-0 ml-1">{folder}</span>}
                     </button>
-                  )}
-                  {allFolderPaths
-                    .filter(f => f !== docFolderMap()[contextMenu.name])
-                    .sort()
-                    .map(f => {
-                      const depth = (f.match(/\//g) || []).length;
-                      const label = f.split('/').at(-1)!;
-                      return (
-                        <button key={f} className="w-full text-left px-4 py-1.5 text-sm hover:bg-[#F7F6F3] flex items-center gap-1"
-                          style={{ paddingLeft: 16 + depth * 8 }}
-                          onClick={() => { onDocMove(contextMenu.name, f); setContextMenu(null); }}>
-                          <span className="text-xs shrink-0">📁</span>
-                          <span className="text-xs truncate">{label}</span>
-                          {depth > 0 && <span className="text-[10px] text-slate-400 shrink-0 ml-1">{f}</span>}
-                        </button>
-                      );
-                    })
-                  }
-                </>
-              )}
+                  );
+                };
+
+                return (
+                  <>
+                    {/* 이 파일만 이동 */}
+                    <div className="border-t border-[#E9E9E7] my-1" />
+                    <div className="px-4 py-1 text-[11px] text-[#9B9A97] font-medium">이 파일만 이동</div>
+                    {hasRoot && (
+                      <button className="w-full text-left px-4 py-1.5 text-sm hover:bg-[#F7F6F3]"
+                        onClick={() => { onDocMove(contextMenu.name, '__root__'); setContextMenu(null); }}>
+                        <span className="text-xs">📁 루트</span>
+                      </button>
+                    )}
+                    {targets.map(f => (
+                      <FolderBtn key={f} folder={f} onClick={() => { onDocMove(contextMenu.name, f); setContextMenu(null); }} />
+                    ))}
+
+                    {/* 선택 파일 일괄 이동 */}
+                    {batchDocs.length > 0 && (
+                      <>
+                        <div className="border-t border-[#E9E9E7] my-1" />
+                        <div className="px-4 py-1 text-[11px] text-[#9B9A97] font-medium">선택 파일 일괄 이동 ({batchDocs.length}개)</div>
+                        {hasRoot && (
+                          <button className="w-full text-left px-4 py-1.5 text-sm hover:bg-[#F7F6F3]"
+                            onClick={() => {
+                              if (onBatchMove) onBatchMove(batchDocs, '__root__');
+                              else batchDocs.forEach(d => onDocMove(d, '__root__'));
+                              setContextMenu(null);
+                            }}>
+                            <span className="text-xs">📁 루트</span>
+                          </button>
+                        )}
+                        {targets.map(f => (
+                          <FolderBtn key={f} folder={f} onClick={() => {
+                            if (onBatchMove) onBatchMove(batchDocs, f);
+                            else batchDocs.forEach(d => onDocMove(d, f));
+                            setContextMenu(null);
+                          }} />
+                        ))}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
               {onDocDelete && (
                 <>
                   <div className="border-t border-[#E9E9E7] my-1" />
