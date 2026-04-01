@@ -97,7 +97,7 @@ export default function WorkspacePage() {
       setTree(folderTree);
       setDocCount(data.count || 0);
       setSelectedDocs(Object.values(folderTree).flat() as string[]);
-    }).catch(() => { setTree({}); setDocCount(0); });
+    }).catch((err) => { console.error('[loadDocs]', err); setTree({}); setDocCount(0); });
   }, [currentProject]);
 
   useEffect(() => { loadDocs(); }, [loadDocs]);

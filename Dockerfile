@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend and core modules
 COPY backend/ ./backend/
+COPY dartwings/ ./dartwings/
 COPY *.py ./
 COPY template/ ./template/
 
