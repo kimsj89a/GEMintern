@@ -20,6 +20,7 @@ import QaPanel from '../components/QaPanel';
 import ExcelModelPanel from '../components/ExcelModelPanel';
 import DocAnalysisPanel from '../components/DocAnalysisPanel';
 import ContractComparePanel from '../components/ContractComparePanel';
+import { useLocalFolder } from '../hooks/useLocalFolder';
 
 // ── 스튜디오 도구 정의 ──
 const STUDIO_TOOLS = [
@@ -44,6 +45,42 @@ export default function WorkspacePage() {
   const [uploadFolder, setUploadFolder] = useState('__root__');
   const [showSlideModal, setShowSlideModal] = useState(false);
   const [leftWidth, setLeftWidth] = useState(300);
+
+  // Local folder connection
+  const localFolder = useLocalFolder();
+
+  const handleConnectFolder = useCallback(async () => {
+    if (!currentProject) return;
+    setUploading(true);
+    try {
+      const scannedFiles = await localFolder.connect();
+      if (scannedFiles.length > 0) {
+        // Upload scanned files to project
+        const files = scannedFiles.map(f => f.file);
+        await api.uploadFiles(currentProject, files);
+        loadDocs();
+      }
+    } catch (err: any) {
+      if (err.message) alert(err.message);
+    }
+    setUploading(false);
+  }, [currentProject, localFolder]);
+
+  const handleRescanFolder = useCallback(async () => {
+    if (!currentProject) return;
+    setUploading(true);
+    try {
+      const scannedFiles = await localFolder.rescan();
+      if (scannedFiles.length > 0) {
+        const files = scannedFiles.map(f => f.file);
+        await api.uploadFiles(currentProject, files);
+        loadDocs();
+      }
+    } catch (err: any) {
+      if (err.message) alert(err.message);
+    }
+    setUploading(false);
+  }, [currentProject, localFolder]);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -171,7 +208,14 @@ export default function WorkspacePage() {
         <div className="flex-1 overflow-hidden">
           {activePanel === 'sources' && (
             <div className="h-full overflow-y-auto p-4 space-y-3">
-              <FilePicker onFilesSelected={handleUpload} loading={uploading} />
+              <FilePicker onFilesSelected={handleUpload} loading={uploading}
+              localFolderConnected={localFolder.connected}
+              localFolderName={localFolder.folderName}
+              onConnectFolder={handleConnectFolder}
+              onRescanFolder={handleRescanFolder}
+              onDisconnectFolder={localFolder.disconnect}
+              localScanning={localFolder.scanning}
+            />
               <div className="text-xs text-slate-400">
                 {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : `전체 ${docCount}개`}
               </div>
@@ -247,7 +291,14 @@ export default function WorkspacePage() {
             <span className="text-xs text-slate-400">{docCount}개</span>
           </div>
           <div className="px-4 pb-2 space-y-2">
-            <FilePicker onFilesSelected={handleUpload} loading={uploading} />
+            <FilePicker onFilesSelected={handleUpload} loading={uploading}
+              localFolderConnected={localFolder.connected}
+              localFolderName={localFolder.folderName}
+              onConnectFolder={handleConnectFolder}
+              onRescanFolder={handleRescanFolder}
+              onDisconnectFolder={localFolder.disconnect}
+              localScanning={localFolder.scanning}
+            />
             {/* 업로드 대상 폴더 선택 */}
             {Object.keys(tree).filter(f => f !== '__root__').length > 0 && (
               <select

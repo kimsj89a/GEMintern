@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { isFileSystemAccessSupported } from '../hooks/useLocalFolder';
 
 const SUPPORTED_EXTENSIONS = new Set([
   '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.txt', '.md', '.csv',
@@ -9,9 +10,19 @@ interface FilePickerProps {
   accept?: string;
   multiple?: boolean;
   loading?: boolean;
+  // Local folder connection
+  localFolderConnected?: boolean;
+  localFolderName?: string;
+  onConnectFolder?: () => void;
+  onRescanFolder?: () => void;
+  onDisconnectFolder?: () => void;
+  localScanning?: boolean;
 }
 
-export default function FilePicker({ onFilesSelected, accept, multiple = true, loading }: FilePickerProps) {
+export default function FilePicker({
+  onFilesSelected, accept, multiple = true, loading,
+  localFolderConnected, localFolderName, onConnectFolder, onRescanFolder, onDisconnectFolder, localScanning,
+}: FilePickerProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -41,6 +52,8 @@ export default function FilePicker({ onFilesSelected, accept, multiple = true, l
     if (supported.length > 0) onFilesSelected(supported);
     e.target.value = '';
   };
+
+  const fsaSupported = isFileSystemAccessSupported();
 
   return (
     <div className="space-y-2">
@@ -91,13 +104,46 @@ export default function FilePicker({ onFilesSelected, accept, multiple = true, l
         )}
       </div>
       {!loading && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); folderRef.current?.click(); }}
-          className="w-full px-3 py-2 text-[12px] text-violet-600 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
-        >
-          📁 폴더 통째로 업로드
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); folderRef.current?.click(); }}
+            className="flex-1 px-2 py-1.5 text-[11px] text-violet-600 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
+          >
+            📁 폴더 업로드
+          </button>
+          {fsaSupported && onConnectFolder && (
+            localFolderConnected ? (
+              <div className="flex-1 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onRescanFolder?.(); }}
+                  disabled={localScanning}
+                  className="flex-1 px-2 py-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50 truncate"
+                  title={localFolderName}
+                >
+                  {localScanning ? '⏳ 스캔 중...' : `🔗 ${localFolderName}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDisconnectFolder?.(); }}
+                  className="px-1.5 py-1.5 text-[11px] text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                  title="연결 해제"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onConnectFolder(); }}
+                className="flex-1 px-2 py-1.5 text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+              >
+                🔗 폴더 연결
+              </button>
+            )
+          )}
+        </div>
       )}
     </div>
   );
