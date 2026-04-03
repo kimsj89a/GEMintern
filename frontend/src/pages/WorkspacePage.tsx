@@ -464,7 +464,7 @@ export default function WorkspacePage() {
               <span className="text-sm font-bold text-slate-700">📖 위키</span>
             </div>
             <div className="flex-1 overflow-hidden">
-              <WikiPanel projectName={currentProject} />
+              <WikiPanel projectName={currentProject} selectedDocs={selectedDocs} />
             </div>
           </div>
 

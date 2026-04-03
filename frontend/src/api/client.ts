@@ -121,9 +121,9 @@ export const api = {
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections/${encodeURIComponent(sectionId)}`, {
       method: 'PATCH', body: JSON.stringify(body),
     }),
-  reviseWikiSection: (project: string, sectionId: string, instruction: string) =>
+  reviseWikiSection: (project: string, sectionId: string, instruction: string, selectedDocs?: string[]) =>
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections/${encodeURIComponent(sectionId)}/revise`, {
-      method: 'POST', body: JSON.stringify({ instruction }),
+      method: 'POST', body: JSON.stringify({ instruction, selected_docs: selectedDocs }),
     }),
   addWikiSection: (project: string, body: { id: string; title: string; content?: string }) =>
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/sections`, {

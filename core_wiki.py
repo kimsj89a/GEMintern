@@ -484,6 +484,7 @@ def revise_section(
     section_id: str,
     instruction: str,
     owner_id: int | None = None,
+    selected_docs: list | None = None,
 ) -> dict:
     """AI로 특정 섹션을 수정 지시에 따라 다시 작성."""
     from ai_client import AIClient
@@ -501,8 +502,12 @@ def revise_section(
     if not section:
         return {"error": f"섹션 '{section_id}'를 찾을 수 없습니다."}
 
-    # 프로젝트 문서 로드 (출처 참조용)
+    # 프로젝트 문서 로드 (출처 참조용, 선택된 파일만)
     docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    if selected_docs:
+        sel_stems = {os.path.splitext(s)[0] for s in selected_docs}
+        docs = {k: v for k, v in docs.items()
+                if os.path.splitext(k)[0] in sel_stems or k in selected_docs}
     doc_list = list(docs.items())
     n = len(doc_list)
     per_doc = max(2000, _TOTAL_BUDGET // max(n, 1))
@@ -543,13 +548,15 @@ def revise_section(
     model = _get_model()
     config = types.GenerateContentConfig(
         temperature=0.2,
-        max_output_tokens=8192,
+        max_output_tokens=65536,
         thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
     try:
+        logger.info(f"Wiki revise: section={section_id}, instruction={instruction[:100]}, docs={len(doc_list)}")
         resp = client.models.generate_content(model=model, contents=prompt, config=config)
     except Exception as e:
+        logger.error(f"Wiki revise API error: {e}")
         return {"error": f"AI 호출 실패: {e}"}
 
     raw = resp.text.strip()
@@ -561,6 +568,11 @@ def revise_section(
         except json.JSONDecodeError:
             pass
     if result is None:
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    if result is None:
         start = raw.find("{")
         end = raw.rfind("}")
         if start >= 0 and end > start:
@@ -569,6 +581,7 @@ def revise_section(
             except json.JSONDecodeError:
                 pass
     if result is None:
+        logger.error(f"Wiki revise parse failed: {raw[:500]}")
         return {"error": "AI 응답 파싱 실패"}
 
     # 섹션 업데이트

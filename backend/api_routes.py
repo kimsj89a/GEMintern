@@ -829,6 +829,7 @@ def revise_wiki_section(name: str, section_id: str, body: dict, user: dict = Dep
     api_key = _get_api_key()
     owner_id = user["id"]
     instruction = body.get("instruction", "")
+    selected_docs = body.get("selected_docs")
 
     from backend.api_ws import _tasks
     task_id = create_task(user_id=user["id"], endpoint="/wiki/revise")
@@ -838,7 +839,10 @@ def revise_wiki_section(name: str, section_id: str, body: dict, user: dict = Dep
     def _run():
         try:
             import core_wiki
-            result = core_wiki.revise_section(api_key, name, section_id, instruction, owner_id=owner_id)
+            result = core_wiki.revise_section(
+                api_key, name, section_id, instruction,
+                owner_id=owner_id, selected_docs=selected_docs,
+            )
             task["status"] = "complete"
             task["result"] = result
         except Exception as e:
