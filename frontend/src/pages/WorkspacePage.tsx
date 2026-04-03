@@ -79,7 +79,13 @@ export default function WorkspacePage() {
       const folderTree = data.folder_tree || {};
       setTree(folderTree);
       setDocCount(data.count || 0);
-      setSelectedDocs(Object.values(folderTree).flat() as string[]);
+      const allDocs = Object.values(folderTree).flat() as string[];
+      setSelectedDocs(prev => {
+        if (prev.length === 0) return allDocs; // first load → select all
+        // Preserve selection: keep docs that still exist, default to all if none remain
+        const remaining = prev.filter(d => allDocs.includes(d));
+        return remaining.length > 0 ? remaining : allDocs;
+      });
     }).catch((err) => { console.error('[loadDocs]', err); setTree({}); setDocCount(0); });
   }, [currentProject]);
 

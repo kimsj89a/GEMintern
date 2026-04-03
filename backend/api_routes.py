@@ -605,7 +605,21 @@ def delete_folder(name: str, folder: str, user: dict = Depends(get_current_user)
 def move_doc(name: str, doc: str, req: DocMoveRequest, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_rag
-    return core_rag.move_doc_to_folder(name, doc, req.target_folder, owner_id=user["id"])
+    result = core_rag.move_doc_to_folder(name, doc, req.target_folder, owner_id=user["id"])
+    # Also sync SQLite documents table
+    if result.get("success"):
+        from backend.database import get_db
+        with get_db() as conn:
+            project = conn.execute(
+                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                (name, user["id"])
+            ).fetchone()
+            if project:
+                conn.execute(
+                    "UPDATE documents SET folder = ? WHERE project_id = ? AND (filename = ? OR filename LIKE ?)",
+                    (req.target_folder, project["id"], doc, f"{doc}.%"),
+                )
+    return result
 
 
 @router.delete("/projects/{name}/docs/{doc}")
@@ -703,7 +717,9 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), folder: s
     if target_folder != "__root__" and texts:
         for fn in texts:
             try:
-                core_rag.move_doc_to_folder(name, fn, target_folder, owner_id=user["id"])
+                # Use stem (without extension) since _folders.json stores stems
+                stem = os.path.splitext(fn)[0]
+                core_rag.move_doc_to_folder(name, stem, target_folder, owner_id=user["id"])
             except Exception:
                 pass
 
