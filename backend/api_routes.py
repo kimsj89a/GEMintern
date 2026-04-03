@@ -520,6 +520,7 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     fs_tree = core_rag.get_folder_tree(name, owner_id=user["id"]) or {}
 
     # 2. SQLite에서 문서 목록 (항상 확인 — 파일시스템과 합침)
+    # Skip SQLite entries whose stem already exists in fs (avoids stem/filename duplicates)
     db_tree: dict = {}
     db_names: set = set()
     with get_db() as conn:
@@ -533,11 +534,16 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
                 (project["id"],)
             ).fetchall()
             for r in rows:
+                fname = r["filename"]
+                stem = os.path.splitext(fname)[0]
+                # If filesystem already tracks this doc (as stem), skip the SQLite entry
+                if stem in fs_names or fname in fs_names:
+                    continue
                 folder = r["folder"] or core_rag.ROOT_FOLDER
-                db_tree.setdefault(folder, []).append(r["filename"])
-                db_names.add(r["filename"])
+                db_tree.setdefault(folder, []).append(fname)
+                db_names.add(fname)
 
-    # 3. 합치기 (파일시스템 + SQLite, 중복 제거)
+    # 3. 합치기 (파일시스템 우선, SQLite는 보완)
     all_names = fs_names | db_names
     merged_tree: dict = {}
     for folder, docs in {**db_tree, **fs_tree}.items():
