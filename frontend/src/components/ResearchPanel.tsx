@@ -257,14 +257,13 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             + 새 노트
           </button>
           <button
-            onClick={() => { if (!showGraph) setShowGraph(true); }}
-            onDoubleClick={() => { if (showGraph) setShowGraph(false); }}
+            onClick={() => setShowGraph(!showGraph)}
             className={`w-full px-2 py-1.5 text-xs rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
               showGraph
                 ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
             }`}>
-            🕸 {showGraph ? '더블클릭: 목록으로' : '그래프 보기'}
+            🕸 {showGraph ? '노트 목록' : '그래프 보기'}
           </button>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="노트 검색..."

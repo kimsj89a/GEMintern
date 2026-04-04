@@ -140,7 +140,14 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
     const tick = () => {
       const nodes = nodesRef.current, edges = edgesRef.current;
+      // Auto-resize canvas when parent becomes visible (fixes hidden→visible transition)
+      const parentRect = canvas.parentElement?.getBoundingClientRect();
+      if (parentRect && parentRect.width > 0 && (canvas.width < 2 || canvas.height < 2)) {
+        canvas.width = parentRect.width;
+        canvas.height = parentRect.height;
+      }
       const w = canvas.width, h = canvas.height;
+      if (w < 2 || h < 2) { animRef.current = requestAnimationFrame(tick); return; }
       const wcx = (w / 2 - panRef.current.x) / scaleRef.current;
       const wcy = (h / 2 - panRef.current.y) / scaleRef.current;
       nodeMap.clear();
