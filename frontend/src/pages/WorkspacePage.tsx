@@ -20,6 +20,7 @@ import QaPanel from '../components/QaPanel';
 import ExcelModelPanel from '../components/ExcelModelPanel';
 import DocAnalysisPanel from '../components/DocAnalysisPanel';
 import ContractComparePanel from '../components/ContractComparePanel';
+import ResearchPanel from '../components/ResearchPanel';
 import { useLocalFolder } from '../hooks/useLocalFolder';
 
 // ── 스튜디오 도구 정의 ──
@@ -33,6 +34,7 @@ const STUDIO_TOOLS = [
   { id: 'compare', label: '신구비교', icon: '⚖️', desc: '텀싯↔계약서 비교표' },
   { id: 'excel', label: 'Excel 모델', icon: '📊', desc: 'PEF 캐시플로우 모델' },
   { id: 'ppt', label: 'PPT 생성', icon: '📑', desc: '발표자료 슬라이드', page: 'ppt_tools' },
+  { id: 'notes', label: '연구노트', icon: '📝', desc: 'Obsidian식 리서치 노트' },
 ];
 
 
@@ -552,8 +554,22 @@ export default function WorkspacePage() {
             </div>
           </div>
 
+          {/* 연구노트 — 항상 마운트, display 토글 */}
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTool === 'notes' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+              <button onClick={() => setActiveTool(null)}
+                className="text-slate-400 hover:text-slate-600">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">📝 연구노트</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ResearchPanel projectName={currentProject} />
+            </div>
+          </div>
+
           {/* 기타 도구 — 조건부 렌더링 */}
-          {activeTool && !['wiki', 'review', 'report', 'qa', 'excel', 'analysis', 'compare'].includes(activeTool) ? (
+          {activeTool && !['wiki', 'review', 'report', 'qa', 'excel', 'analysis', 'compare', 'notes'].includes(activeTool) ? (
             <>
               <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
                 <button onClick={() => setActiveTool(null)}

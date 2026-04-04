@@ -324,3 +324,19 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* ─── Research Notes (Obsidian-like) ─── */
+.wikilink { color: #6366f1; text-decoration: underline; text-decoration-style: dotted; cursor: pointer; }
+.wikilink:hover { color: #4f46e5; text-decoration-style: solid; }
+.wikilink.broken { color: #94a3b8; text-decoration-style: dashed; }
+
+.note-tag { color: #7c3aed; background: #f5f3ff; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.8em; cursor: pointer; }
+.note-tag:hover { background: #ede9fe; }
+
+.callout { border-left: 4px solid; border-radius: 0.5rem; padding: 0.75rem 1rem; margin: 0.75rem 0; }
+.callout-title { font-weight: 600; font-size: 0.8rem; margin-bottom: 0.25rem; }
+.callout-note { border-color: #3b82f6; background: #eff6ff; }
+.callout-warning { border-color: #f59e0b; background: #fffbeb; }
+.callout-tip { border-color: #10b981; background: #ecfdf5; }
+.callout-important { border-color: #8b5cf6; background: #f5f3ff; }
+.callout-caution { border-color: #ef4444; background: #fef2f2; }
+

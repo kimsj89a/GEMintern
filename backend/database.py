@@ -141,6 +141,39 @@ def init_db():
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 UNIQUE(project_id)
             );
+
+            -- Research notes (Obsidian-like)
+            CREATE TABLE IF NOT EXISTS research_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                slug TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                tags_json TEXT DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(project_id, slug)
+            );
+
+            CREATE TABLE IF NOT EXISTS note_backlinks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                source_note_id INTEGER NOT NULL,
+                target_slug TEXT NOT NULL,
+                context TEXT DEFAULT '',
+                FOREIGN KEY (source_note_id) REFERENCES research_notes(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_bl_target ON note_backlinks(project_id, target_slug);
+
+            CREATE TABLE IF NOT EXISTS note_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                note_id INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                FOREIGN KEY (note_id) REFERENCES research_notes(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_tags_tag ON note_tags(project_id, tag);
         """)
 
     # Bootstrap admin user from env vars

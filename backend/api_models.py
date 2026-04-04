@@ -24,6 +24,18 @@ class DocMoveRequest(BaseModel):
     target_folder: str
 
 
+class NoteCreate(BaseModel):
+    title: str
+    content: str = ""
+    tags: list[str] = []
+
+
+class NoteUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
 class GenerateRequest(BaseModel):
     project_name: str
     template_option: str = "free_summary"

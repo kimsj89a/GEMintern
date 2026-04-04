@@ -12,7 +12,7 @@ from fastapi.responses import Response
 
 from pydantic import BaseModel
 from backend.api_models import (
-    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest,
+    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest, NoteCreate, NoteUpdate,
     GenerateRequest, QaRequest, AnalysisRequest,
     CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
     SaveResearchRequest,
@@ -1616,6 +1616,62 @@ def save_research(req: SaveResearchRequest, user: dict = Depends(get_current_use
             )
 
     return result
+
+
+# ========================================
+# Research Notes (Obsidian-like)
+# ========================================
+
+@router.get("/projects/{name}/notes")
+def list_notes(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.list_notes(name, user["id"])
+
+
+@router.post("/projects/{name}/notes")
+def create_note(name: str, req: NoteCreate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.create_note(name, user["id"], req.title, req.content, req.tags)
+
+
+@router.get("/projects/{name}/notes/tags")
+def get_note_tags(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.get_tags(name, user["id"])
+
+
+@router.get("/projects/{name}/notes/{slug}")
+def get_note(name: str, slug: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    note = core_notes.get_note(name, user["id"], slug)
+    if not note:
+        raise HTTPException(status_code=404, detail="노트를 찾을 수 없습니다.")
+    return note
+
+
+@router.patch("/projects/{name}/notes/{slug}")
+def update_note(name: str, slug: str, req: NoteUpdate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.update_note(name, user["id"], slug, req.title, req.content, req.tags)
+
+
+@router.delete("/projects/{name}/notes/{slug}")
+def delete_note(name: str, slug: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.delete_note(name, user["id"], slug)
+
+
+@router.get("/projects/{name}/notes/{slug}/backlinks")
+def get_note_backlinks(name: str, slug: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.get_backlinks(name, user["id"], slug)
 
 
 # ========================================

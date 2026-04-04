@@ -362,6 +362,28 @@ export const api = {
   getMe: () => request<any>('/auth/me'),
   refreshToken: () => request<{ token: string; user: any }>('/auth/refresh', { method: 'POST' }),
 
+  // Research Notes
+  listNotes: (project: string) =>
+    request<any[]>(`/projects/${encodeURIComponent(project)}/notes`),
+  createNote: (project: string, data: { title: string; content?: string; tags?: string[] }) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes`, {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  getNote: (project: string, slug: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}`),
+  updateNote: (project: string, slug: string, data: { title?: string; content?: string; tags?: string[] }) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}`, {
+      method: 'PATCH', body: JSON.stringify(data),
+    }),
+  deleteNote: (project: string, slug: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}`, {
+      method: 'DELETE',
+    }),
+  getNoteBacklinks: (project: string, slug: string) =>
+    request<any[]>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/backlinks`),
+  getNoteTags: (project: string) =>
+    request<any[]>(`/projects/${encodeURIComponent(project)}/notes/tags`),
+
   // NPS
   npsSearch: (params: URLSearchParams) =>
     request<{ data: any[]; total: number; page: number; perPage: number; error?: string }>(
