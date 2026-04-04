@@ -60,7 +60,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
   // Shift+drag link creation
   const linkDragRef = useRef<{ source: GraphNode; worldX: number; worldY: number; targetNode: GraphNode | null } | null>(null);
-  const [linkDragActive, setLinkDragActive] = useState(false);
+  // linkDragRef is used for visual feedback only during node→node drag
 
   // Context menu
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: GraphNode } | null>(null);
@@ -260,6 +260,11 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
   }, []);
 
   // ── Mouse handlers ──
+  // Left-click = open note
+  // Left-drag node → drop on empty = move node
+  // Left-drag node → drop ON another node = CREATE LINK
+  // Left-drag canvas = pan
+  // Right-click = context menu
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setCtxMenu(null);
@@ -276,15 +281,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     }
     if (connectMode) { setConnectMode(false); connectSourceRef.current = null; }
 
-    // Shift+drag = link creation
-    if (e.shiftKey && node) {
-      const w = screenToWorld(mx, my);
-      linkDragRef.current = { source: node, worldX: w.x, worldY: w.y, targetNode: null };
-      setLinkDragActive(true);
-      return;
-    }
-
-    leftDragRef.current = { node, startX: mx, startY: my, moved: false, shift: e.shiftKey };
+    leftDragRef.current = { node, startX: mx, startY: my, moved: false, shift: false };
     if (node) { node.vx = 0; node.vy = 0; }
   };
 
@@ -293,17 +290,6 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     if (!rect) return;
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
 
-    // Shift link drag
-    if (linkDragRef.current) {
-      const w = screenToWorld(mx, my);
-      const target = getNodeAt(mx, my);
-      linkDragRef.current.worldX = w.x; linkDragRef.current.worldY = w.y;
-      linkDragRef.current.targetNode = (target && target !== linkDragRef.current.source) ? target : null;
-      if (canvasRef.current) canvasRef.current.style.cursor = linkDragRef.current.targetNode ? 'crosshair' : 'default';
-      return;
-    }
-
-    // Left drag
     if (leftDragRef.current && (e.buttons & 1)) {
       const ld = leftDragRef.current;
       const dx = mx - ld.startX, dy = my - ld.startY;
@@ -313,12 +299,25 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           ld.node.x += e.movementX / scaleRef.current;
           ld.node.y += e.movementY / scaleRef.current;
           ld.node.vx = 0; ld.node.vy = 0;
+          // Show link-drag visual when hovering over another node during drag
+          const w = screenToWorld(mx, my);
+          const target = getNodeAt(mx, my);
+          const validTarget = (target && target !== ld.node) ? target : null;
+          if (validTarget) {
+            linkDragRef.current = { source: ld.node, worldX: w.x, worldY: w.y, targetNode: validTarget };
+          } else {
+            linkDragRef.current = null;
+          }
         } else {
           panRef.current.x += e.movementX;
           panRef.current.y += e.movementY;
         }
       }
-      if (canvasRef.current) canvasRef.current.style.cursor = ld.node ? 'grabbing' : 'move';
+      if (canvasRef.current) {
+        const target = ld.node ? getNodeAt(mx, my) : null;
+        canvasRef.current.style.cursor =
+          (target && target !== ld.node) ? 'crosshair' : ld.node ? 'grabbing' : 'move';
+      }
       return;
     }
 
@@ -328,26 +327,35 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
   };
 
   const handleMouseUp = async (e: React.MouseEvent) => {
-    // Shift link drag release
-    if (linkDragRef.current) {
-      if (linkDragRef.current.targetNode) {
-        await createLink(linkDragRef.current.source, linkDragRef.current.targetNode);
-      }
-      linkDragRef.current = null;
-      setLinkDragActive(false);
-      if (canvasRef.current) canvasRef.current.style.cursor = 'default';
+    linkDragRef.current = null; // clear link visual
+
+    if (e.button !== 0 || !leftDragRef.current) return;
+    const ld = leftDragRef.current;
+    leftDragRef.current = null;
+    if (canvasRef.current) canvasRef.current.style.cursor = 'default';
+
+    if (!ld.moved && ld.node) {
+      // Single click on node → no action (double-click to open)
       return;
     }
 
-    if (e.button !== 0 || !leftDragRef.current) return;
-    if (!leftDragRef.current.moved && leftDragRef.current.node) {
-      onNavigate(leftDragRef.current.node.slug);
-    } else if (leftDragRef.current.moved && leftDragRef.current.node) {
-      leftDragRef.current.node.pinned = true;
-      leftDragRef.current.node.vx = 0; leftDragRef.current.node.vy = 0;
+    if (ld.moved && ld.node) {
+      // Check if dropped ON another node → create link
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const dropTarget = getNodeAt(mx, my);
+        if (dropTarget && dropTarget !== ld.node) {
+          // Drop on another node = create connection
+          await createLink(ld.node, dropTarget);
+          // Move the dragged node back (it was being dragged onto the target)
+          return;
+        }
+      }
+      // Drop on empty = pin node in place
+      ld.node.pinned = true;
+      ld.node.vx = 0; ld.node.vy = 0;
     }
-    leftDragRef.current = null;
-    if (canvasRef.current) canvasRef.current.style.cursor = 'default';
   };
 
   // Right-click = context menu
@@ -391,6 +399,12 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     <div className="w-full h-full relative bg-slate-50">
       <canvas ref={canvasRef} className="w-full h-full"
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
+        onDoubleClick={(e) => {
+          const rect = canvasRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          const node = getNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+          if (node) onNavigate(node.slug);
+        }}
         onMouseLeave={() => { leftDragRef.current = null; hoverRef.current = null; }}
         onContextMenu={handleContextMenu} onWheel={handleWheel} />
 
@@ -398,12 +412,12 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
       {loaded && nodesRef.current.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">노트를 생성하면 그래프가 표시됩니다</div>}
 
       <div className="absolute top-2 left-2 text-[10px] text-slate-400 bg-white/80 backdrop-blur px-2 py-1 rounded-lg">
-        클릭: 열기 · 드래그: 이동 · Shift+드래그: 연결 · 우클릭: 메뉴
+        더블클릭: 열기 · 드래그: 이동 · 노드→노드 드래그: 연결 · 우클릭: 메뉴
       </div>
 
-      {(linkDragActive || connectMode) && (
+      {connectMode && (
         <div className="absolute top-2 right-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg animate-pulse">
-          🔗 {connectMode ? '연결할 노드를 클릭하세요' : '노드 위에서 놓으세요'}
+          🔗 연결할 노드를 클릭하세요
         </div>
       )}
 

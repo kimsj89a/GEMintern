@@ -196,16 +196,30 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   };
 
   // ── Navigate wikilink ──
-  const handleNavigate = useCallback((slug: string) => {
-    if (existingSlugs.has(slug)) {
-      selectNote(slug);
-    } else {
-      (async () => {
-        const note = await api.createNote(projectName, { title: slug });
-        if (note?.slug) { await loadNotes(); selectNote(note.slug); }
-      })();
+  // slug param is the slugified version from the [[link]]. Match against known slugs OR titles.
+  const handleNavigate = useCallback((inputSlug: string) => {
+    // Try exact slug match first
+    if (existingSlugs.has(inputSlug)) {
+      selectNote(inputSlug);
+      return;
     }
-  }, [existingSlugs, selectNote, projectName, loadNotes]);
+    // Try matching by title (case-insensitive, trimmed)
+    const byTitle = notes.find(n =>
+      n.title.toLowerCase().replace(/\s+/g, '-') === inputSlug ||
+      n.title.toLowerCase() === inputSlug.replace(/-/g, ' ') ||
+      n.slug === inputSlug
+    );
+    if (byTitle) {
+      selectNote(byTitle.slug);
+      return;
+    }
+    // No match → create new note with the link text as title
+    (async () => {
+      const displayTitle = inputSlug.replace(/-/g, ' ');
+      const note = await api.createNote(projectName, { title: displayTitle });
+      if (note?.slug) { await loadNotes(); selectNote(note.slug); }
+    })();
+  }, [existingSlugs, notes, selectNote, projectName, loadNotes]);
 
   // ── Drag reorder ──
   const handleDragStart = (slug: string) => setDragSlug(slug);
@@ -242,13 +256,15 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             className="w-full px-2 py-1.5 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors">
             + 새 노트
           </button>
-          <button onClick={() => setShowGraph(!showGraph)}
+          <button
+            onClick={() => { if (!showGraph) setShowGraph(true); }}
+            onDoubleClick={() => { if (showGraph) setShowGraph(false); }}
             className={`w-full px-2 py-1.5 text-xs rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
               showGraph
                 ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
             }`}>
-            🕸 {showGraph ? '노트 목록' : '그래프 보기'}
+            🕸 {showGraph ? '더블클릭: 목록으로' : '그래프 보기'}
           </button>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="노트 검색..."
