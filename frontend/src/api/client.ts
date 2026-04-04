@@ -381,6 +381,8 @@ export const api = {
     }),
   getNoteBacklinks: (project: string, slug: string) =>
     request<any[]>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/backlinks`),
+  getNoteGraph: (project: string) =>
+    request<{ nodes: any[]; edges: any[] }>(`/projects/${encodeURIComponent(project)}/notes/graph`),
   getNoteTags: (project: string) =>
     request<any[]>(`/projects/${encodeURIComponent(project)}/notes/tags`),
 

@@ -1636,6 +1636,13 @@ def create_note(name: str, req: NoteCreate, user: dict = Depends(get_current_use
     return core_notes.create_note(name, user["id"], req.title, req.content, req.tags)
 
 
+@router.get("/projects/{name}/notes/graph")
+def get_note_graph(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.get_graph(name, user["id"])
+
+
 @router.get("/projects/{name}/notes/tags")
 def get_note_tags(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])

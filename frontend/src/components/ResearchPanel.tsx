@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import NoteMarkdownViewer from './NoteMarkdownViewer';
+import NoteGraph from './NoteGraph';
 
 interface Note {
   id: number;
@@ -62,6 +63,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   // Backlinks
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const [showBacklinks, setShowBacklinks] = useState(true);
+  const [showGraph, setShowGraph] = useState(false);
 
   // Known slugs for broken link detection
   const existingSlugs = new Set(notes.map(n => n.slug));
@@ -204,12 +206,23 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
       {/* ── Left: Note list ── */}
       <div className="w-52 shrink-0 border-r border-slate-200 flex flex-col overflow-hidden">
         <div className="p-2 space-y-1.5 border-b border-slate-100">
-          <button
-            onClick={handleCreate}
-            className="w-full px-2 py-1.5 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
-          >
-            + 새 노트
-          </button>
+          <div className="flex gap-1">
+            <button
+              onClick={handleCreate}
+              className="flex-1 px-2 py-1.5 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+            >
+              + 새 노트
+            </button>
+            <button
+              onClick={() => setShowGraph(!showGraph)}
+              className={`px-2 py-1.5 text-xs rounded-lg transition-colors ${
+                showGraph ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+              title="그래프 뷰"
+            >
+              🕸
+            </button>
+          </div>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -272,8 +285,16 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
         )}
       </div>
 
-      {/* ── Right: Editor + Preview ── */}
-      {activeSlug ? (
+      {/* ── Right: Graph or Editor + Preview ── */}
+      {showGraph ? (
+        <div className="flex-1 overflow-hidden">
+          <NoteGraph
+            projectName={projectName}
+            activeSlug={activeSlug}
+            onNavigate={(slug) => { setShowGraph(false); selectNote(slug); }}
+          />
+        </div>
+      ) : activeSlug ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200">

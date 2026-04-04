@@ -259,6 +259,27 @@ def get_backlinks(project_name: str, owner_id: int, slug: str) -> List[Dict]:
     return [dict(r) for r in rows]
 
 
+def get_graph(project_name: str, owner_id: int) -> Dict:
+    """Return graph data: nodes (notes) + edges (wikilinks between them)."""
+    pid = _get_project_id(project_name, owner_id)
+    if not pid:
+        return {"nodes": [], "edges": []}
+    with get_db() as conn:
+        notes = conn.execute(
+            "SELECT id, slug, title FROM research_notes WHERE project_id = ?", (pid,)
+        ).fetchall()
+        slugs = {r["slug"] for r in notes}
+        nodes = [{"slug": r["slug"], "title": r["title"]} for r in notes]
+
+        links = conn.execute(
+            "SELECT rn.slug AS source, nb.target_slug AS target FROM note_backlinks nb JOIN research_notes rn ON nb.source_note_id = rn.id WHERE nb.project_id = ?",
+            (pid,),
+        ).fetchall()
+        # Only include edges where both nodes exist
+        edges = [{"source": r["source"], "target": r["target"]} for r in links if r["target"] in slugs]
+    return {"nodes": nodes, "edges": edges}
+
+
 def get_tags(project_name: str, owner_id: int) -> List[Dict]:
     """Get all tags with counts, structured for hierarchy."""
     pid = _get_project_id(project_name, owner_id)
