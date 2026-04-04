@@ -18,6 +18,7 @@ def compare_contracts(
     project_name: str,
     owner_id: int | None = None,
     selected_docs: list | None = None,
+    inline_docs: dict | None = None,
 ) -> str:
     """Compare termsheet vs contract drafts using AI.
 
@@ -50,8 +51,12 @@ def compare_contracts(
         docs = {k: v for k, v in docs.items()
                 if _stem(k) in sel_stems or k in selected_docs}
 
+    # Merge inline docs (from direct upload)
+    if inline_docs and isinstance(inline_docs, dict):
+        docs.update(inline_docs)
+
     if not docs:
-        raise ValueError("비교할 문서가 없습니다. 프로젝트에 텀싯과 계약서를 업로드해 주세요.")
+        raise ValueError("비교할 문서가 없습니다. 프로젝트에 텀싯과 계약서를 업로드하거나 직접 파일을 첨부해 주세요.")
 
     # Build document context with labels
     doc_budget = 200_000

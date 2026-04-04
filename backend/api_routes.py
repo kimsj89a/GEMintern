@@ -1036,6 +1036,7 @@ def contract_compare_endpoint(name: str, body: dict = None, user: dict = Depends
     model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
     owner_id = user["id"]
     selected_docs = (body or {}).get("selected_docs")
+    inline_docs = (body or {}).get("inline_docs")  # {filename: text} from direct upload
 
     from backend.api_ws import _tasks
     task_id = create_task(user_id=user["id"], endpoint="/contract-compare", model=model)
@@ -1046,7 +1047,8 @@ def contract_compare_endpoint(name: str, body: dict = None, user: dict = Depends
         try:
             import core_contract_compare
             result = core_contract_compare.compare_contracts(
-                api_key, model, name, owner_id=owner_id, selected_docs=selected_docs
+                api_key, model, name, owner_id=owner_id,
+                selected_docs=selected_docs, inline_docs=inline_docs,
             )
             task["status"] = "complete"
             task["result"] = result

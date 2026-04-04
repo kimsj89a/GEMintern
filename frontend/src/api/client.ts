@@ -158,10 +158,10 @@ export const api = {
       method: 'POST',
     }),
   // Contract Comparison
-  contractCompare: (project: string, selectedDocs?: string[]) =>
+  contractCompare: (project: string, selectedDocs?: string[], inlineDocs?: Record<string, string>) =>
     request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/contract-compare`, {
       method: 'POST',
-      body: JSON.stringify({ selected_docs: selectedDocs }),
+      body: JSON.stringify({ selected_docs: selectedDocs, inline_docs: inlineDocs }),
     }),
 
   downloadExcelModel: async (project: string, excelB64: string, filename: string) => {

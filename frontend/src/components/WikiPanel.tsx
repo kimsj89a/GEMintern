@@ -199,7 +199,11 @@ function RenderContent({
       components={{
         p: ({ children }) => <p className="mb-2 last:mb-0">{injectCitations(children)}</p>,
         li: ({ children }) => <li>{injectCitations(children)}</li>,
-        td: ({ children }) => <td className="border border-slate-200 px-2 py-1">{injectCitations(children)}</td>,
+        td: ({ children }) => {
+          const text = String(children ?? '').trim();
+          const isNumeric = /^[\d,.\-+%()₩$€¥ ]+$/.test(text) && /\d/.test(text);
+          return <td className={`border border-slate-200 px-2 py-1 ${isNumeric ? 'text-right tabular-nums' : ''}`}>{injectCitations(children)}</td>;
+        },
         th: ({ children }) => <th className="border border-slate-200 px-2 py-1 bg-slate-50 font-semibold">{injectCitations(children)}</th>,
         table: ({ children }) => <table style={{ fontSize: fs }} className="w-full border-collapse border border-slate-200 my-2">{children}</table>,
         thead: ({ children }) => <thead>{children}</thead>,
