@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { api } from '../api/client';
+import { useAuthStore } from '../stores/authStore';
 import MarkdownViewer from './MarkdownViewer';
 import { copyRichText, downloadAsWord, downloadAsMd, generateFilename } from '../utils/clipboard';
 
@@ -30,7 +31,7 @@ export default function ContractComparePanel({ projectName, selectedDocs }: {
     formData.append('files', file);
     const res = await fetch(`/api/projects/${encodeURIComponent(projectName)}/upload`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${(await import('../stores/authStore')).useAuthStore.getState().token}` },
+      headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
       body: formData,
     });
     const data = await res.json();

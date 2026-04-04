@@ -3,7 +3,6 @@ Research notes module — Obsidian-like wikilinks, backlinks, tags.
 """
 import json
 import re
-import unicodedata
 from typing import Dict, List, Optional
 
 from backend.database import get_db
