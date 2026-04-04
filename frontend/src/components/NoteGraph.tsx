@@ -1,28 +1,31 @@
 /**
- * NoteGraph — Force-directed graph of research notes.
+ * NoteGraph — Obsidian Canvas style.
  *
- *   Left-click node     → open note
- *   Left-drag node      → move node (pins in place)
- *   Left-drag canvas    → pan view
- *   Shift+Left-drag     → create [[wikilink]] connection
- *   Right-click node    → context menu (color, connect, size)
- *   Scroll              → zoom (toward cursor)
+ * HTML cards (draggable, editable) on a pannable/zoomable infinite canvas.
+ * Connection lines drawn on a <canvas> layer underneath.
+ *
+ *   Drag card          → move
+ *   Double-click card  → open note in editor
+ *   Right-click card   → context menu (color, connect, delete link)
+ *   Drag canvas bg     → pan
+ *   Scroll             → zoom toward cursor
+ *   Drag from handle   → create connection
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
+import NoteMarkdownViewer from './NoteMarkdownViewer';
 
-interface GraphNode {
+interface CanvasNode {
   slug: string;
   title: string;
+  content: string;
   x: number; y: number;
-  vx: number; vy: number;
-  radius: number;
-  pinned: boolean;
-  color: string; // fill color
+  w: number; h: number;
+  color: string;
 }
 
-interface GraphEdge { source: string; target: string }
+interface CanvasEdge { source: string; target: string }
 
 interface NoteGraphProps {
   projectName: string;
@@ -30,13 +33,8 @@ interface NoteGraphProps {
   onNavigate: (slug: string) => void;
 }
 
-const REPULSION = 600;
-const SPRING_K = 0.025;
-const SPRING_LEN = 140;
-const DAMPING = 0.88;
-const CENTER_PULL = 0.003;
-const DEFAULT_R = 12;
-const CLICK_THRESHOLD = 5;
+const CARD_W = 240;
+const CARD_H = 160;
 
 const PALETTE = [
   '#ffffff', '#e0e7ff', '#dbeafe', '#dcfce7', '#fef9c3',
@@ -44,82 +42,75 @@ const PALETTE = [
 ];
 
 export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const nodesRef = useRef<GraphNode[]>([]);
-  const edgesRef = useRef<GraphEdge[]>([]);
-  const animRef = useRef<number>(0);
-  const hoverRef = useRef<GraphNode | null>(null);
-  const scaleRef = useRef(1);
-  const panRef = useRef({ x: 0, y: 0 });
-  const [nodeRadius, setNodeRadius] = useState(DEFAULT_R);
-
-  // Left drag
-  const leftDragRef = useRef<{
-    node: GraphNode | null; startX: number; startY: number; moved: boolean; shift: boolean;
-  } | null>(null);
-
-  // Shift+drag link creation
-  const linkDragRef = useRef<{ source: GraphNode; worldX: number; worldY: number; targetNode: GraphNode | null } | null>(null);
-  // linkDragRef is used for visual feedback only during node→node drag
-
-  // Context menu
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: GraphNode } | null>(null);
-  const [connectMode, setConnectMode] = useState(false);
-  const connectSourceRef = useRef<GraphNode | null>(null);
-
+  const nodesRef = useRef<CanvasNode[]>([]);
+  const edgesRef = useRef<CanvasEdge[]>([]);
+  const [nodes, setNodes] = useState<CanvasNode[]>([]);
+  const [edges, setEdges] = useState<CanvasEdge[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  const screenToWorld = (sx: number, sy: number) => ({
-    x: (sx - panRef.current.x) / scaleRef.current,
-    y: (sy - panRef.current.y) / scaleRef.current,
-  });
+  // Viewport
+  const panRef = useRef({ x: 0, y: 0 });
+  const scaleRef = useRef(1);
+  const [, forceRender] = useState(0);
+  const rerender = () => forceRender(v => v + 1);
 
-  const getNodeAt = (sx: number, sy: number): GraphNode | null => {
-    const { x, y } = screenToWorld(sx, sy);
-    for (const n of nodesRef.current) {
-      const dx = x - n.x, dy = y - n.y;
-      if (dx * dx + dy * dy < (n.radius + 6) * (n.radius + 6)) return n;
-    }
-    return null;
-  };
+  // Drag state
+  const dragRef = useRef<{ slug: string; startX: number; startY: number; nodeStartX: number; nodeStartY: number; moved: boolean } | null>(null);
+  const panDragRef = useRef<{ startX: number; startY: number; panStartX: number; panStartY: number } | null>(null);
 
+  // Connection drag
+  const [linkDrag, setLinkDrag] = useState<{ sourceSlug: string; mx: number; my: number } | null>(null);
+
+  // Context menu
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: CanvasNode } | null>(null);
+
+  // Inline editing
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+
+  const existingSlugs = new Set(nodes.map(n => n.slug));
+
+  // ── Load graph data + note contents ──
   const loadGraph = useCallback(async () => {
     try {
       const data = await api.getNoteGraph(projectName);
-      const linkCount: Record<string, number> = {};
-      for (const e of data.edges) {
-        linkCount[e.source] = (linkCount[e.source] || 0) + 1;
-        linkCount[e.target] = (linkCount[e.target] || 0) + 1;
-      }
-      const canvas = canvasRef.current;
-      const cx = (canvas?.width || 600) / 2, cy = (canvas?.height || 400) / 2;
-      // Preserve existing colors/pins
       const prevMap = new Map(nodesRef.current.map(n => [n.slug, n]));
-      nodesRef.current = data.nodes.map((n: any, i: number) => {
+
+      // Load content for each note
+      const noteNodes: CanvasNode[] = [];
+      const cols = Math.max(3, Math.ceil(Math.sqrt(data.nodes.length)));
+      for (let i = 0; i < data.nodes.length; i++) {
+        const n = data.nodes[i];
         const prev = prevMap.get(n.slug);
-        const angle = (2 * Math.PI * i) / Math.max(data.nodes.length, 1);
-        const r = 80 + Math.random() * 100;
-        return {
-          slug: n.slug, title: n.title,
-          x: prev?.x ?? cx + Math.cos(angle) * r,
-          y: prev?.y ?? cy + Math.sin(angle) * r,
-          vx: 0, vy: 0,
-          pinned: prev?.pinned ?? false,
+        let content = prev?.content || '';
+        if (!prev) {
+          try {
+            const full = await api.getNote(projectName, n.slug);
+            content = full?.content || '';
+          } catch {}
+        }
+        noteNodes.push({
+          slug: n.slug,
+          title: n.title,
+          content,
+          x: prev?.x ?? (i % cols) * (CARD_W + 40) + 60,
+          y: prev?.y ?? Math.floor(i / cols) * (CARD_H + 40) + 60,
+          w: prev?.w ?? CARD_W,
+          h: prev?.h ?? CARD_H,
           color: prev?.color ?? '#ffffff',
-          radius: nodeRadius,
-        };
-      });
+        });
+      }
+      nodesRef.current = noteNodes;
       edgesRef.current = data.edges;
+      setNodes([...noteNodes]);
+      setEdges([...data.edges]);
       setLoaded(true);
     } catch {}
-  }, [projectName, nodeRadius]);
+  }, [projectName]);
 
   useEffect(() => { loadGraph(); }, [loadGraph]);
-
-  // Update radii when slider changes
-  useEffect(() => {
-    nodesRef.current.forEach(n => { n.radius = nodeRadius; });
-  }, [nodeRadius]);
 
   // Close context menu
   useEffect(() => {
@@ -129,336 +120,324 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     return () => window.removeEventListener('click', close);
   }, [ctxMenu]);
 
-  // ── Simulation + render ──
+  // ── Draw edges on canvas ──
   useEffect(() => {
-    if (!loaded) return;
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const nodeMap = new Map<string, GraphNode>();
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-    const tick = () => {
-      const nodes = nodesRef.current, edges = edgesRef.current;
-      // Auto-resize canvas when parent becomes visible (fixes hidden→visible transition)
-      const parentRect = canvas.parentElement?.getBoundingClientRect();
-      if (parentRect && parentRect.width > 0 && (canvas.width < 2 || canvas.height < 2)) {
-        canvas.width = parentRect.width;
-        canvas.height = parentRect.height;
+    const draw = () => {
+      const rect = container.getBoundingClientRect();
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
       }
-      const w = canvas.width, h = canvas.height;
-      if (w < 2 || h < 2) { animRef.current = requestAnimationFrame(tick); return; }
-      const wcx = (w / 2 - panRef.current.x) / scaleRef.current;
-      const wcy = (h / 2 - panRef.current.y) / scaleRef.current;
-      nodeMap.clear();
-      nodes.forEach(n => nodeMap.set(n.slug, n));
-
-      for (let i = 0; i < nodes.length; i++) {
-        const a = nodes[i];
-        if (a.pinned || leftDragRef.current?.node === a) continue;
-        a.vx += (wcx - a.x) * CENTER_PULL;
-        a.vy += (wcy - a.y) * CENTER_PULL;
-        for (let j = i + 1; j < nodes.length; j++) {
-          const b = nodes[j];
-          let dx = a.x - b.x, dy = a.y - b.y;
-          const d = Math.sqrt(dx * dx + dy * dy) || 1;
-          const f = REPULSION / (d * d);
-          dx *= f / d; dy *= f / d;
-          a.vx += dx; a.vy += dy;
-          if (!b.pinned && leftDragRef.current?.node !== b) { b.vx -= dx; b.vy -= dy; }
-        }
-      }
-      for (const e of edges) {
-        const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
-        if (!a || !b) continue;
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        const f = (d - SPRING_LEN) * SPRING_K;
-        const fx = (dx / d) * f, fy = (dy / d) * f;
-        if (!a.pinned && leftDragRef.current?.node !== a) { a.vx += fx; a.vy += fy; }
-        if (!b.pinned && leftDragRef.current?.node !== b) { b.vx -= fx; b.vy -= fy; }
-      }
-      for (const n of nodes) {
-        if (n.pinned || leftDragRef.current?.node === n) continue;
-        n.vx *= DAMPING; n.vy *= DAMPING; n.x += n.vx; n.y += n.vy;
-      }
-
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
       const s = scaleRef.current;
-      ctx.clearRect(0, 0, w, h);
+      const px = panRef.current.x, py = panRef.current.y;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const nodeMap = new Map(nodesRef.current.map(n => [n.slug, n]));
+
       ctx.save();
-      ctx.translate(panRef.current.x, panRef.current.y);
+      ctx.translate(px, py);
       ctx.scale(s, s);
 
       // Edges
-      for (const e of edges) {
+      for (const e of edgesRef.current) {
         const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
         if (!a || !b) continue;
-        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2 / s;
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+        const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2 / s;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
         ctx.globalAlpha = 1;
-        // Arrowhead
-        const ang = Math.atan2(b.y - a.y, b.x - a.x);
-        const ax = b.x - Math.cos(ang) * (b.radius + 2), ay = b.y - Math.sin(ang) * (b.radius + 2);
+        // Arrow
+        const ang = Math.atan2(by - ay, bx - ax);
+        const arrowX = bx - Math.cos(ang) * 20;
+        const arrowY = by - Math.sin(ang) * 20;
         ctx.fillStyle = '#6366f1';
-        ctx.beginPath(); ctx.moveTo(ax, ay);
-        ctx.lineTo(ax - Math.cos(ang - 0.4) * 8 / s, ay - Math.sin(ang - 0.4) * 8 / s);
-        ctx.lineTo(ax - Math.cos(ang + 0.4) * 8 / s, ay - Math.sin(ang + 0.4) * 8 / s);
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath(); ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(arrowX - Math.cos(ang - 0.4) * 10 / s, arrowY - Math.sin(ang - 0.4) * 10 / s);
+        ctx.lineTo(arrowX - Math.cos(ang + 0.4) * 10 / s, arrowY - Math.sin(ang + 0.4) * 10 / s);
         ctx.fill();
+        ctx.globalAlpha = 1;
       }
 
       // Link drag line
-      const ld = linkDragRef.current;
-      if (ld) {
-        ctx.strokeStyle = ld.targetNode ? '#22c55e' : '#6366f1';
-        ctx.lineWidth = 2 / s; ctx.setLineDash([5 / s, 3 / s]);
-        ctx.beginPath(); ctx.moveTo(ld.source.x, ld.source.y); ctx.lineTo(ld.worldX, ld.worldY); ctx.stroke();
-        ctx.setLineDash([]);
-        if (ld.targetNode) {
-          ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2.5 / s;
-          ctx.beginPath(); ctx.arc(ld.targetNode.x, ld.targetNode.y, ld.targetNode.radius + 4, 0, Math.PI * 2); ctx.stroke();
+      if (linkDrag) {
+        const src = nodeMap.get(linkDrag.sourceSlug);
+        if (src) {
+          const sx = src.x + src.w / 2, sy = src.y + src.h / 2;
+          const wx = (linkDrag.mx - px) / s, wy = (linkDrag.my - py) / s;
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 2.5 / s;
+          ctx.setLineDash([6 / s, 4 / s]);
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(wx, wy); ctx.stroke();
+          ctx.setLineDash([]);
         }
-      }
-
-      // Nodes (circle only, no text inside)
-      for (const n of nodes) {
-        const isActive = n.slug === activeSlug;
-        const isHover = hoverRef.current === n;
-        const isLinkTarget = ld?.targetNode === n;
-        ctx.shadowColor = isActive ? 'rgba(99,102,241,0.4)' : 'rgba(0,0,0,0.05)';
-        ctx.shadowBlur = isActive ? 10 : 2;
-        ctx.fillStyle = isLinkTarget ? '#bbf7d0' : isActive ? '#6366f1' : isHover ? '#c7d2fe' : n.color;
-        ctx.strokeStyle = isLinkTarget ? '#22c55e' : isActive ? '#4338ca' : isHover ? '#6366f1' : '#9ca3af';
-        ctx.lineWidth = (isActive || isHover || isLinkTarget ? 2.5 : 1.2) / s;
-        ctx.beginPath(); ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.shadowBlur = 0;
-        // Full title above
-        ctx.fillStyle = isActive ? '#4338ca' : '#334155';
-        ctx.font = `500 ${Math.max(9, 10 / s)}px -apple-system, sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText(n.title, n.x, n.y - n.radius - 3 / s);
-      }
-
-      if (ld) {
-        const label = ld.targetNode ? `→ ${ld.targetNode.title}` : '노드 위에서 놓기';
-        ctx.fillStyle = ld.targetNode ? '#16a34a' : '#6366f1';
-        ctx.font = `600 ${10 / s}px -apple-system, sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText(label, ld.worldX, ld.worldY - 10 / s);
       }
 
       ctx.restore();
-      animRef.current = requestAnimationFrame(tick);
+      requestAnimationFrame(draw);
     };
-    animRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [loaded, activeSlug]);
+    const id = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(id);
+  }, [edges, linkDrag]);
 
+  // ── Canvas resize ──
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const resize = () => {
-      const p = canvas.parentElement?.getBoundingClientRect();
-      if (p) { canvas.width = p.width; canvas.height = p.height; }
-    };
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    const container = containerRef.current;
+    if (!container) return;
+    const obs = new ResizeObserver(() => rerender());
+    obs.observe(container);
+    return () => obs.disconnect();
   }, []);
 
-  // ── Mouse handlers ──
-  // Left-click = open note
-  // Left-drag node → drop on empty = move node
-  // Left-drag node → drop ON another node = CREATE LINK
-  // Left-drag canvas = pan
-  // Right-click = context menu
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // ── Card drag ──
+  const handleCardMouseDown = (e: React.MouseEvent, slug: string) => {
     if (e.button !== 0) return;
-    setCtxMenu(null);
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const node = getNodeAt(mx, my);
+    e.stopPropagation();
+    const node = nodesRef.current.find(n => n.slug === slug);
+    if (!node) return;
+    dragRef.current = { slug, startX: e.clientX, startY: e.clientY, nodeStartX: node.x, nodeStartY: node.y, moved: false };
 
-    // Connect mode (from context menu "연결" button)
-    if (connectMode && connectSourceRef.current && node && node !== connectSourceRef.current) {
-      createLink(connectSourceRef.current, node);
-      setConnectMode(false); connectSourceRef.current = null;
-      return;
-    }
-    if (connectMode) { setConnectMode(false); connectSourceRef.current = null; }
-
-    leftDragRef.current = { node, startX: mx, startY: my, moved: false, shift: false };
-    if (node) { node.vx = 0; node.vy = 0; }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-
-    if (leftDragRef.current && (e.buttons & 1)) {
-      const ld = leftDragRef.current;
-      const dx = mx - ld.startX, dy = my - ld.startY;
-      if (Math.abs(dx) > CLICK_THRESHOLD || Math.abs(dy) > CLICK_THRESHOLD) ld.moved = true;
-      if (ld.moved) {
-        if (ld.node) {
-          ld.node.x += e.movementX / scaleRef.current;
-          ld.node.y += e.movementY / scaleRef.current;
-          ld.node.vx = 0; ld.node.vy = 0;
-          // Show link-drag visual when hovering over another node during drag
-          const w = screenToWorld(mx, my);
-          const target = getNodeAt(mx, my);
-          const validTarget = (target && target !== ld.node) ? target : null;
-          if (validTarget) {
-            linkDragRef.current = { source: ld.node, worldX: w.x, worldY: w.y, targetNode: validTarget };
-          } else {
-            linkDragRef.current = null;
-          }
-        } else {
-          panRef.current.x += e.movementX;
-          panRef.current.y += e.movementY;
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dx = ev.clientX - dragRef.current.startX;
+      const dy = ev.clientY - dragRef.current.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
+      if (dragRef.current.moved) {
+        const s = scaleRef.current;
+        const node = nodesRef.current.find(n => n.slug === dragRef.current!.slug);
+        if (node) {
+          node.x = dragRef.current.nodeStartX + dx / s;
+          node.y = dragRef.current.nodeStartY + dy / s;
+          setNodes([...nodesRef.current]);
         }
       }
-      if (canvasRef.current) {
-        const target = ld.node ? getNodeAt(mx, my) : null;
-        canvasRef.current.style.cursor =
-          (target && target !== ld.node) ? 'crosshair' : ld.node ? 'grabbing' : 'move';
-      }
-      return;
-    }
-
-    hoverRef.current = getNodeAt(mx, my);
-    if (canvasRef.current) canvasRef.current.style.cursor =
-      connectMode ? 'crosshair' : hoverRef.current ? 'grab' : 'default';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      dragRef.current = null;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 
-  const handleMouseUp = async (e: React.MouseEvent) => {
-    linkDragRef.current = null; // clear link visual
+  // ── Canvas pan ──
+  const handleBgMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    panDragRef.current = { startX: e.clientX, startY: e.clientY, panStartX: panRef.current.x, panStartY: panRef.current.y };
 
-    if (e.button !== 0 || !leftDragRef.current) return;
-    const ld = leftDragRef.current;
-    leftDragRef.current = null;
-    if (canvasRef.current) canvasRef.current.style.cursor = 'default';
-
-    if (!ld.moved && ld.node) {
-      // Single click on node → no action (double-click to open)
-      return;
-    }
-
-    if (ld.moved && ld.node) {
-      // Check if dropped ON another node → create link
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-        const dropTarget = getNodeAt(mx, my);
-        if (dropTarget && dropTarget !== ld.node) {
-          // Drop on another node = create connection
-          await createLink(ld.node, dropTarget);
-          // Move the dragged node back (it was being dragged onto the target)
-          return;
-        }
-      }
-      // Drop on empty = pin node in place
-      ld.node.pinned = true;
-      ld.node.vx = 0; ld.node.vy = 0;
-    }
+    const onMove = (ev: MouseEvent) => {
+      if (!panDragRef.current) return;
+      panRef.current.x = panDragRef.current.panStartX + ev.clientX - panDragRef.current.startX;
+      panRef.current.y = panDragRef.current.panStartY + ev.clientY - panDragRef.current.startY;
+      rerender();
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      panDragRef.current = null;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 
-  // Right-click = context menu
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const node = getNodeAt(mx, my);
-    if (node) {
-      setCtxMenu({ x: e.clientX, y: e.clientY, node });
-    }
-  };
-
-  const createLink = async (source: GraphNode, target: GraphNode) => {
-    try {
-      const srcNote = await api.getNote(projectName, source.slug);
-      if (srcNote) {
-        const link = `[[${target.title}]]`;
-        if (!(srcNote.content || '').includes(link)) {
-          await api.updateNote(projectName, source.slug, { content: (srcNote.content || '') + `\n\n${link}` });
-          loadGraph();
-        }
-      }
-    } catch {}
-  };
-
+  // ── Zoom ──
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
+    const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const oldS = scaleRef.current;
-    const newS = Math.min(3, Math.max(0.3, oldS * (e.deltaY > 0 ? 0.9 : 1.1)));
+    const newS = Math.min(3, Math.max(0.2, oldS * (e.deltaY > 0 ? 0.92 : 1.08)));
     panRef.current.x = mx - (mx - panRef.current.x) * (newS / oldS);
     panRef.current.y = my - (my - panRef.current.y) * (newS / oldS);
     scaleRef.current = newS;
+    rerender();
   };
 
+  // ── Connection handle drag ──
+  const handleConnectStart = (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setLinkDrag({ sourceSlug: slug, mx: e.clientX - (containerRef.current?.getBoundingClientRect().left || 0), my: e.clientY - (containerRef.current?.getBoundingClientRect().top || 0) });
+
+    const onMove = (ev: MouseEvent) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setLinkDrag(prev => prev ? { ...prev, mx: ev.clientX - rect.left, my: ev.clientY - rect.top } : null);
+    };
+    const onUp = async (ev: MouseEvent) => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      // Find target card under cursor
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) { setLinkDrag(null); return; }
+      const wx = (ev.clientX - rect.left - panRef.current.x) / scaleRef.current;
+      const wy = (ev.clientY - rect.top - panRef.current.y) / scaleRef.current;
+      const target = nodesRef.current.find(n => n.slug !== slug && wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h);
+      if (target) {
+        try {
+          const srcNote = await api.getNote(projectName, slug);
+          if (srcNote) {
+            const link = `[[${target.title}]]`;
+            if (!(srcNote.content || '').includes(link)) {
+              await api.updateNote(projectName, slug, { content: (srcNote.content || '') + `\n\n${link}` });
+              loadGraph();
+            }
+          }
+        } catch {}
+      }
+      setLinkDrag(null);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  // ── Inline edit save ──
+  const handleSaveEdit = async (slug: string) => {
+    try {
+      await api.updateNote(projectName, slug, { content: editContent });
+      const node = nodesRef.current.find(n => n.slug === slug);
+      if (node) node.content = editContent;
+      setNodes([...nodesRef.current]);
+    } catch {}
+    setEditingSlug(null);
+  };
+
+  const s = scaleRef.current;
+  const px = panRef.current.x, py = panRef.current.y;
+
   return (
-    <div className="w-full h-full relative bg-slate-50">
-      <canvas ref={canvasRef} className="w-full h-full"
-        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
-        onDoubleClick={(e) => {
-          const rect = canvasRef.current?.getBoundingClientRect();
-          if (!rect) return;
-          const node = getNodeAt(e.clientX - rect.left, e.clientY - rect.top);
-          if (node) onNavigate(node.slug);
-        }}
-        onMouseLeave={() => { leftDragRef.current = null; hoverRef.current = null; }}
-        onContextMenu={handleContextMenu} onWheel={handleWheel} />
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-slate-50"
+      onMouseDown={handleBgMouseDown} onWheel={handleWheel}
+      style={{ cursor: panDragRef.current ? 'grabbing' : 'default' }}>
 
-      {!loaded && <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">그래프 로딩 중...</div>}
-      {loaded && nodesRef.current.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">노트를 생성하면 그래프가 표시됩니다</div>}
+      {/* Canvas layer — connection lines */}
+      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }} />
 
-      <div className="absolute top-2 left-2 text-[10px] text-slate-400 bg-white/80 backdrop-blur px-2 py-1 rounded-lg">
-        더블클릭: 열기 · 드래그: 이동 · 노드→노드 드래그: 연결 · 우클릭: 메뉴
+      {/* Cards layer */}
+      <div className="absolute inset-0" style={{ zIndex: 2, pointerEvents: 'none' }}>
+        {loaded && nodes.map(node => (
+          <div
+            key={node.slug}
+            className={`absolute rounded-xl border-2 shadow-md overflow-hidden transition-shadow hover:shadow-lg ${
+              node.slug === activeSlug ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
+            }`}
+            style={{
+              left: node.x * s + px,
+              top: node.y * s + py,
+              width: node.w * s,
+              minHeight: 60 * s,
+              maxHeight: node.h * s,
+              backgroundColor: node.color,
+              transform: `scale(1)`,
+              pointerEvents: 'auto',
+              fontSize: `${Math.max(9, 12 * s)}px`,
+            }}
+            onMouseDown={e => handleCardMouseDown(e, node.slug)}
+            onDoubleClick={e => { e.stopPropagation(); onNavigate(node.slug); }}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, node }); }}
+          >
+            {/* Title bar */}
+            <div className="px-2 py-1 border-b border-slate-100 flex items-center gap-1 cursor-grab"
+              style={{ fontSize: `${Math.max(10, 12 * s)}px` }}>
+              <span className="font-semibold text-slate-700 truncate flex-1">{node.title}</span>
+              {/* Connect handle */}
+              <div
+                className="w-3 h-3 rounded-full bg-indigo-400 hover:bg-indigo-600 cursor-crosshair shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+                title="드래그하여 연결"
+                onMouseDown={e => handleConnectStart(e, node.slug)}
+              />
+            </div>
+            {/* Content preview */}
+            <div className="px-2 py-1 overflow-hidden text-slate-600" style={{ maxHeight: (node.h - 30) * s }}>
+              {editingSlug === node.slug ? (
+                <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                  <textarea
+                    autoFocus
+                    value={editContent}
+                    onChange={e => setEditContent(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') setEditingSlug(null);
+                      if (e.ctrlKey && e.key === 's') { e.preventDefault(); handleSaveEdit(node.slug); }
+                    }}
+                    className="w-full h-24 text-xs border border-indigo-200 rounded p-1 resize-none focus:outline-none focus:border-indigo-400"
+                    style={{ fontSize: `${Math.max(9, 11 * s)}px` }}
+                  />
+                  <div className="flex gap-1 mt-1">
+                    <button onClick={e => { e.stopPropagation(); handleSaveEdit(node.slug); }}
+                      className="px-2 py-0.5 text-white bg-indigo-500 rounded text-[10px] hover:bg-indigo-600">저장</button>
+                    <button onClick={e => { e.stopPropagation(); setEditingSlug(null); }}
+                      className="px-2 py-0.5 text-slate-500 rounded text-[10px] hover:bg-slate-100">취소</button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="line-clamp-6 cursor-pointer"
+                  onClick={e => { e.stopPropagation(); setEditingSlug(node.slug); setEditContent(node.content); }}
+                  style={{ fontSize: `${Math.max(9, 11 * s)}px` }}
+                >
+                  {node.content ? (
+                    <NoteMarkdownViewer content={node.content.slice(0, 500)} existingSlugs={existingSlugs}
+                      onNavigate={onNavigate} className="text-xs leading-snug" />
+                  ) : (
+                    <span className="text-slate-400 italic">클릭하여 편집</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {connectMode && (
-        <div className="absolute top-2 right-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg animate-pulse">
-          🔗 연결할 노드를 클릭하세요
+      {/* Help + controls */}
+      {!loaded && <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm z-10">캔버스 로딩 중...</div>}
+      <div className="absolute top-2 left-2 text-[10px] text-slate-400 bg-white/80 backdrop-blur px-2 py-1 rounded-lg z-10">
+        드래그: 이동 · 더블클릭: 노트 열기 · 클릭 내용: 편집 · ● 드래그: 연결 · 우클릭: 메뉴
+      </div>
+      <div className="absolute bottom-2 right-2 flex gap-1 z-10">
+        <button onClick={() => { scaleRef.current = 1; panRef.current = { x: 0, y: 0 }; rerender(); }}
+          className="px-2 h-7 bg-white border border-slate-200 rounded-lg text-[10px] text-slate-500 hover:bg-slate-50">리셋</button>
+        <button onClick={() => { scaleRef.current = Math.min(3, scaleRef.current * 1.2); rerender(); }}
+          className="w-7 h-7 bg-white border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 font-bold">+</button>
+        <button onClick={() => { scaleRef.current = Math.max(0.2, scaleRef.current * 0.8); rerender(); }}
+          className="w-7 h-7 bg-white border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 font-bold">-</button>
+      </div>
+
+      {/* Link drag indicator */}
+      {linkDrag && (
+        <div className="absolute top-2 right-2 text-xs text-green-600 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg animate-pulse z-10">
+          🔗 카드 위에서 놓으면 연결됩니다
         </div>
       )}
 
-      {/* Bottom controls */}
-      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-        <div className="flex items-center gap-2 bg-white/80 backdrop-blur px-2 py-1 rounded-lg">
-          <span className="text-[10px] text-slate-400">크기</span>
-          <input type="range" min="6" max="40" value={nodeRadius}
-            onChange={e => setNodeRadius(Number(e.target.value))}
-            className="w-20 h-1 accent-indigo-500" />
-          <span className="text-[10px] text-slate-500 w-4">{nodeRadius}</span>
-        </div>
-        <div className="flex gap-1">
-          <button onClick={() => nodesRef.current.forEach(n => { n.pinned = false; })}
-            className="px-2 h-7 bg-white border border-slate-200 rounded-lg text-[10px] text-slate-500 hover:bg-slate-50">고정 해제</button>
-          <button onClick={() => { scaleRef.current = 1; panRef.current = { x: 0, y: 0 }; }}
-            className="px-2 h-7 bg-white border border-slate-200 rounded-lg text-[10px] text-slate-500 hover:bg-slate-50">리셋</button>
-        </div>
-      </div>
-
-      {/* Node context menu */}
+      {/* Context menu */}
       {ctxMenu && createPortal(
         <div className="fixed bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-[9999] min-w-[150px]"
           style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
-          <div className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-b border-slate-100 mb-1">
+          <div className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-b border-slate-100 mb-1 truncate">
             {ctxMenu.node.title}
           </div>
-          {/* Color palette */}
           <div className="px-3 py-1.5">
             <div className="text-[10px] text-slate-400 mb-1">색상</div>
             <div className="flex flex-wrap gap-1">
               {PALETTE.map(c => (
                 <button key={c}
-                  onClick={() => { ctxMenu.node.color = c; setCtxMenu(null); }}
+                  onClick={() => {
+                    const node = nodesRef.current.find(n => n.slug === ctxMenu.node.slug);
+                    if (node) node.color = c;
+                    setNodes([...nodesRef.current]);
+                    setCtxMenu(null);
+                  }}
                   className="w-5 h-5 rounded-full border border-slate-200 hover:scale-125 transition-transform"
                   style={{ backgroundColor: c }} />
               ))}
@@ -466,20 +445,12 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           </div>
           <div className="border-t border-slate-100 my-1" />
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => {
-              connectSourceRef.current = ctxMenu.node;
-              setConnectMode(true);
-              setCtxMenu(null);
-            }}>
-            🔗 다른 노트에 연결
-          </button>
-          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
             onClick={() => { onNavigate(ctxMenu.node.slug); setCtxMenu(null); }}>
             📝 노트 열기
           </button>
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => { ctxMenu.node.pinned = !ctxMenu.node.pinned; setCtxMenu(null); }}>
-            📌 {ctxMenu.node.pinned ? '고정 해제' : '위치 고정'}
+            onClick={() => { setEditingSlug(ctxMenu.node.slug); setEditContent(ctxMenu.node.content); setCtxMenu(null); }}>
+            ✏️ 캔버스에서 편집
           </button>
         </div>,
         document.body
