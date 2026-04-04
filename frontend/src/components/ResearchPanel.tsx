@@ -264,7 +264,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
               onDragOver={e => handleDragOver(e, i)}
               onDrop={() => handleDrop(i)}
               onDragEnd={() => { setDragSlug(null); setDropIndex(null); }}
-              onClick={() => { if (renamingSlug !== n.slug) selectNote(n.slug); }}
+              onDoubleClick={() => { if (renamingSlug !== n.slug) selectNote(n.slug); }}
               onContextMenu={e => { e.preventDefault(); setNoteCtx({ x: e.clientX, y: e.clientY, slug: n.slug, title: n.title }); }}
               className={`w-full text-left px-3 py-2 border-b transition-colors cursor-grab ${
                 dragSlug === n.slug ? 'opacity-40' : ''
@@ -318,13 +318,12 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
         )}
       </div>
 
-      {/* ── Right: Graph or Editor ── */}
-      {showGraph ? (
-        <div className="flex-1 overflow-hidden">
-          <NoteGraph projectName={projectName} activeSlug={activeSlug}
-            onNavigate={slug => { setShowGraph(false); selectNote(slug); }} />
-        </div>
-      ) : activeSlug ? (
+      {/* ── Right: Graph (always mounted, display toggle) + Editor ── */}
+      <div className={`flex-1 overflow-hidden ${showGraph ? '' : 'hidden'}`}>
+        <NoteGraph projectName={projectName} activeSlug={activeSlug}
+          onNavigate={slug => { setShowGraph(false); selectNote(slug); }} />
+      </div>
+      {!showGraph && activeSlug ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200">
             <input value={title}
@@ -408,7 +407,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             </div>
           )}
         </div>
-      ) : (
+      ) : !showGraph ? (
         <div className="flex-1 flex items-center justify-center text-slate-400">
           <div className="text-center">
             <div className="text-3xl mb-2">📝</div>
@@ -419,7 +418,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Note list context menu */}
       {noteCtx && createPortal(

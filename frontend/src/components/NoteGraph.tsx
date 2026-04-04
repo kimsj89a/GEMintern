@@ -186,13 +186,17 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
       for (const e of edges) {
         const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
         if (!a || !b) continue;
-        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.2 / s;
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2 / s;
+        ctx.globalAlpha = 0.5;
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.globalAlpha = 1;
+        // Arrowhead
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
-        const ax = b.x - Math.cos(ang) * b.radius, ay = b.y - Math.sin(ang) * b.radius;
-        ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(ax, ay);
-        ctx.lineTo(ax - Math.cos(ang - 0.35) * 6 / s, ay - Math.sin(ang - 0.35) * 6 / s);
-        ctx.lineTo(ax - Math.cos(ang + 0.35) * 6 / s, ay - Math.sin(ang + 0.35) * 6 / s);
+        const ax = b.x - Math.cos(ang) * (b.radius + 2), ay = b.y - Math.sin(ang) * (b.radius + 2);
+        ctx.fillStyle = '#6366f1';
+        ctx.beginPath(); ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - Math.cos(ang - 0.4) * 8 / s, ay - Math.sin(ang - 0.4) * 8 / s);
+        ctx.lineTo(ax - Math.cos(ang + 0.4) * 8 / s, ay - Math.sin(ang + 0.4) * 8 / s);
         ctx.fill();
       }
 
