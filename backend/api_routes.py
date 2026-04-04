@@ -1623,10 +1623,10 @@ def save_research(req: SaveResearchRequest, user: dict = Depends(get_current_use
 # ========================================
 
 @router.get("/projects/{name}/notes")
-def list_notes(name: str, user: dict = Depends(get_current_user)):
+def list_notes(name: str, tag: str = None, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     import core_notes
-    return core_notes.list_notes(name, user["id"])
+    return core_notes.list_notes(name, user["id"], tag=tag)
 
 
 @router.post("/projects/{name}/notes")

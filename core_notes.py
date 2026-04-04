@@ -122,15 +122,25 @@ def _get_project_id(project_name: str, owner_id: int) -> Optional[int]:
         return row["id"] if row else None
 
 
-def list_notes(project_name: str, owner_id: int) -> List[Dict]:
+def list_notes(project_name: str, owner_id: int, tag: str = None) -> List[Dict]:
     pid = _get_project_id(project_name, owner_id)
     if not pid:
         return []
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT id, slug, title, tags_json, created_at, updated_at FROM research_notes WHERE project_id = ? ORDER BY updated_at DESC",
-            (pid,),
-        ).fetchall()
+        if tag:
+            # Filter by tag (includes hierarchy: filtering "투자" also matches "투자/PEF")
+            rows = conn.execute("""
+                SELECT DISTINCT rn.id, rn.slug, rn.title, rn.tags_json, rn.created_at, rn.updated_at
+                FROM research_notes rn
+                JOIN note_tags nt ON nt.note_id = rn.id
+                WHERE rn.project_id = ? AND (nt.tag = ? OR nt.tag LIKE ?)
+                ORDER BY rn.updated_at DESC
+            """, (pid, tag, f"{tag}/%")).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, slug, title, tags_json, created_at, updated_at FROM research_notes WHERE project_id = ? ORDER BY updated_at DESC",
+                (pid,),
+            ).fetchall()
     return [dict(r) for r in rows]
 
 

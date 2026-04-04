@@ -70,10 +70,10 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   const loadNotes = useCallback(async () => {
     if (!projectName) return;
     try {
-      const list = await api.listNotes(projectName);
+      const list = await api.listNotes(projectName, tagFilter || undefined);
       setNotes(list);
     } catch {}
-  }, [projectName]);
+  }, [projectName, tagFilter]);
 
   const loadTags = useCallback(async () => {
     if (!projectName) return;
@@ -114,10 +114,13 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     try {
       await api.updateNote(projectName, activeSlug, { content, title });
       setSaved(true);
+      loadNotes();
       loadTags();
+      // Refresh backlinks for current note
+      try { setBacklinks(await api.getNoteBacklinks(projectName, activeSlug)); } catch {}
     } catch {}
     setSaving(false);
-  }, [projectName, activeSlug, content, title, loadTags]);
+  }, [projectName, activeSlug, content, title, loadNotes, loadTags]);
 
   const scheduleSave = useCallback(() => {
     setSaved(false);
@@ -180,17 +183,10 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     }
   }, [existingSlugs, selectNote, projectName, loadNotes]);
 
-  // ── Filtered note list ──
-  const filteredNotes = notes.filter(n => {
-    if (search && !n.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (tagFilter) {
-      const tags: string[] = JSON.parse(n.tags_json || '[]');
-      // Check content tags too (from note_tags table, but we only have tags_json here)
-      // For simplicity, check if any tag starts with the filter
-      if (!tags.some(t => t === tagFilter || t.startsWith(tagFilter + '/'))) return false;
-    }
-    return true;
-  });
+  // ── Filtered note list (tags filtered server-side, search client-side) ──
+  const filteredNotes = search
+    ? notes.filter(n => n.title.toLowerCase().includes(search.toLowerCase()))
+    : notes;
 
   // ── Toolbar buttons ──
   const ToolBtn = ({ id, label }: { id: string; label: string }) => (
