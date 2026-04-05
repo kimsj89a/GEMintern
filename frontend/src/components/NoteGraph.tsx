@@ -183,28 +183,49 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     scaleRef.current = newS; rerender();
   };
 
-  // ── Connection: drag from output port ──
+  // ── Connection: drag from any port ──
+  // sourceSlug = the note being dragged FROM
+  // On drop: find nearest card/port, create [[link]] in source note
   const handlePortDrag = (e: React.MouseEvent, slug: string) => {
     e.stopPropagation(); e.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     setLinkDrag({ sourceSlug: slug, mx: e.clientX - rect.left, my: e.clientY - rect.top });
+
     const onMove = (ev: MouseEvent) => {
       const r = containerRef.current?.getBoundingClientRect();
       if (!r) return;
       setLinkDrag(prev => prev ? { ...prev, mx: ev.clientX - r.left, my: ev.clientY - r.top } : null);
     };
+
     const onUp = async (ev: MouseEvent) => {
-      document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
       const r = containerRef.current?.getBoundingClientRect();
       if (!r) { setLinkDrag(null); return; }
-      const s = scaleRef.current, ppx = panRef.current.x, ppy = panRef.current.y;
-      const wx = (ev.clientX - r.left - ppx) / s, wy = (ev.clientY - r.top - ppy) / s;
-      const target = nodesRef.current.find(n => {
-        if (n.slug === slug) return false;
-        if (n.minimized) return Math.hypot(wx - n.x, wy - n.y) < DOT_R + 10;
-        return wx >= n.x - 15 && wx <= n.x + n.w + 15 && wy >= n.y - 15 && wy <= n.y + n.h + 15;
-      });
+
+      // Find target: check proximity to each node's INPUT port first, then bounding box
+      const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+      let target: CanvasNode | undefined;
+
+      // 1. Check input port proximity (within 20px screen space)
+      for (const n of nodesRef.current) {
+        if (n.slug === slug) continue;
+        const inp = getInputPort(n);
+        if (Math.hypot(mx - inp.x, my - inp.y) < 20) { target = n; break; }
+      }
+
+      // 2. Fallback: check card bounding box
+      if (!target) {
+        const s = scaleRef.current, ppx = panRef.current.x, ppy = panRef.current.y;
+        const wx = (mx - ppx) / s, wy = (my - ppy) / s;
+        target = nodesRef.current.find(n => {
+          if (n.slug === slug) return false;
+          if (n.minimized) return Math.hypot(wx - n.x, wy - n.y) < DOT_R + 15;
+          return wx >= n.x - 10 && wx <= n.x + n.w + 10 && wy >= n.y - 10 && wy <= n.y + n.h + 10;
+        });
+      }
+
       if (target) {
         try {
           const srcNote = await api.getNote(projectName, slug);
@@ -219,7 +240,9 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
       }
       setLinkDrag(null);
     };
-    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 
   // ── Inline edit ──
@@ -345,9 +368,11 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
               title="드래그하여 연결"
               style={{ left: outPort.x - PORT_R, top: outPort.y - PORT_R, width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_OUT_COLOR, zIndex: 4 }}
               onMouseDown={e => handlePortDrag(e, node.slug)} />
-            {/* Input port (LEFT side) */}
-            <div className="absolute rounded-full border-2 border-white"
-              style={{ left: inPort.x - PORT_R, top: inPort.y - PORT_R, width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_IN_COLOR, zIndex: 4, opacity: 0.7 }} />
+            {/* Input port (LEFT side) — also draggable to create reverse connection */}
+            <div className="absolute rounded-full border-2 border-white cursor-crosshair hover:scale-150 transition-transform"
+              title="드래그하여 연결 (입력)"
+              style={{ left: inPort.x - PORT_R, top: inPort.y - PORT_R, width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_IN_COLOR, zIndex: 4, opacity: 0.7 }}
+              onMouseDown={e => handlePortDrag(e, node.slug)} />
 
             {/* Card body */}
             <div className={`absolute rounded-xl border-2 shadow-md flex flex-col ${
