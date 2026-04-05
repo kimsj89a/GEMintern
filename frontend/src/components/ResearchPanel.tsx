@@ -24,6 +24,9 @@ const TOOLS: Record<string, { prefix: string; suffix: string; placeholder: strin
   quote: { prefix: '> ', suffix: '', placeholder: '인용', block: true },
   code: { prefix: '`', suffix: '`', placeholder: 'code' },
   table: { prefix: '| 헤더1 | 헤더2 |\n|-------|-------|\n| ', suffix: ' | 값2 |', placeholder: '값1', block: true },
+  hr: { prefix: '\n---\n', suffix: '', placeholder: '', block: true },
+  check: { prefix: '- [ ] ', suffix: '', placeholder: '할 일', block: true },
+  strike: { prefix: '~~', suffix: '~~', placeholder: '취소선' },
   tag: { prefix: '#', suffix: ' ', placeholder: '태그' },
 };
 
@@ -223,7 +226,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                 <span className="w-px h-3.5 bg-slate-150 mx-1" />
                 <ToolBtn id="link" label="[[" /><ToolBtn id="tag" label="#" />
                 <span className="w-px h-3.5 bg-slate-150 mx-1" />
-                <ToolBtn id="ul" label="•" /><ToolBtn id="ol" label="1." /><ToolBtn id="quote" label=">" /><ToolBtn id="code" label="</>" /><ToolBtn id="table" label="⊞" />
+                <ToolBtn id="ul" label="•" /><ToolBtn id="ol" label="1." /><ToolBtn id="check" label="☐" /><ToolBtn id="quote" label=">" /><ToolBtn id="code" label="</>" /><ToolBtn id="hr" label="—" /><ToolBtn id="strike" label="S̶" /><ToolBtn id="table" label="⊞" />
               </div>
             )}
             <div className="flex-1 flex overflow-hidden">
@@ -231,19 +234,65 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                 <textarea ref={textareaRef} value={content}
                   onChange={e => { setContent(e.target.value); scheduleSave(); }}
                   onKeyDown={e => {
+                    const ta = textareaRef.current!;
+                    const start = ta.selectionStart, end = ta.selectionEnd;
+                    const val = content;
+                    const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+                    const currentLine = val.slice(lineStart, val.indexOf('\n', start) === -1 ? val.length : val.indexOf('\n', start));
+
+                    // Ctrl shortcuts
                     if (e.ctrlKey || e.metaKey) {
-                      if (e.key === 'b') { e.preventDefault(); applyTool('bold'); }
-                      if (e.key === 'i') { e.preventDefault(); applyTool('italic'); }
-                      if (e.key === 'k') { e.preventDefault(); applyTool('link'); }
-                      if (e.key === 's') { e.preventDefault(); doSave(); }
+                      if (e.key === 'b') { e.preventDefault(); applyTool('bold'); return; }
+                      if (e.key === 'i') { e.preventDefault(); applyTool('italic'); return; }
+                      if (e.key === 'k') { e.preventDefault(); applyTool('link'); return; }
+                      if (e.key === 's') { e.preventDefault(); doSave(); return; }
                     }
+
+                    // Tab: indent / Shift+Tab: outdent
                     if (e.key === 'Tab') {
                       e.preventDefault();
-                      const ta = textareaRef.current!;
-                      const s = ta.selectionStart;
-                      const nc = content.slice(0, s) + '  ' + content.slice(ta.selectionEnd);
-                      setContent(nc); scheduleSave();
-                      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
+                      if (e.shiftKey) {
+                        // Outdent: remove leading 2 spaces
+                        if (currentLine.startsWith('  ')) {
+                          const nc = val.slice(0, lineStart) + val.slice(lineStart + 2);
+                          setContent(nc); scheduleSave();
+                          requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = Math.max(lineStart, start - 2); });
+                        }
+                      } else {
+                        const nc = val.slice(0, start) + '  ' + val.slice(end);
+                        setContent(nc); scheduleSave();
+                        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
+                      }
+                      return;
+                    }
+
+                    // Enter: auto-continue lists
+                    if (e.key === 'Enter') {
+                      const listMatch = currentLine.match(/^(\s*)([-*+]|\d+\.)\s/);
+                      if (listMatch) {
+                        const indent = listMatch[1];
+                        const marker = listMatch[2];
+                        const textAfterMarker = currentLine.slice(listMatch[0].length);
+                        // If empty list item, remove marker instead
+                        if (!textAfterMarker.trim()) {
+                          e.preventDefault();
+                          const nc = val.slice(0, lineStart) + '\n' + val.slice(lineStart + currentLine.length);
+                          setContent(nc); scheduleSave();
+                          requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = lineStart + 1; });
+                          return;
+                        }
+                        e.preventDefault();
+                        // Increment number for ordered lists
+                        let nextMarker = marker;
+                        if (/\d+\./.test(marker)) {
+                          nextMarker = (parseInt(marker) + 1) + '.';
+                        }
+                        const ins = `\n${indent}${nextMarker} `;
+                        const nc = val.slice(0, start) + ins + val.slice(end);
+                        setContent(nc); scheduleSave();
+                        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + ins.length; });
+                        return;
+                      }
                     }
                   }}
                   className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-100' : 'w-full'} px-6 py-4 text-[15px] text-slate-700 resize-none focus:outline-none bg-white`}
