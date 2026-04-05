@@ -589,15 +589,16 @@ def revise_section(
 - 재무 데이터는 마크다운 표로 작성하세요.
 - 항목별 줄바꿈을 해주세요.
 
-## 출력 (JSON만)
+## 출력 형식 (반드시 아래 JSON 형식만 출력하세요. 설명이나 마크다운 없이 JSON만.)
 ```json
 {{
-  "content": "수정된 섹션 내용",
+  "content": "수정된 섹션 내용 (마크다운)",
   "new_citations": [
-    {{"id": 번호, "doc_ref": DOC번호, "excerpt": "발췌"}}
+    {{"id": 번호, "doc_ref": 1, "excerpt": "원문 발췌"}}
   ]
 }}
-```"""
+```
+위 JSON 외에 다른 텍스트를 출력하지 마세요."""
 
     client = AIClient(api_key)
     model = _get_model()
@@ -636,8 +637,13 @@ def revise_section(
             except json.JSONDecodeError:
                 pass
     if result is None:
-        logger.error(f"Wiki revise parse failed: {raw[:500]}")
-        return {"error": "AI 응답 파싱 실패"}
+        # Last resort: if AI returned plain markdown without JSON wrapper, use it directly
+        if raw and len(raw) > 20 and '{' not in raw[:50]:
+            logger.warning(f"Wiki revise: AI returned plain text, wrapping as content")
+            result = {"content": raw, "new_citations": []}
+        else:
+            logger.error(f"Wiki revise parse failed: {raw[:500]}")
+            return {"error": "AI 응답 파싱 실패"}
 
     # 섹션 업데이트
     new_content = re.sub(r"~~(.*?)~~", r"\1", result.get("content", section["content"]))
