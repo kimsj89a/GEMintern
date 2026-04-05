@@ -24,6 +24,7 @@ export const PAGE_REGISTRY: Record<
   dartwings: { label: '📊 DartWings', component: lazy(() => import('./DartwingsPage')) },
   draftdoc: { label: '📄 기안문 작성', component: lazy(() => import('./DraftDocPage')) },
   ppt_tools: { label: '📊 발표자료 (PPT)', component: lazy(() => import('./PptToolsPage')) },
+  quick_chat: { label: '💬 빠른 채팅', component: lazy(() => import('./QuickChatPage')) },
   pdf_unlock: { label: 'PDF 잠금 해제', component: lazy(() => import('./PdfUnlockPage')) },
   history: { label: '생성 이력', component: lazy(() => import('./HistoryPage')) },
   admin: { label: '🛡️ 관리자', component: lazy(() => import('./AdminPage')) },

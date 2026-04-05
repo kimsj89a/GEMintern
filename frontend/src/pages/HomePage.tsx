@@ -22,6 +22,7 @@ const WORKFLOW_CARDS = [
 ];
 
 const TOOL_BUTTONS = [
+  { id: 'quick_chat', icon: '💬', label: '빠른 채팅' },
   { id: 'freedoc', icon: '📝', label: '자유양식 문서' },
   { id: 'lp_qa', icon: '🙋', label: 'LP Q&A 대응' },
   { id: 'qa_session', icon: '💬', label: '자료기반 Q&A' },

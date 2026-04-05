@@ -698,6 +698,19 @@ def sync_texts_to_server(name: str, payload: dict, user: dict = Depends(get_curr
     return result
 
 
+@router.post("/parse-file")
+async def parse_file_only(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """Parse uploaded files and return text — no storage."""
+    api_key = _get_api_key()
+    texts = {}
+    for f in files:
+        content_bytes = await f.read()
+        parsed = _parse_file_bytes(f.filename, content_bytes, api_key)
+        if parsed:
+            texts[f.filename] = parsed
+    return {"parsed_texts": texts}
+
+
 @router.post("/projects/{name}/upload")
 async def upload_files(name: str, files: List[UploadFile] = File(...), folder: str = Form("__root__"), user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
