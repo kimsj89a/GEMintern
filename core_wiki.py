@@ -113,7 +113,7 @@ def _find_excerpt(content: str, excerpt: str) -> tuple[int, int]:
     """Find excerpt position in content with progressive fallback.
     Returns (start_index, matched_length). (-1, 0) if not found.
     """
-    if not excerpt:
+    if not excerpt or not content:
         return -1, 0
     # 1) 전체 정확 매칭
     idx = content.find(excerpt)
@@ -125,8 +125,8 @@ def _find_excerpt(content: str, excerpt: str) -> tuple[int, int]:
     idx = lower.find(excerpt_lower)
     if idx >= 0:
         return idx, len(excerpt)
-    # 3) prefix 매칭 (최소 50자 이상만 시도)
-    for length in [80, 50]:
+    # 3) prefix 매칭 (다양한 길이)
+    for length in [100, 80, 50, 30, 20]:
         if len(excerpt) > length:
             prefix = excerpt[:length]
             idx = content.find(prefix)
@@ -135,6 +135,24 @@ def _find_excerpt(content: str, excerpt: str) -> tuple[int, int]:
             idx = lower.find(prefix.lower())
             if idx >= 0:
                 return idx, length
+    # 4) 공백 정규화 후 매칭
+    import re as _re
+    norm_content = _re.sub(r'\s+', ' ', content)
+    norm_excerpt = _re.sub(r'\s+', ' ', excerpt)
+    idx = norm_content.find(norm_excerpt)
+    if idx >= 0:
+        # Map back to original position (approximate)
+        return idx, len(norm_excerpt)
+    idx = norm_content.lower().find(norm_excerpt.lower())
+    if idx >= 0:
+        return idx, len(norm_excerpt)
+    # 5) 핵심 키워드 기반 매칭 (최소 3단어)
+    words = excerpt.split()
+    if len(words) >= 3:
+        key = ' '.join(words[:3])
+        idx = lower.find(key.lower())
+        if idx >= 0:
+            return idx, len(key)
     return -1, 0
 
 
@@ -243,12 +261,17 @@ def generate_wiki(
     project_name: str,
     owner_id: int | None = None,
     sections: list | None = None,
+    selected_docs: list | None = None,
 ) -> dict:
     """Generate full wiki from project documents using Gemini."""
     from ai_client import AIClient
     from google.genai import types
 
     docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    if selected_docs:
+        sel_stems = {os.path.splitext(s)[0] for s in selected_docs}
+        docs = {k: v for k, v in docs.items()
+                if os.path.splitext(k)[0] in sel_stems or k in selected_docs}
     if not docs:
         return {"error": "프로젝트에 문서가 없습니다."}
 
@@ -395,11 +418,12 @@ def update_wiki(
     api_key: str,
     project_name: str,
     owner_id: int | None = None,
+    selected_docs: list | None = None,
 ) -> dict:
     """Re-generate wiki incorporating any new documents."""
     existing = load_wiki(project_name, owner_id=owner_id)
     if not existing:
-        return generate_wiki(api_key, project_name, owner_id=owner_id)
+        return generate_wiki(api_key, project_name, owner_id=owner_id, selected_docs=selected_docs)
 
     # Preserve user-customized sections (auto_generated=False)
     custom_sections = [s for s in existing.get("sections", []) if not s.get("auto_generated", True)]
@@ -411,7 +435,7 @@ def update_wiki(
     if not section_defs:
         section_defs = DEFAULT_SECTIONS
 
-    result = generate_wiki(api_key, project_name, owner_id=owner_id, sections=section_defs)
+    result = generate_wiki(api_key, project_name, owner_id=owner_id, sections=section_defs, selected_docs=selected_docs)
     if "error" in result:
         return result
 

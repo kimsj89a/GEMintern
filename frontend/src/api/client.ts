@@ -111,10 +111,14 @@ export const api = {
   // Wiki
   getWiki: (project: string) =>
     request<any>(`/projects/${encodeURIComponent(project)}/wiki`),
-  generateWiki: (project: string) =>
-    request<any>(`/projects/${encodeURIComponent(project)}/wiki/generate`, { method: 'POST' }),
-  updateWiki: (project: string) =>
-    request<any>(`/projects/${encodeURIComponent(project)}/wiki/update`, { method: 'POST' }),
+  generateWiki: (project: string, selectedDocs?: string[]) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/generate`, {
+      method: 'POST', body: JSON.stringify({ selected_docs: selectedDocs }),
+    }),
+  updateWiki: (project: string, selectedDocs?: string[]) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/wiki/update`, {
+      method: 'POST', body: JSON.stringify({ selected_docs: selectedDocs }),
+    }),
   suggestWikiSections: (project: string) =>
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/suggest-sections`, { method: 'POST' }),
   patchWikiSection: (project: string, sectionId: string, body: any) =>

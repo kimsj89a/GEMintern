@@ -789,10 +789,11 @@ def get_wiki(name: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/projects/{name}/wiki/generate")
-def generate_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
+def generate_wiki_endpoint(name: str, body: dict = None, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     api_key = _get_api_key()
     owner_id = user["id"]
+    selected_docs = (body or {}).get("selected_docs")
 
     from backend.api_ws import _tasks
     task_id = create_task(user_id=user["id"], endpoint="/wiki/generate")
@@ -802,7 +803,7 @@ def generate_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     def _run():
         try:
             import core_wiki
-            result = core_wiki.generate_wiki(api_key, name, owner_id=owner_id)
+            result = core_wiki.generate_wiki(api_key, name, owner_id=owner_id, selected_docs=selected_docs)
             task["status"] = "complete"
             task["result"] = result
         except Exception as e:
@@ -813,10 +814,11 @@ def generate_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/projects/{name}/wiki/update")
-def update_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
+def update_wiki_endpoint(name: str, body: dict = None, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     api_key = _get_api_key()
     owner_id = user["id"]
+    selected_docs = (body or {}).get("selected_docs")
 
     from backend.api_ws import _tasks
     task_id = create_task(user_id=user["id"], endpoint="/wiki/update")
@@ -826,7 +828,7 @@ def update_wiki_endpoint(name: str, user: dict = Depends(get_current_user)):
     def _run():
         try:
             import core_wiki
-            result = core_wiki.update_wiki(api_key, name, owner_id=owner_id)
+            result = core_wiki.update_wiki(api_key, name, owner_id=owner_id, selected_docs=selected_docs)
             task["status"] = "complete"
             task["result"] = result
         except Exception as e:
