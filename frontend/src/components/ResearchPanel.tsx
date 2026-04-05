@@ -60,6 +60,8 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [graphRefreshKey, setGraphRefreshKey] = useState(0);
+
   // Use refs for latest values (fixes stale closure in debounced save)
   const contentRef = useRef(content);
   const titleRef = useRef(title);
@@ -124,6 +126,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
       await loadNotes();
       await loadTags();
       selectNote(note.slug);
+      setGraphRefreshKey(k => k + 1);
     }
   }, [projectName, loadNotes, loadTags, selectNote]);
 
@@ -142,6 +145,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
       setSaved(true);
       loadNotes();
       loadTags();
+      setGraphRefreshKey(k => k + 1);
       try { setBacklinks(await api.getNoteBacklinks(projectName, activeSlugRef.current)); } catch {}
     } catch {}
     setSaving(false);
@@ -335,7 +339,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
 
       {/* ── Right: Graph (always mounted, display toggle) + Editor ── */}
       <div className={`flex-1 overflow-hidden ${showGraph ? '' : 'hidden'}`}>
-        <NoteGraph projectName={projectName} activeSlug={activeSlug}
+        <NoteGraph projectName={projectName} activeSlug={activeSlug} refreshKey={graphRefreshKey}
           onNavigate={slug => { setShowGraph(false); selectNote(slug); }} />
       </div>
       {!showGraph && activeSlug ? (

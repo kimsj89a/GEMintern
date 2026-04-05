@@ -29,6 +29,7 @@ interface NoteGraphProps {
   projectName: string;
   activeSlug?: string | null;
   onNavigate: (slug: string) => void;
+  refreshKey?: number; // increment to force reload
 }
 
 const CARD_W = 240;
@@ -51,7 +52,7 @@ const PORT_IN_COLOR = '#22c55e';  // green — input
 const EDGE_COLOR = '#6366f1';
 const EDGE_DRAG_COLOR = '#22c55e';
 
-export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteGraphProps) {
+export default function NoteGraph({ projectName, activeSlug, onNavigate, refreshKey }: NoteGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<CanvasNode[]>([]);
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
@@ -66,6 +67,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
   const [linkDrag, setLinkDrag] = useState<{ sourceSlug: string; mx: number; my: number } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: CanvasNode } | null>(null);
   const [edgeCtx, setEdgeCtx] = useState<{ x: number; y: number; edge: CanvasEdge } | null>(null);
+  const [bgCtx, setBgCtx] = useState<{ x: number; y: number; wx: number; wy: number } | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
@@ -132,14 +134,14 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     } catch {}
   }, [projectName]);
 
-  useEffect(() => { loadGraph(); }, [loadGraph]);
+  useEffect(() => { loadGraph(); }, [loadGraph, refreshKey]);
 
   useEffect(() => {
-    if (!ctxMenu && !edgeCtx) return;
-    const close = () => { setCtxMenu(null); setEdgeCtx(null); };
+    if (!ctxMenu && !edgeCtx && !bgCtx) return;
+    const close = () => { setCtxMenu(null); setEdgeCtx(null); setBgCtx(null); };
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
-  }, [ctxMenu, edgeCtx]);
+  }, [ctxMenu, edgeCtx, bgCtx]);
 
   // ── Card drag ──
   const handleCardDrag = (e: React.MouseEvent, slug: string) => {
@@ -334,7 +336,17 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-[#fafafa]"
-      onMouseDown={handleBgDown} onWheel={handleBgWheel}>
+      onMouseDown={handleBgDown} onWheel={handleBgWheel}
+      onContextMenu={e => {
+        // Only fire on background (cards stopPropagation their own contextMenu)
+        e.preventDefault();
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const s = scaleRef.current, ppx = panRef.current.x, ppy = panRef.current.y;
+        const wx = (e.clientX - rect.left - ppx) / s;
+        const wy = (e.clientY - rect.top - ppy) / s;
+        setBgCtx({ x: e.clientX, y: e.clientY, wx, wy });
+      }}>
 
       {/* Edges */}
       {edges.map((e, i) => renderEdge(e, i))}
@@ -491,6 +503,31 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
             onClick={() => { const nd = nodesRef.current.find(n => n.slug === ctxMenu.node.slug); if (nd) { nd.minimized = !nd.minimized; if (!nd.minimized) { nd.w = CARD_W; nd.h = CARD_H; } setNodes([...nodesRef.current]); } setCtxMenu(null); }}>
             {ctxMenu.node.minimized ? '🔲 카드로' : '⋯ 최소화'}
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Background context menu — new note */}
+      {bgCtx && createPortal(
+        <div className="fixed bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-[9999] min-w-[140px]"
+          style={{ left: bgCtx.x, top: bgCtx.y }} onClick={e => e.stopPropagation()}>
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
+            onClick={async () => {
+              const note = await api.createNote(projectName, { title: '새 노트' });
+              if (note?.slug) {
+                // Add at the clicked world position
+                nodesRef.current.push({
+                  slug: note.slug, title: note.title, content: '',
+                  x: bgCtx.wx, y: bgCtx.wy,
+                  w: CARD_W, h: CARD_H, color: '#ffffff', minimized: false,
+                });
+                setNodes([...nodesRef.current]);
+                loadGraph();
+              }
+              setBgCtx(null);
+            }}>
+            📝 새 노트 만들기
           </button>
         </div>,
         document.body
