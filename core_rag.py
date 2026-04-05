@@ -268,14 +268,25 @@ def move_doc_to_folder(project_name: str, doc_name: str, target_folder: str, own
     if target_folder != ROOT_FOLDER and target_folder not in folders:
         return {"success": False, "error": f"'{target_folder}' 폴더를 찾을 수 없습니다."}
 
-    # Remove from current folder
+    # Find the actual name in folders (might be stem or full filename)
+    doc_stem = os.path.splitext(doc_name)[0]
+    actual_name = doc_name  # default
+
+    # Remove from current folder — match by exact name, stem, or stem match
+    found = False
     for folder_key, doc_list in folders.items():
-        if doc_name in doc_list:
-            doc_list.remove(doc_name)
+        for d in doc_list:
+            if d == doc_name or d == doc_stem or os.path.splitext(d)[0] == doc_stem:
+                actual_name = d
+                doc_list.remove(d)
+                found = True
+                break
+        if found:
             break
 
-    # Add to target folder
-    folders.setdefault(target_folder, []).append(doc_name)
+    # Add to target folder (use the actual name found, or original if not found)
+    if actual_name not in folders.get(target_folder, []):
+        folders.setdefault(target_folder, []).append(actual_name)
     _save_folders(storage, folders)
     return {"success": True}
 

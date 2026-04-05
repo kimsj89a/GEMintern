@@ -319,7 +319,7 @@ function WikiSectionItem({
     if (!reviseInput.trim()) return;
     setReviseLoading(true);
     try {
-      const { task_id } = await api.reviseWikiSection(projectName, section.id, reviseInput, selectedDocs);
+      const { task_id } = await api.reviseWikiSection(projectName, section.id, reviseInput, selectedDocs && selectedDocs.length > 0 ? selectedDocs : undefined);
       const poll = async () => {
         const status = await api.getTaskStatus(task_id);
         if (status.status === 'complete') {
@@ -556,7 +556,7 @@ export default function WikiPanel({ projectName, selectedDocs }: { projectName: 
     setGenerating(true);
     setError(null);
     try {
-      const { task_id } = await api.generateWiki(projectName, selectedDocs);
+      const { task_id } = await api.generateWiki(projectName, selectedDocs && selectedDocs.length > 0 ? selectedDocs : undefined);
       pollTask(task_id);
     } catch (e: any) {
       setError(e.message || '위키 생성 실패');
@@ -568,7 +568,7 @@ export default function WikiPanel({ projectName, selectedDocs }: { projectName: 
     setGenerating(true);
     setError(null);
     try {
-      const { task_id } = await api.updateWiki(projectName, selectedDocs);
+      const { task_id } = await api.updateWiki(projectName, selectedDocs && selectedDocs.length > 0 ? selectedDocs : undefined);
       pollTask(task_id);
     } catch (e: any) {
       setError(e.message || '위키 갱신 실패');
