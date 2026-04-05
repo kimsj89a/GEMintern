@@ -34,7 +34,7 @@ interface NoteGraphProps {
 const CARD_W = 240;
 const CARD_H = 160;
 const DOT_R = 6;
-const PORT_R = 5;
+const PORT_R = 2;
 const MIN_W = 100;
 const MIN_H = 60;
 const AUTO_MIN_W = 50;
@@ -65,10 +65,26 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
   const [linkDrag, setLinkDrag] = useState<{ sourceSlug: string; mx: number; my: number } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: CanvasNode } | null>(null);
+  const [edgeCtx, setEdgeCtx] = useState<{ x: number; y: number; edge: CanvasEdge } | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
   const existingSlugs = new Set(nodes.map(n => n.slug));
+
+  // ── Delete edge: remove [[link]] from source note content ──
+  const deleteEdge = async (edge: CanvasEdge) => {
+    try {
+      const srcNote = await api.getNote(projectName, edge.source);
+      const targetNode = nodesRef.current.find(n => n.slug === edge.target);
+      if (!srcNote || !targetNode) return;
+      let c = srcNote.content || '';
+      // Remove [[target.title]] and [[target.slug]] variations
+      c = c.replace(new RegExp(`\\n*\\[\\[${targetNode.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\]`, 'g'), '');
+      c = c.replace(new RegExp(`\\n*\\[\\[${edge.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\]`, 'g'), '');
+      await api.updateNote(projectName, edge.source, { content: c.trim() });
+      loadGraph();
+    } catch {}
+  };
 
   // ── Port positions in screen space ──
   const getOutputPort = (n: CanvasNode) => {
@@ -119,11 +135,11 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
   useEffect(() => { loadGraph(); }, [loadGraph]);
 
   useEffect(() => {
-    if (!ctxMenu) return;
-    const close = () => setCtxMenu(null);
+    if (!ctxMenu && !edgeCtx) return;
+    const close = () => { setCtxMenu(null); setEdgeCtx(null); };
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
-  }, [ctxMenu]);
+  }, [ctxMenu, edgeCtx]);
 
   // ── Card drag ──
   const handleCardDrag = (e: React.MouseEvent, slug: string) => {
@@ -278,12 +294,16 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     return (
       <svg key={`e-${e.source}-${e.target}-${i}`}
         style={{ position: 'absolute', left: minX, top: minY, width: w, height: h, pointerEvents: 'none', zIndex: 1, overflow: 'visible' }}>
+        {/* Invisible fat hit area for right-click */}
+        <path d={path} fill="none" stroke="transparent" strokeWidth="14"
+          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+          onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); setEdgeCtx({ x: ev.clientX, y: ev.clientY, edge: e }); }} />
         {/* Shadow */}
-        <path d={path} fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth="6" />
+        <path d={path} fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth="6" style={{ pointerEvents: 'none' }} />
         {/* Main line */}
-        <path d={path} fill="none" stroke={EDGE_COLOR} strokeWidth="2.5" strokeOpacity="0.7" />
-        {/* Arrow at input port */}
-        <circle cx={lex} cy={ley} r="3.5" fill={PORT_IN_COLOR} />
+        <path d={path} fill="none" stroke={EDGE_COLOR} strokeWidth="2.5" strokeOpacity="0.7" style={{ pointerEvents: 'none' }} />
+        {/* Dot at input port */}
+        <circle cx={lex} cy={ley} r="2.5" fill={PORT_IN_COLOR} style={{ pointerEvents: 'none' }} />
       </svg>
     );
   };
@@ -364,16 +384,20 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
         return (
           <div key={node.slug}>
-            {/* Output port (RIGHT side) */}
-            <div className="absolute rounded-full cursor-crosshair hover:scale-150 transition-transform border-2 border-white"
+            {/* Output port (RIGHT side) — small dot, larger hit area via padding */}
+            <div className="absolute cursor-crosshair"
               title="드래그하여 연결"
-              style={{ left: outPort.x - PORT_R, top: outPort.y - PORT_R, width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_OUT_COLOR, zIndex: 4 }}
-              onMouseDown={e => handlePortDrag(e, node.slug)} />
-            {/* Input port (LEFT side) — also draggable to create reverse connection */}
-            <div className="absolute rounded-full border-2 border-white cursor-crosshair hover:scale-150 transition-transform"
-              title="드래그하여 연결 (입력)"
-              style={{ left: inPort.x - PORT_R, top: inPort.y - PORT_R, width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_IN_COLOR, zIndex: 4, opacity: 0.7 }}
-              onMouseDown={e => handlePortDrag(e, node.slug)} />
+              style={{ left: outPort.x - 8, top: outPort.y - 8, width: 16, height: 16, zIndex: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onMouseDown={e => handlePortDrag(e, node.slug)}>
+              <div className="rounded-full" style={{ width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_OUT_COLOR }} />
+            </div>
+            {/* Input port (LEFT side) */}
+            <div className="absolute cursor-crosshair"
+              title="드래그하여 연결"
+              style={{ left: inPort.x - 8, top: inPort.y - 8, width: 16, height: 16, zIndex: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onMouseDown={e => handlePortDrag(e, node.slug)}>
+              <div className="rounded-full" style={{ width: PORT_R * 2, height: PORT_R * 2, backgroundColor: PORT_IN_COLOR, opacity: 0.7 }} />
+            </div>
 
             {/* Card body */}
             <div className={`absolute rounded-xl border-2 shadow-md flex flex-col ${
@@ -467,6 +491,21 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
             onClick={() => { const nd = nodesRef.current.find(n => n.slug === ctxMenu.node.slug); if (nd) { nd.minimized = !nd.minimized; if (!nd.minimized) { nd.w = CARD_W; nd.h = CARD_H; } setNodes([...nodesRef.current]); } setCtxMenu(null); }}>
             {ctxMenu.node.minimized ? '🔲 카드로' : '⋯ 최소화'}
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Edge context menu */}
+      {edgeCtx && createPortal(
+        <div className="fixed bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-[9999] min-w-[140px]"
+          style={{ left: edgeCtx.x, top: edgeCtx.y }} onClick={e => e.stopPropagation()}>
+          <div className="px-3 py-1 text-[10px] text-slate-400 border-b border-slate-100 mb-1">
+            {nodeMap.get(edgeCtx.edge.source)?.title} → {nodeMap.get(edgeCtx.edge.target)?.title}
+          </div>
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600"
+            onClick={() => { deleteEdge(edgeCtx.edge); setEdgeCtx(null); }}>
+            🗑 연결 삭제
           </button>
         </div>,
         document.body

@@ -47,6 +47,8 @@ export default function WorkspacePage() {
   const [uploadFolder, setUploadFolder] = useState('__root__');
   const [showSlideModal, setShowSlideModal] = useState(false);
   const [leftWidth, setLeftWidth] = useState(300);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   // Local folder connection
   const localFolder = useLocalFolder();
@@ -92,6 +94,17 @@ export default function WorkspacePage() {
   }, [currentProject]);
 
   useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  // Auto-collapse panels on narrow screens
+  useEffect(() => {
+    const check = () => {
+      if (window.innerWidth < 900) { setLeftCollapsed(true); setRightCollapsed(true); }
+      else if (window.innerWidth < 1200) { setRightCollapsed(true); }
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // Read selected local files at analysis time.
   // Text files (.txt/.md/.csv/.json) → inline_docs dict passed in kwargs.
@@ -305,10 +318,22 @@ export default function WorkspacePage() {
 
       {/* 3열 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 왼쪽: 출처 (리사이즈 가능) */}
-        <div style={{ width: leftWidth }} className="shrink-0 border-r border-slate-200 flex flex-col overflow-hidden">
+        {/* 왼쪽: 출처 (리사이즈 가능, 접기 가능) */}
+        <div style={{ width: leftCollapsed ? 36 : leftWidth }} className="shrink-0 border-r border-slate-200 flex flex-col overflow-hidden transition-all duration-200">
+          {leftCollapsed ? (
+            <button onClick={() => setLeftCollapsed(false)} className="w-full h-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+              title="출처 패널 열기">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          ) : (
+          <>
           <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-700">출처</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setLeftCollapsed(true)} className="text-slate-300 hover:text-slate-500" title="출처 패널 접기">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">출처</span>
+            </div>
             <span className="text-xs text-slate-400">{docCount}개</span>
           </div>
           <div className="px-4 pb-2 space-y-2">
@@ -439,6 +464,8 @@ export default function WorkspacePage() {
               </div>
             )}
           </div>
+          </>
+          )}
         </div>
         {/* 좌측 패널 리사이즈 핸들 */}
         <div
@@ -634,10 +661,20 @@ export default function WorkspacePage() {
           ) : null}
         </div>
 
-        {/* 오른쪽: 스튜디오 */}
-        <div className="w-[280px] shrink-0 border-l border-slate-200 overflow-y-auto">
-          <div className="px-4 pt-4 pb-3">
+        {/* 오른쪽: 스튜디오 (접기 가능) */}
+        <div className={`shrink-0 border-l border-slate-200 overflow-y-auto transition-all duration-200 ${rightCollapsed ? 'w-9' : 'w-[280px]'}`}>
+          {rightCollapsed ? (
+            <button onClick={() => setRightCollapsed(false)} className="w-full h-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+              title="스튜디오 패널 열기">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+          ) : (
+          <>
+          <div className="px-4 pt-4 pb-3 flex items-center justify-between">
             <span className="text-sm font-bold text-slate-700">스튜디오</span>
+            <button onClick={() => setRightCollapsed(true)} className="text-slate-300 hover:text-slate-500" title="스튜디오 패널 접기">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
           </div>
           <div className="px-4 pb-4 space-y-2">
             {STUDIO_TOOLS.map(tool => (
@@ -657,6 +694,8 @@ export default function WorkspacePage() {
             <div className="text-center text-xs text-slate-400 mb-2">스튜디오 출력이 여기에 저장됩니다</div>
             <div className="text-center text-[11px] text-slate-300">소스를 추가한 후 도구를 선택하세요</div>
           </div>
+          </>
+          )}
         </div>
       </div>
 
