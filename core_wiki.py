@@ -386,7 +386,10 @@ def generate_wiki(
     # Map doc_ref (1-based index) → actual filename
     citations = []
     for c in result.get("citations", []):
-        doc_idx = int(c.get("doc_ref", 0)) - 1
+        raw_ref = str(c.get("doc_ref", "0"))
+        # Handle "DOC-1", "1", "DOC1" etc.
+        doc_num = int(re.sub(r'[^0-9]', '', raw_ref) or '0')
+        doc_idx = doc_num - 1
         source_doc = doc_list[doc_idx][0] if 0 <= doc_idx < len(doc_list) else "unknown"
         citations.append({
             "id": c["id"],
