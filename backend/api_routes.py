@@ -519,10 +519,17 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     fs_names = set(core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or [])
     fs_tree = core_rag.get_folder_tree(name, owner_id=user["id"]) or {}
 
-    # 2. SQLite에서 문서 목록 (항상 확인 — 파일시스템과 합침)
-    # Skip SQLite entries whose stem already exists in fs (avoids stem/filename duplicates)
-    db_tree: dict = {}
-    db_names: set = set()
+    # 2. SQLite에서 문서 목록 — stem 정규화로 중복 방지
+    db_only_tree: dict = {}
+    db_only_names: set = set()
+
+    # Build canonical stem set from filesystem
+    fs_stems = set()
+    for docs in fs_tree.values():
+        for d in docs:
+            fs_stems.add(os.path.splitext(d)[0])
+            fs_stems.add(d)
+
     with get_db() as conn:
         project = conn.execute(
             "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
@@ -536,27 +543,41 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
             for r in rows:
                 fname = r["filename"]
                 stem = os.path.splitext(fname)[0]
-                # If filesystem already tracks this doc (as stem), skip the SQLite entry
-                if stem in fs_names or fname in fs_names:
+                # Skip if filesystem already tracks this doc (by stem or full name)
+                if stem in fs_stems or fname in fs_stems:
                     continue
                 folder = r["folder"] or core_rag.ROOT_FOLDER
-                db_tree.setdefault(folder, []).append(fname)
-                db_names.add(fname)
+                db_only_tree.setdefault(folder, []).append(fname)
+                db_only_names.add(fname)
 
-    # 3. 합치기 (파일시스템 우선, SQLite는 보완)
-    all_names = fs_names | db_names
+    # 3. 합치기 — fs_tree가 primary, db_only_tree는 보완 (fs에 없는 것만)
     merged_tree: dict = {}
-    for folder, docs in {**db_tree, **fs_tree}.items():
+    # First add all fs_tree entries
+    for folder, docs in fs_tree.items():
+        merged_tree.setdefault(folder, [])
+        for doc in docs:
+            if doc not in merged_tree[folder]:
+                merged_tree[folder].append(doc)
+    # Then add db-only entries (these are docs only in SQLite, e.g. Railway)
+    for folder, docs in db_only_tree.items():
         merged_tree.setdefault(folder, [])
         for doc in docs:
             if doc not in merged_tree[folder]:
                 merged_tree[folder].append(doc)
 
-    # 4. 어떤 폴더에도 없는 문서를 __root__에 추가 (orphan 방지)
-    assigned = set()
+    # 4. Orphan 감지 — stem 정규화로 비교
+    all_canonical = set()
     for docs in merged_tree.values():
-        assigned.update(docs)
-    orphans = all_names - assigned
+        for d in docs:
+            all_canonical.add(os.path.splitext(d)[0])
+            all_canonical.add(d)
+
+    all_names = fs_names | db_only_names
+    orphans = []
+    for n in all_names:
+        stem = os.path.splitext(n)[0]
+        if n not in all_canonical and stem not in all_canonical:
+            orphans.append(n)
     if orphans:
         merged_tree.setdefault(core_rag.ROOT_FOLDER, [])
         merged_tree[core_rag.ROOT_FOLDER].extend(sorted(orphans))

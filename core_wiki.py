@@ -269,9 +269,21 @@ def generate_wiki(
 
     docs = load_project_docs_dict(project_name, owner_id=owner_id)
     if selected_docs:
-        sel_stems = {os.path.splitext(s)[0] for s in selected_docs}
-        docs = {k: v for k, v in docs.items()
-                if os.path.splitext(k)[0] in sel_stems or k in selected_docs}
+        sel_set = set(selected_docs)
+        sel_stems = set()
+        for s in selected_docs:
+            sel_stems.add(s)
+            sel_stems.add(os.path.splitext(s)[0])
+            base = os.path.splitext(s)[0]
+            if base.endswith('.md'):
+                sel_stems.add(base[:-3])
+        filtered = {}
+        for k, v in docs.items():
+            k_stem = os.path.splitext(k)[0]
+            k_base = k_stem[:-3] if k_stem.endswith('.md') else k_stem
+            if k in sel_set or k_stem in sel_stems or k_base in sel_stems or k in sel_stems:
+                filtered[k] = v
+        docs = filtered if filtered else docs
     if not docs:
         return {"error": "프로젝트에 문서가 없습니다."}
 
@@ -528,11 +540,25 @@ def revise_section(
 
     # 프로젝트 문서 로드 (출처 참조용, 선택된 파일만)
     docs = load_project_docs_dict(project_name, owner_id=owner_id)
-    logger.info(f"[revise] all docs: {list(docs.keys())}, selected_docs param: {selected_docs}")
+    logger.info(f"[revise] all docs keys: {list(docs.keys())}, selected_docs param: {selected_docs}")
     if selected_docs:
-        sel_stems = {os.path.splitext(s)[0] for s in selected_docs}
-        docs = {k: v for k, v in docs.items()
-                if os.path.splitext(k)[0] in sel_stems or k in selected_docs}
+        # Build flexible match set: exact name, stem, stem without extensions
+        sel_set = set(selected_docs)
+        sel_stems = set()
+        for s in selected_docs:
+            sel_stems.add(s)
+            sel_stems.add(os.path.splitext(s)[0])  # strip .pdf/.docx etc
+            # Also strip .md if double extension
+            base = os.path.splitext(s)[0]
+            if base.endswith('.md'):
+                sel_stems.add(base[:-3])
+        filtered = {}
+        for k, v in docs.items():
+            k_stem = os.path.splitext(k)[0]
+            k_base = k_stem[:-3] if k_stem.endswith('.md') else k_stem
+            if k in sel_set or k_stem in sel_stems or k_base in sel_stems or k in sel_stems:
+                filtered[k] = v
+        docs = filtered if filtered else docs  # fallback to all if nothing matched
     logger.info(f"[revise] filtered docs: {list(docs.keys())}")
     doc_list = list(docs.items())
     n = len(doc_list)
