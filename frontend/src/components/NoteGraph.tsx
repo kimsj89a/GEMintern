@@ -231,7 +231,8 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           const srcNote = await api.getNote(projectName, slug);
           if (srcNote) {
             const link = `[[${target.title}]]`;
-            if (!(srcNote.content || '').includes(link)) {
+            const linkAlt = `[[${target.slug}]]`;
+            if (!(srcNote.content || '').includes(link) && !(srcNote.content || '').includes(linkAlt)) {
               await api.updateNote(projectName, slug, { content: (srcNote.content || '') + `\n\n${link}` });
               loadGraph();
             }

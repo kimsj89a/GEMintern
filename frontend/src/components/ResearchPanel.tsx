@@ -393,8 +393,17 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                     if (e.key === 'k') { e.preventDefault(); applyTool('link'); }
                     if (e.key === 's') { e.preventDefault(); doSave(); }
                   }
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const ta = textareaRef.current!;
+                    const start = ta.selectionStart;
+                    const newContent = content.slice(0, start) + '  ' + content.slice(ta.selectionEnd);
+                    setContent(newContent); scheduleSave();
+                    requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
+                  }
                 }}
-                className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-200' : 'w-full'} p-3 text-[13px] text-slate-700 leading-relaxed resize-none focus:outline-none font-mono`}
+                className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-200' : 'w-full'} p-4 text-[14px] text-slate-700 resize-none focus:outline-none`}
+                style={{ fontFamily: "'JetBrains Mono','Fira Code','Consolas',monospace", lineHeight: '1.7', tabSize: 2 }}
                 placeholder={'마크다운으로 작성하세요...\n\n[[다른노트]]로 링크, #태그로 분류'} />
             )}
             {viewMode !== 'edit' && (

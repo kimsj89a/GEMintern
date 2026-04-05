@@ -268,14 +268,25 @@ def get_graph(project_name: str, owner_id: int) -> Dict:
             "SELECT id, slug, title FROM research_notes WHERE project_id = ?", (pid,)
         ).fetchall()
         slugs = {r["slug"] for r in notes}
+        # Also build title→slug map for fuzzy matching
+        title_to_slug = {}
+        for r in notes:
+            title_to_slug[slugify(r["title"])] = r["slug"]
+            title_to_slug[r["slug"]] = r["slug"]
         nodes = [{"slug": r["slug"], "title": r["title"]} for r in notes]
 
         links = conn.execute(
             "SELECT rn.slug AS source, nb.target_slug AS target FROM note_backlinks nb JOIN research_notes rn ON nb.source_note_id = rn.id WHERE nb.project_id = ?",
             (pid,),
         ).fetchall()
-        # Only include edges where both nodes exist
-        edges = [{"source": r["source"], "target": r["target"]} for r in links if r["target"] in slugs]
+        # Match edges: try exact slug, then title-based slug mapping
+        edges = []
+        for r in links:
+            target = r["target"]
+            if target in slugs:
+                edges.append({"source": r["source"], "target": target})
+            elif target in title_to_slug:
+                edges.append({"source": r["source"], "target": title_to_slug[target]})
     return {"nodes": nodes, "edges": edges}
 
 
