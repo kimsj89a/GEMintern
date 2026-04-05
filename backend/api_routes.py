@@ -515,20 +515,14 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
     import core_rag
     from backend.database import get_db
 
-    # 1. 파일시스템에서 문서 목록
+    # Filesystem snapshot (fallback only)
     fs_names = set(core_rag.get_indexed_doc_names(name, owner_id=user["id"]) or [])
     fs_tree = core_rag.get_folder_tree(name, owner_id=user["id"]) or {}
 
-    # 2. SQLite에서 문서 목록 — stem 정규화로 중복 방지
-    db_only_tree: dict = {}
-    db_only_names: set = set()
-
-    # Build canonical stem set from filesystem
-    fs_stems = set()
-    for docs in fs_tree.values():
-        for d in docs:
-            fs_stems.add(os.path.splitext(d)[0])
-            fs_stems.add(d)
+    # SQLite is source of truth for folder placement
+    db_tree: dict = {}
+    db_names: set = set()
+    db_canonical: set = set()
 
     with get_db() as conn:
         project = conn.execute(
@@ -542,48 +536,55 @@ def get_project_docs(name: str, user: dict = Depends(get_current_user)):
             ).fetchall()
             for r in rows:
                 fname = r["filename"]
-                stem = os.path.splitext(fname)[0]
-                # Skip if filesystem already tracks this doc (by stem or full name)
-                if stem in fs_stems or fname in fs_stems:
-                    continue
                 folder = r["folder"] or core_rag.ROOT_FOLDER
-                db_only_tree.setdefault(folder, []).append(fname)
-                db_only_names.add(fname)
+                canonical = _strip_doc_stem(fname)
+                db_tree.setdefault(folder, [])
+                if fname not in db_tree[folder]:
+                    db_tree[folder].append(fname)
+                db_names.add(fname)
+                db_canonical.add(canonical)
 
-    # 3. 합치기 — fs_tree가 primary, db_only_tree는 보완 (fs에 없는 것만)
+    # Merge: DB first, then only FS docs missing in DB
     merged_tree: dict = {}
-    # First add all fs_tree entries
+    for folder, docs in db_tree.items():
+        merged_tree[folder] = list(docs)
+
     for folder, docs in fs_tree.items():
         merged_tree.setdefault(folder, [])
         for doc in docs:
-            if doc not in merged_tree[folder]:
-                merged_tree[folder].append(doc)
-    # Then add db-only entries (these are docs only in SQLite, e.g. Railway)
-    for folder, docs in db_only_tree.items():
-        merged_tree.setdefault(folder, [])
-        for doc in docs:
+            canonical = _strip_doc_stem(doc)
+            if canonical in db_canonical:
+                continue
             if doc not in merged_tree[folder]:
                 merged_tree[folder].append(doc)
 
-    # 4. Orphan 감지 — stem 정규화로 비교
+    # Build unified doc set without stem/fullname duplicates
+    canonical_to_name: dict = {}
+    for n in sorted(db_names):
+        canonical_to_name.setdefault(_strip_doc_stem(n), n)
+    for n in sorted(fs_names):
+        canonical_to_name.setdefault(_strip_doc_stem(n), n)
+
+    all_names = set(canonical_to_name.values())
+
+    # Orphans: docs known by name but not present in folder tree
     all_canonical = set()
     for docs in merged_tree.values():
         for d in docs:
-            all_canonical.add(os.path.splitext(d)[0])
-            all_canonical.add(d)
+            all_canonical.add(_strip_doc_stem(d))
 
-    all_names = fs_names | db_only_names
     orphans = []
-    for n in all_names:
-        stem = os.path.splitext(n)[0]
-        if n not in all_canonical and stem not in all_canonical:
-            orphans.append(n)
+    for canonical, name_value in canonical_to_name.items():
+        if canonical not in all_canonical:
+            orphans.append(name_value)
+
     if orphans:
         merged_tree.setdefault(core_rag.ROOT_FOLDER, [])
-        merged_tree[core_rag.ROOT_FOLDER].extend(sorted(orphans))
+        for o in sorted(set(orphans)):
+            if o not in merged_tree[core_rag.ROOT_FOLDER]:
+                merged_tree[core_rag.ROOT_FOLDER].append(o)
 
     return {"folder_tree": merged_tree, "doc_names": list(all_names), "count": len(all_names)}
-
 
 @router.get("/projects/{name}/documents")
 def list_documents(name: str, user: dict = Depends(get_current_user)):
@@ -633,21 +634,19 @@ def move_doc(name: str, doc: str, req: DocMoveRequest, user: dict = Depends(get_
     _verify_project_ownership(name, user["id"])
     import core_rag
     result = core_rag.move_doc_to_folder(name, doc, req.target_folder, owner_id=user["id"])
-    # Also sync SQLite documents table
-    if result.get("success"):
-        from backend.database import get_db
-        with get_db() as conn:
-            project = conn.execute(
-                "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
-                (name, user["id"])
-            ).fetchone()
-            if project:
-                conn.execute(
-                    "UPDATE documents SET folder = ? WHERE project_id = ? AND (filename = ? OR filename LIKE ?)",
-                    (req.target_folder, project["id"], doc, f"{doc}.%"),
-                )
+    # Always sync SQLite — persistent source of truth on Railway
+    from backend.database import get_db
+    doc_stem = os.path.splitext(doc)[0]
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?", (name, user["id"])
+        ).fetchone()
+        if project:
+            conn.execute(
+                "UPDATE documents SET folder = ? WHERE project_id = ? AND (filename = ? OR filename = ? OR filename LIKE ?)",
+                (req.target_folder, project["id"], doc, doc_stem, f"{doc_stem}.%"),
+            )
     return result
-
 
 @router.delete("/projects/{name}/docs/{doc}")
 def trash_doc(name: str, doc: str, user: dict = Depends(get_current_user)):

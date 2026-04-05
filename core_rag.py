@@ -287,9 +287,46 @@ def move_doc_to_folder(project_name: str, doc_name: str, target_folder: str, own
     # Add to target folder (use the actual name found, or original if not found)
     if actual_name not in folders.get(target_folder, []):
         folders.setdefault(target_folder, []).append(actual_name)
-    _save_folders(storage, folders)
-    return {"success": True}
 
+    target_folder = target_folder or ROOT_FOLDER
+
+    # Persist SQLite + folder metadata together. If folder save fails, DB tx rolls back.
+    try:
+        from backend.database import get_db
+
+        with get_db() as conn:
+            if owner_id is not None:
+                project = conn.execute(
+                    "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+                    (project_name, owner_id),
+                ).fetchone()
+            else:
+                project = conn.execute(
+                    "SELECT id FROM projects WHERE name = ? ORDER BY id LIMIT 1",
+                    (project_name,),
+                ).fetchone()
+
+            if project:
+                conn.execute(
+                    """
+                    UPDATE documents
+                    SET folder = ?
+                    WHERE project_id = ?
+                      AND (
+                        filename = ?
+                        OR filename = ?
+                        OR filename LIKE ?
+                        OR filename LIKE ?
+                      )
+                    """,
+                    (target_folder, project["id"], doc_name, doc_stem, f"{doc_stem}.%", f"{doc_name}.%"),
+                )
+
+            _save_folders(storage, folders)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    return {"success": True}
 
 def get_doc_folder(project_name: str, doc_name: str, owner_id: int | None = None) -> str:
     """Get the folder that contains a document. Returns ROOT_FOLDER if unfiled."""

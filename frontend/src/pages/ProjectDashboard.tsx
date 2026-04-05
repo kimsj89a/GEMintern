@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '../stores/appStore';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../api/client';
+
+const PROJECT_EMOJIS = ['🤝', '🚀', '📊', '💼', '🏢', '📈', '🔬', '💎', '🎯', '⚡', '🌟', '📋', '🔥', '💰', '🏆', '🎪', '🧬', '⚙️', '🛡️', '🌍'];
 
 const STANDALONE_TOOLS = [
   { id: 'quick_chat', label: '빠른 채팅', icon: '💬', desc: '파일 업로드 + 즉시 AI 채팅' },
@@ -25,6 +28,16 @@ export default function ProjectDashboard() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; name: string } | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [emojiPicker, setEmojiPicker] = useState<string | null>(null);
+  const [dragProject, setDragProject] = useState<string | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
+  // Custom emoji overrides stored in localStorage
+  const [customEmojis, setCustomEmojis] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('project_emojis') || '{}'); } catch { return {}; }
+  });
 
   const loadProjects = async () => {
     try {
@@ -35,6 +48,20 @@ export default function ProjectDashboard() {
   };
 
   useEffect(() => { loadProjects(); }, []);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [ctxMenu]);
+
+  const setProjectEmoji = (name: string, emoji: string) => {
+    const next = { ...customEmojis, [name]: emoji };
+    setCustomEmojis(next);
+    localStorage.setItem('project_emojis', JSON.stringify(next));
+    setEmojiPicker(null);
+  };
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
@@ -48,17 +75,19 @@ export default function ProjectDashboard() {
 
   const handleDelete = async (name: string) => {
     if (!confirm(`'${name}' 프로젝트를 삭제하시겠습니까?`)) return;
-    try {
-      await api.deleteProject(name);
-      loadProjects();
-    } catch {}
+    try { await api.deleteProject(name); loadProjects(); } catch {}
   };
 
-  // 프로젝트 이모지 (이름 기반 해시)
+  const handleRename = async (oldName: string, newN: string) => {
+    if (!newN.trim() || newN === oldName) { setRenaming(null); return; }
+    try { await api.renameProject(oldName, newN.trim()); loadProjects(); } catch {}
+    setRenaming(null);
+  };
+
   const getEmoji = (name: string) => {
-    const emojis = ['🤝', '🚀', '📊', '💼', '🏢', '📈', '🔬', '💎', '🎯', '⚡', '🌟', '📋'];
+    if (customEmojis[name]) return customEmojis[name];
     const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    return emojis[hash % emojis.length];
+    return PROJECT_EMOJIS[hash % PROJECT_EMOJIS.length];
   };
 
   const getBgColor = (name: string) => {
@@ -147,35 +176,101 @@ export default function ProjectDashboard() {
             )}
 
             {/* 프로젝트 카드들 */}
-            {projects.map((p) => {
+            {projects.map((p, idx) => {
               const name = p.name || p;
               return (
-                <button
+                <div
                   key={name}
-                  onClick={() => enterProject(name)}
-                  className={`${getBgColor(name)} rounded-2xl border border-slate-200 hover:border-slate-300 p-5 flex flex-col items-center justify-center gap-3 min-h-[160px] transition-all hover:shadow-md relative group`}
+                  draggable
+                  onDragStart={() => setDragProject(name)}
+                  onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
+                  onDragLeave={() => setDropIdx(null)}
+                  onDrop={() => {
+                    if (dragProject && dragProject !== name) {
+                      const from = projects.findIndex((pp: any) => (pp.name || pp) === dragProject);
+                      if (from >= 0) {
+                        const reordered = [...projects];
+                        const [moved] = reordered.splice(from, 1);
+                        reordered.splice(idx, 0, moved);
+                        setProjects(reordered);
+                      }
+                    }
+                    setDragProject(null); setDropIdx(null);
+                  }}
+                  onDragEnd={() => { setDragProject(null); setDropIdx(null); }}
+                  className={`${getBgColor(name)} rounded-2xl border ${dropIdx === idx ? 'border-blue-400 ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-300'} p-5 flex flex-col items-center justify-center gap-3 min-h-[160px] transition-all hover:shadow-md relative group cursor-pointer ${dragProject === name ? 'opacity-40' : ''}`}
+                  onClick={() => { if (!renaming) enterProject(name); }}
+                  onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, name }); }}
                 >
-                  {/* 삭제 메뉴 */}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(name); }}
-                      className="w-7 h-7 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-slate-400 hover:text-red-500 shadow-sm"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    </button>
-                  </div>
-                  <span className="text-4xl">{getEmoji(name)}</span>
-                  <span className="text-sm font-semibold text-slate-700 text-center leading-tight">{name}</span>
+                  <span className="text-4xl cursor-grab">{getEmoji(name)}</span>
+                  {renaming === name ? (
+                    <input autoFocus value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleRename(name, renameValue); if (e.key === 'Escape') setRenaming(null); }}
+                      onBlur={() => handleRename(name, renameValue)}
+                      onClick={e => e.stopPropagation()}
+                      className="w-full px-2 py-1 text-sm text-center border border-blue-300 rounded-lg focus:outline-none" />
+                  ) : (
+                    <span className="text-sm font-semibold text-slate-700 text-center leading-tight">{name}</span>
+                  )}
                   {p.doc_count != null && (
                     <span className="text-xs text-slate-400">소스 {p.doc_count}개</span>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
         )}
 
       </div>
+
+      {/* Project context menu */}
+      {ctxMenu && createPortal(
+        <div ref={el => {
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          if (r.bottom > window.innerHeight) el.style.top = `${ctxMenu.y - r.height}px`;
+          if (r.right > window.innerWidth) el.style.left = `${ctxMenu.x - r.width}px`;
+        }}
+          className="fixed bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-[9999] min-w-[150px]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
+          <div className="px-3 py-1.5 text-xs font-semibold text-slate-700 border-b border-slate-100 mb-1 truncate">
+            {getEmoji(ctxMenu.name)} {ctxMenu.name}
+          </div>
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
+            onClick={() => { setRenaming(ctxMenu.name); setRenameValue(ctxMenu.name); setCtxMenu(null); }}>
+            ✏️ 이름 변경
+          </button>
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
+            onClick={() => { setEmojiPicker(ctxMenu.name); setCtxMenu(null); }}>
+            😀 아이콘 변경
+          </button>
+          <div className="border-t border-slate-100 my-1" />
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600"
+            onClick={() => { handleDelete(ctxMenu.name); setCtxMenu(null); }}>
+            🗑 삭제
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Emoji picker modal */}
+      {emojiPicker && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={() => setEmojiPicker(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-4 w-[280px]" onClick={e => e.stopPropagation()}>
+            <div className="text-sm font-semibold text-slate-700 mb-3">아이콘 선택: {emojiPicker}</div>
+            <div className="grid grid-cols-8 gap-1.5">
+              {PROJECT_EMOJIS.map(e => (
+                <button key={e} onClick={() => setProjectEmoji(emojiPicker, e)}
+                  className="w-8 h-8 flex items-center justify-center text-lg rounded-lg hover:bg-slate-100 transition-colors">
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
