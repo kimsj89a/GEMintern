@@ -647,7 +647,8 @@ def revise_section(
     # 새 citations 추가
     new_cits = []
     for nc in result.get("new_citations", []):
-        doc_idx = int(nc.get("doc_ref", 0)) - 1
+        raw_ref = str(nc.get("doc_ref", "0"))
+        doc_idx = int(re.sub(r'[^0-9]', '', raw_ref) or '0') - 1
         source_doc = doc_list[doc_idx][0] if 0 <= doc_idx < len(doc_list) else "unknown"
         cit = {
             "id": nc["id"],
