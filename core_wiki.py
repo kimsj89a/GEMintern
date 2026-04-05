@@ -528,10 +528,12 @@ def revise_section(
 
     # 프로젝트 문서 로드 (출처 참조용, 선택된 파일만)
     docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    logger.info(f"[revise] all docs: {list(docs.keys())}, selected_docs param: {selected_docs}")
     if selected_docs:
         sel_stems = {os.path.splitext(s)[0] for s in selected_docs}
         docs = {k: v for k, v in docs.items()
                 if os.path.splitext(k)[0] in sel_stems or k in selected_docs}
+    logger.info(f"[revise] filtered docs: {list(docs.keys())}")
     doc_list = list(docs.items())
     n = len(doc_list)
     per_doc = max(2000, _TOTAL_BUDGET // max(n, 1))

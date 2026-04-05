@@ -794,6 +794,7 @@ def generate_wiki_endpoint(name: str, body: dict = None, user: dict = Depends(ge
     api_key = _get_api_key()
     owner_id = user["id"]
     selected_docs = (body or {}).get("selected_docs")
+    logger.info(f"[wiki/generate] selected_docs={selected_docs}")
 
     from backend.api_ws import _tasks
     task_id = create_task(user_id=user["id"], endpoint="/wiki/generate")
@@ -839,12 +840,14 @@ def update_wiki_endpoint(name: str, body: dict = None, user: dict = Depends(get_
 
 
 @router.post("/projects/{name}/wiki/sections/{section_id}/revise")
-def revise_wiki_section(name: str, section_id: str, body: dict, user: dict = Depends(get_current_user)):
+def revise_wiki_section(name: str, section_id: str, body: dict = None, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     api_key = _get_api_key()
     owner_id = user["id"]
+    body = body or {}
     instruction = body.get("instruction", "")
     selected_docs = body.get("selected_docs")
+    logger.info(f"[wiki/revise] section={section_id}, instruction={instruction[:50]}, selected_docs={selected_docs}")
 
     from backend.api_ws import _tasks
     task_id = create_task(user_id=user["id"], endpoint="/wiki/revise")
