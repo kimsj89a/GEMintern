@@ -15,6 +15,7 @@ const NAV_SECTIONS = [
   {
     title: 'Tools',
     items: [
+      { label: '빠른 채팅', id: 'quick_chat', icon: '💬' },
       { label: '자유양식 문서', id: 'freedoc', icon: '📝' },
       { label: '기안문 작성', id: 'draftdoc', icon: '📄' },
       { label: '발표자료 (PPT)', id: 'ppt_tools', icon: '📊' },
