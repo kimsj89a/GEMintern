@@ -398,13 +398,12 @@ export default function WorkspacePage() {
                   next[targetFolder] = [...next[targetFolder], ...docs];
                   return next;
                 });
-                // Fire API calls in background
-                const promises = docs.map(doc =>
-                  api.moveDoc(currentProject, doc, targetFolder).catch(() => {})
+                // Fire API calls in background (don't resync — trust optimistic update)
+                const results = await Promise.allSettled(
+                  docs.map(doc => api.moveDoc(currentProject, doc, targetFolder))
                 );
-                await Promise.all(promises);
-                // Resync in case of errors
-                loadDocs();
+                // Only resync if any failed
+                if (results.some(r => r.status === 'rejected')) loadDocs();
               }} />
             {/* 로컬 폴더 파일 목록 */}
             {localFolder.connected && localFolder.files.length > 0 && (
