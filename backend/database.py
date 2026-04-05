@@ -150,6 +150,9 @@ def init_db():
                 title TEXT NOT NULL,
                 content TEXT NOT NULL DEFAULT '',
                 tags_json TEXT DEFAULT '[]',
+                canvas_x REAL DEFAULT NULL,
+                canvas_y REAL DEFAULT NULL,
+                canvas_color TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -175,6 +178,14 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_tags_tag ON note_tags(project_id, tag);
         """)
+
+    # Migrate: add canvas columns to existing research_notes table
+    try:
+        conn.execute("ALTER TABLE research_notes ADD COLUMN canvas_x REAL DEFAULT NULL")
+        conn.execute("ALTER TABLE research_notes ADD COLUMN canvas_y REAL DEFAULT NULL")
+        conn.execute("ALTER TABLE research_notes ADD COLUMN canvas_color TEXT DEFAULT NULL")
+    except Exception:
+        pass  # columns already exist
 
     # Bootstrap admin user from env vars
     admin_user = os.environ.get("ADMIN_USERNAME")

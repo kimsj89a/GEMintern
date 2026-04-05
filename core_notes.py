@@ -265,7 +265,7 @@ def get_graph(project_name: str, owner_id: int) -> Dict:
         return {"nodes": [], "edges": []}
     with get_db() as conn:
         notes = conn.execute(
-            "SELECT id, slug, title FROM research_notes WHERE project_id = ?", (pid,)
+            "SELECT id, slug, title, canvas_x, canvas_y, canvas_color FROM research_notes WHERE project_id = ?", (pid,)
         ).fetchall()
         slugs = {r["slug"] for r in notes}
         # Also build title→slug map for fuzzy matching
@@ -273,7 +273,7 @@ def get_graph(project_name: str, owner_id: int) -> Dict:
         for r in notes:
             title_to_slug[slugify(r["title"])] = r["slug"]
             title_to_slug[r["slug"]] = r["slug"]
-        nodes = [{"slug": r["slug"], "title": r["title"]} for r in notes]
+        nodes = [{"slug": r["slug"], "title": r["title"], "canvas_x": r["canvas_x"], "canvas_y": r["canvas_y"], "canvas_color": r["canvas_color"]} for r in notes]
 
         links = conn.execute(
             "SELECT rn.slug AS source, nb.target_slug AS target FROM note_backlinks nb JOIN research_notes rn ON nb.source_note_id = rn.id WHERE nb.project_id = ?",
@@ -288,6 +288,20 @@ def get_graph(project_name: str, owner_id: int) -> Dict:
             elif target in title_to_slug:
                 edges.append({"source": r["source"], "target": title_to_slug[target]})
     return {"nodes": nodes, "edges": edges}
+
+
+def save_canvas_positions(project_name: str, owner_id: int, positions: Dict) -> Dict:
+    """Save canvas node positions/colors to DB. positions = {slug: {x, y, color}}"""
+    pid = _get_project_id(project_name, owner_id)
+    if not pid:
+        return {"error": "프로젝트를 찾을 수 없습니다."}
+    with get_db() as conn:
+        for slug, pos in positions.items():
+            conn.execute(
+                "UPDATE research_notes SET canvas_x = ?, canvas_y = ?, canvas_color = ? WHERE project_id = ? AND slug = ?",
+                (pos.get("x"), pos.get("y"), pos.get("color"), pid, slug),
+            )
+    return {"success": True}
 
 
 def get_tags(project_name: str, owner_id: int) -> List[Dict]:

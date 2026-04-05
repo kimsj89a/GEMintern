@@ -44,6 +44,8 @@ export default function WorkspacePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadFolder, setUploadFolder] = useState('__root__');
   const [showSlideModal, setShowSlideModal] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
   const [leftWidth, setLeftWidth] = useState(300);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -375,42 +377,48 @@ export default function WorkspacePage() {
               onDocDownload={(doc) => api.downloadDoc(currentProject, doc)}
               onDocDelete={async (doc) => {
                 if (!confirm(`'${doc}' 파일을 삭제하시겠습니까?`)) return;
-                try { await api.trashDoc(currentProject, doc); loadDocs(); } catch {}
+                try { await api.trashDoc(currentProject, doc); loadDocs(); showToast('삭제 완료'); } catch {}
+              }}
+              onBatchDelete={async (docs) => {
+                if (!confirm(`${docs.length}개 파일을 삭제하시겠습니까?`)) return;
+                const results = await Promise.allSettled(docs.map(d => api.trashDoc(currentProject, d)));
+                const ok = results.filter(r => r.status === 'fulfilled').length;
+                setSelectedDocs([]); loadDocs();
+                showToast(`${ok}개 파일 삭제 완료`);
               }}
               onFolderDelete={async (folder) => {
                 if (!confirm(`'${folder}' 폴더를 삭제하시겠습니까?`)) return;
                 try { await api.deleteFolder(currentProject, folder); loadDocs(); } catch {}
               }}
               onDocMove={async (doc, targetFolder) => {
-                // Optimistic update
                 setTree(prev => {
                   const next = { ...prev };
-                  for (const f of Object.keys(next)) {
-                    next[f] = next[f].filter(d => d !== doc);
-                  }
+                  for (const f of Object.keys(next)) next[f] = next[f].filter(d => d !== doc);
                   if (!next[targetFolder]) next[targetFolder] = [];
                   next[targetFolder] = [...next[targetFolder], doc];
                   return next;
                 });
-                try { await api.moveDoc(currentProject, doc, targetFolder); } catch { loadDocs(); }
+                try {
+                  await api.moveDoc(currentProject, doc, targetFolder);
+                  showToast(`'${doc}' → ${targetFolder === '__root__' ? '루트' : targetFolder} 이동 완료`);
+                  setSelectedDocs(prev => prev.filter(d => d !== doc));
+                } catch { loadDocs(); showToast('이동 실패'); }
               }}
               onBatchMove={async (docs, targetFolder) => {
-                // Optimistic update — move docs in local tree immediately
                 setTree(prev => {
                   const next: Record<string, string[]> = {};
-                  for (const f of Object.keys(prev)) {
-                    next[f] = prev[f].filter(d => !docs.includes(d));
-                  }
+                  for (const f of Object.keys(prev)) next[f] = prev[f].filter(d => !docs.includes(d));
                   if (!next[targetFolder]) next[targetFolder] = [];
                   next[targetFolder] = [...next[targetFolder], ...docs];
                   return next;
                 });
-                // Fire API calls in background (don't resync — trust optimistic update)
                 const results = await Promise.allSettled(
                   docs.map(doc => api.moveDoc(currentProject, doc, targetFolder))
                 );
-                // Only resync if any failed
-                if (results.some(r => r.status === 'rejected')) loadDocs();
+                const failed = results.filter(r => r.status === 'rejected').length;
+                if (failed > 0) { loadDocs(); showToast(`${docs.length - failed}개 이동, ${failed}개 실패`); }
+                else { showToast(`${docs.length}개 파일 → ${targetFolder === '__root__' ? '루트' : targetFolder} 이동 완료`); }
+                setSelectedDocs([]);
               }} />
             {/* 로컬 폴더 파일 목록 */}
             {localFolder.connected && localFolder.files.length > 0 && (
@@ -695,6 +703,13 @@ export default function WorkspacePage() {
           onClose={() => setShowSlideModal(false)}
           selectedDocs={selectedDocs.length > 0 ? selectedDocs : undefined}
         />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 bg-slate-800 text-white text-sm rounded-xl shadow-lg animate-fade-in-up">
+          {toast}
+        </div>
       )}
     </div>
   );

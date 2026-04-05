@@ -383,6 +383,10 @@ export const api = {
     request<any>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}`, {
       method: 'DELETE',
     }),
+  saveCanvasPositions: (project: string, positions: Record<string, { x: number; y: number; color: string }>) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/canvas-positions`, {
+      method: 'POST', body: JSON.stringify({ positions }),
+    }),
   getNoteBacklinks: (project: string, slug: string) =>
     request<any[]>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/backlinks`),
   getNoteGraph: (project: string) =>

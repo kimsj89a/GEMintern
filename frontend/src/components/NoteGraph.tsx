@@ -56,21 +56,12 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
 
   const existingSlugs = new Set(nodes.map(n => n.slug));
 
-  // ── Persist layout to localStorage ──
-  const layoutKey = `canvas_layout_${projectName}`;
-
+  // ── Persist layout to server ──
   const saveLayout = useCallback(() => {
-    const layout: Record<string, { x: number; y: number; color: string }> = {};
-    nodesRef.current.forEach(n => { layout[n.slug] = { x: n.x, y: n.y, color: n.color }; });
-    try { localStorage.setItem(layoutKey, JSON.stringify(layout)); } catch {}
-  }, [layoutKey]);
-
-  const loadLayout = useCallback((): Record<string, { x: number; y: number; color: string }> => {
-    try {
-      const raw = localStorage.getItem(layoutKey);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  }, [layoutKey]);
+    const positions: Record<string, { x: number; y: number; color: string }> = {};
+    nodesRef.current.forEach(n => { positions[n.slug] = { x: n.x, y: n.y, color: n.color }; });
+    api.saveCanvasPositions(projectName, positions).catch(() => {});
+  }, [projectName]);
 
   // Auto-save layout on node changes (debounced)
   const layoutSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,26 +85,24 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
     try {
       const data = await api.getNoteGraph(projectName);
       const prevMap = new Map(nodesRef.current.map(n => [n.slug, n]));
-      const savedLayout = loadLayout();
       const cols = Math.max(4, Math.ceil(Math.sqrt(data.nodes.length)));
       const noteNodes: CanvasNode[] = [];
       for (let i = 0; i < data.nodes.length; i++) {
         const n = data.nodes[i];
         const prev = prevMap.get(n.slug);
-        const saved = savedLayout[n.slug];
         let content = '';
         try { content = (await api.getNote(projectName, n.slug))?.content || ''; } catch {}
         noteNodes.push({
           slug: n.slug, title: n.title, content,
-          x: prev?.x ?? saved?.x ?? (i % cols) * 80 + 60,
-          y: prev?.y ?? saved?.y ?? Math.floor(i / cols) * 80 + 60,
-          color: prev?.color ?? saved?.color ?? PALETTE[i % PALETTE.length],
+          x: prev?.x ?? n.canvas_x ?? (i % cols) * 80 + 60,
+          y: prev?.y ?? n.canvas_y ?? Math.floor(i / cols) * 80 + 60,
+          color: prev?.color ?? n.canvas_color ?? PALETTE[i % PALETTE.length],
         });
       }
       nodesRef.current = noteNodes;
       setNodes([...noteNodes]); setEdges([...data.edges]); setLoaded(true);
     } catch {}
-  }, [projectName, loadLayout]);
+  }, [projectName]);
 
   useEffect(() => { loadGraph(); }, [loadGraph, refreshKey]);
 

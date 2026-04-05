@@ -1715,6 +1715,13 @@ def delete_note(name: str, slug: str, user: dict = Depends(get_current_user)):
     return core_notes.delete_note(name, user["id"], slug)
 
 
+@router.post("/projects/{name}/notes/canvas-positions")
+def save_canvas_positions(name: str, body: dict, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.save_canvas_positions(name, user["id"], body.get("positions", {}))
+
+
 @router.get("/projects/{name}/notes/{slug}/backlinks")
 def get_note_backlinks(name: str, slug: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])

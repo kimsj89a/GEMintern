@@ -11,6 +11,7 @@ interface FolderTreeProps {
   onFolderRename?: (folder: string, newLeaf: string) => void;
   onDocMove?: (doc: string, targetFolder: string) => void;
   onBatchMove?: (docs: string[], targetFolder: string) => void;
+  onBatchDelete?: (docs: string[]) => void;
   onCreateFolder?: (name: string) => void;
   selectable?: boolean;
   selectedDocs?: string[];
@@ -47,7 +48,7 @@ function buildTree(flat: Record<string, string[]>): TreeNode[] {
 
 export default function FolderTree({
   tree, projectName, onDocClick, onDocDelete, onDocDownload,
-  onFolderDelete, onFolderRename, onDocMove, onBatchMove, onCreateFolder,
+  onFolderDelete, onFolderRename, onDocMove, onBatchMove, onBatchDelete, onCreateFolder,
   selectable, selectedDocs = [], onSelectionChange,
 }: FolderTreeProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -353,11 +354,24 @@ export default function FolderTree({
           onClick={e => e.stopPropagation()}
         >
           {/* Empty area */}
-          {contextMenu.type === 'empty' && onCreateFolder && (
-            <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#F7F6F3] flex items-center gap-2"
-              onClick={() => { setCreatingIn('__root__'); setNewFolderName(''); setContextMenu(null); }}>
-              📁 폴더 추가
-            </button>
+          {contextMenu.type === 'empty' && (
+            <>
+              {onCreateFolder && (
+                <button className="w-full text-left px-4 py-2 text-sm hover:bg-[#F7F6F3] flex items-center gap-2"
+                  onClick={() => { setCreatingIn('__root__'); setNewFolderName(''); setContextMenu(null); }}>
+                  📁 폴더 추가
+                </button>
+              )}
+              {onBatchDelete && selectedDocs.length > 0 && (
+                <>
+                  <div className="border-t border-[#E9E9E7] my-1" />
+                  <button className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+                    onClick={() => { onBatchDelete([...selectedDocs]); setContextMenu(null); }}>
+                    🗑 선택 파일 일괄삭제 ({selectedDocs.length}개)
+                  </button>
+                </>
+              )}
+            </>
           )}
 
           {/* Folder */}
@@ -470,6 +484,12 @@ export default function FolderTree({
                     🗑 삭제
                   </button>
                 </>
+              )}
+              {onBatchDelete && selectedDocs.length > 1 && (
+                <button className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+                  onClick={() => { onBatchDelete([...selectedDocs]); setContextMenu(null); }}>
+                  🗑 선택 파일 일괄삭제 ({selectedDocs.length}개)
+                </button>
               )}
             </>
           )}
