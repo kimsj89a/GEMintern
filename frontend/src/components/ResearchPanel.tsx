@@ -183,39 +183,47 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             onNoteCreated={() => { loadNotes(); loadTags(); }} />
         </div>
 
-        {/* Editor */}
+        {/* Editor — MarkText-inspired clean design */}
         {!showGraph && activeSlug && (
-          <div className="flex-1 flex flex-col overflow-hidden" style={{ zIndex: 2 }}>
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 bg-white">
-              <button onClick={() => { setShowGraph(true); setActiveSlug(null); }} className="text-slate-400 hover:text-slate-600">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+          <div className="flex-1 flex flex-col overflow-hidden bg-white" style={{ zIndex: 2 }}>
+            {/* Top bar */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 shrink-0">
+              <button onClick={() => { setShowGraph(true); setActiveSlug(null); }} className="text-slate-300 hover:text-slate-500 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
               <input value={title} onChange={e => { setTitle(e.target.value); scheduleSave(); }}
-                className="flex-1 text-sm font-bold text-slate-800 bg-transparent border-none focus:outline-none" placeholder="노트 제목" />
-              <span className="text-[10px] text-slate-400">{saving ? '저장 중...' : saved ? '저장됨' : '수정됨'}</span>
+                className="flex-1 text-base font-bold text-slate-800 bg-transparent border-none focus:outline-none" placeholder="제목 없음" />
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${saving ? 'bg-amber-50 text-amber-600' : saved ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+                {saving ? '저장 중' : saved ? '저장됨' : '수정됨'}
+              </span>
               <div className="flex border border-slate-200 rounded-lg overflow-hidden">
                 {(['edit', 'split', 'preview'] as const).map(m => (
                   <button key={m} onClick={() => setViewMode(m)}
-                    className={`px-2 py-0.5 text-[10px] ${viewMode === m ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-                    {m === 'edit' ? '편집' : m === 'split' ? '분할' : '미리보기'}
+                    className={`px-2.5 py-1 text-[10px] transition-colors ${viewMode === m ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>
+                    {m === 'edit' ? '편집' : m === 'split' ? '분할' : '보기'}
                   </button>
                 ))}
               </div>
-              <button onClick={() => setShowBacklinks(!showBacklinks)}
-                className={`px-1.5 py-0.5 text-[10px] rounded ${showBacklinks ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400'}`}>
-                ← {backlinks.length}
+              {backlinks.length > 0 && (
+                <button onClick={() => setShowBacklinks(!showBacklinks)}
+                  className={`px-1.5 py-0.5 text-[10px] rounded ${showBacklinks ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400'}`}>
+                  ← {backlinks.length}
+                </button>
+              )}
+              <button onClick={() => handleDelete()} className="text-slate-300 hover:text-red-500 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14"/></svg>
               </button>
-              <button onClick={() => handleDelete()} className="text-xs text-slate-400 hover:text-red-500">🗑</button>
             </div>
+            {/* Toolbar — minimal, MarkText style */}
             {viewMode !== 'preview' && (
-              <div className="flex items-center gap-0.5 px-3 py-1 border-b border-slate-100 bg-slate-50/50 flex-wrap">
+              <div className="flex items-center gap-1 px-4 py-1.5 border-b border-slate-50 shrink-0">
                 <ToolBtn id="bold" label="B" /><ToolBtn id="italic" label="I" />
-                <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                <span className="w-px h-3.5 bg-slate-150 mx-1" />
                 <ToolBtn id="h2" label="H2" /><ToolBtn id="h3" label="H3" />
-                <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                <span className="w-px h-3.5 bg-slate-150 mx-1" />
                 <ToolBtn id="link" label="[[" /><ToolBtn id="tag" label="#" />
-                <span className="w-px h-4 bg-slate-200 mx-0.5" />
-                <ToolBtn id="ul" label="•" /><ToolBtn id="ol" label="1." /><ToolBtn id="quote" label=">" /><ToolBtn id="code" label="<>" /><ToolBtn id="table" label="⊞" />
+                <span className="w-px h-3.5 bg-slate-150 mx-1" />
+                <ToolBtn id="ul" label="•" /><ToolBtn id="ol" label="1." /><ToolBtn id="quote" label=">" /><ToolBtn id="code" label="</>" /><ToolBtn id="table" label="⊞" />
               </div>
             )}
             <div className="flex-1 flex overflow-hidden">
@@ -238,12 +246,12 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                       requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
                     }
                   }}
-                  className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-200' : 'w-full'} p-4 text-[14px] text-slate-700 resize-none focus:outline-none`}
-                  style={{ fontFamily: "'JetBrains Mono','Fira Code','Consolas',monospace", lineHeight: '1.7' }}
-                  placeholder="마크다운으로 작성..." />
+                  className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-100' : 'w-full'} px-6 py-4 text-[15px] text-slate-700 resize-none focus:outline-none bg-white`}
+                  style={{ fontFamily: "'JetBrains Mono','Fira Code','Consolas','Monaco',monospace", lineHeight: '1.8', letterSpacing: '-0.01em' }}
+                  placeholder="마크다운으로 작성하세요..." />
               )}
               {viewMode !== 'edit' && (
-                <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} p-4 overflow-y-auto text-[14px]`}>
+                <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} px-6 py-4 overflow-y-auto text-[15px] leading-relaxed bg-white`}>
                   {content ? <NoteMarkdownViewer content={content} existingSlugs={existingSlugs} onNavigate={handleNavigate} onTagClick={tag => setTagFilter(tag)} /> : <span className="text-slate-400">미리보기</span>}
                 </div>
               )}

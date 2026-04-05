@@ -45,10 +45,8 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
   const [, setTick] = useState(0);
   const rerender = () => setTick(v => v + 1);
 
-  // Popup editor
+  // Popup viewer (read-only preview)
   const [popup, setPopup] = useState<{ slug: string; title: string; content: string } | null>(null);
-  const [popupContent, setPopupContent] = useState('');
-  const [popupSaving, setPopupSaving] = useState(false);
 
   // Drag / link
   const [linkDrag, setLinkDrag] = useState<{ sourceSlug: string; mx: number; my: number } | null>(null);
@@ -203,19 +201,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
     scaleRef.current = newS; rerender();
   };
 
-  // ── Popup save ──
-  const handlePopupSave = async () => {
-    if (!popup) return;
-    setPopupSaving(true);
-    try {
-      await api.updateNote(projectName, popup.slug, { content: popupContent });
-      const node = nodesRef.current.find(n => n.slug === popup.slug);
-      if (node) node.content = popupContent;
-      setNodes([...nodesRef.current]);
-      loadGraph();
-    } catch {}
-    setPopupSaving(false);
-  };
+  // (popup is read-only viewer, no save needed)
 
   const s = scaleRef.current, px = panRef.current.x, py = panRef.current.y;
   const nodeMap = new Map(nodes.map(n => [n.slug, n]));
@@ -288,7 +274,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
                 zIndex: 3,
               }}
               onMouseDown={e => handleDotDrag(e, node.slug)}
-              onDoubleClick={e => { e.stopPropagation(); setPopup({ slug: node.slug, title: node.title, content: node.content }); setPopupContent(node.content); }}
+              onDoubleClick={e => { e.stopPropagation(); setPopup({ slug: node.slug, title: node.title, content: node.content }); }}
               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, node }); }}
             />
             {/* Output port (right) */}
@@ -325,32 +311,30 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
 
       {/* ── Note popup modal ── */}
       {popup && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => { handlePopupSave(); setPopup(null); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[700px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden"
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+          onClick={() => setPopup(null)}
+          onWheel={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+            onWheel={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-              <span className="font-bold text-slate-800">{popup.title}</span>
+              <span className="font-bold text-slate-800 text-lg">{popup.title}</span>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400">{popupSaving ? '저장 중...' : '자동 저장'}</span>
-                <button onClick={() => { handlePopupSave(); setPopup(null); }}
+                <button onClick={() => { setPopup(null); onNavigate(popup.slug); }}
+                  className="px-3 py-1 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">편집</button>
+                <button onClick={() => setPopup(null)}
                   className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
               </div>
             </div>
-            {/* Split editor */}
-            <div className="flex flex-1 overflow-hidden">
-              <textarea value={popupContent} onChange={e => setPopupContent(e.target.value)}
-                onKeyDown={e => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); handlePopupSave(); } }}
-                className="w-1/2 p-4 text-[14px] text-slate-700 resize-none focus:outline-none border-r border-slate-200"
-                style={{ fontFamily: "'JetBrains Mono','Fira Code','Consolas',monospace", lineHeight: '1.7' }}
-                placeholder="마크다운으로 작성..." />
-              <div className="w-1/2 p-4 overflow-y-auto text-[14px]">
-                {popupContent ? (
-                  <NoteMarkdownViewer content={popupContent} existingSlugs={existingSlugs} onNavigate={slug => { handlePopupSave(); setPopup(null); onNavigate(slug); }} />
-                ) : (
-                  <span className="text-slate-400">미리보기</span>
-                )}
-              </div>
+            {/* Read-only rendered content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 text-[15px] leading-relaxed">
+              {popup.content ? (
+                <NoteMarkdownViewer content={popup.content} existingSlugs={existingSlugs}
+                  onNavigate={slug => { setPopup(null); onNavigate(slug); }} />
+              ) : (
+                <span className="text-slate-400 italic">내용이 없습니다. "편집" 버튼을 눌러 작성하세요.</span>
+              )}
             </div>
           </div>
         </div>,
@@ -373,7 +357,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
           </div>
           <div className="border-t border-slate-100 my-1" />
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => { setPopup({ slug: ctxMenu.node.slug, title: ctxMenu.node.title, content: ctxMenu.node.content }); setPopupContent(ctxMenu.node.content); setCtxMenu(null); }}>📝 노트 열기</button>
+            onClick={() => { setPopup({ slug: ctxMenu.node.slug, title: ctxMenu.node.title, content: ctxMenu.node.content }); setCtxMenu(null); }}>📝 미리보기</button>
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
             onClick={() => { onNavigate(ctxMenu.node.slug); setCtxMenu(null); }}>📄 에디터에서 열기</button>
         </div>,
