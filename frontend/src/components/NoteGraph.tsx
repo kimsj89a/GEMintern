@@ -56,6 +56,29 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
 
   const existingSlugs = new Set(nodes.map(n => n.slug));
 
+  // ── Persist layout to localStorage ──
+  const layoutKey = `canvas_layout_${projectName}`;
+
+  const saveLayout = useCallback(() => {
+    const layout: Record<string, { x: number; y: number; color: string }> = {};
+    nodesRef.current.forEach(n => { layout[n.slug] = { x: n.x, y: n.y, color: n.color }; });
+    try { localStorage.setItem(layoutKey, JSON.stringify(layout)); } catch {}
+  }, [layoutKey]);
+
+  const loadLayout = useCallback((): Record<string, { x: number; y: number; color: string }> => {
+    try {
+      const raw = localStorage.getItem(layoutKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }, [layoutKey]);
+
+  // Auto-save layout on node changes (debounced)
+  const layoutSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleLayoutSave = useCallback(() => {
+    if (layoutSaveTimer.current) clearTimeout(layoutSaveTimer.current);
+    layoutSaveTimer.current = setTimeout(saveLayout, 500);
+  }, [saveLayout]);
+
   // ── Port positions in screen space ──
   const getOutPort = (n: CanvasNode) => ({ x: n.x * scaleRef.current + panRef.current.x + DOT_R * scaleRef.current, y: n.y * scaleRef.current + panRef.current.y });
   const getInPort = (n: CanvasNode) => ({ x: n.x * scaleRef.current + panRef.current.x - DOT_R * scaleRef.current, y: n.y * scaleRef.current + panRef.current.y });
@@ -71,24 +94,26 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
     try {
       const data = await api.getNoteGraph(projectName);
       const prevMap = new Map(nodesRef.current.map(n => [n.slug, n]));
+      const savedLayout = loadLayout();
       const cols = Math.max(4, Math.ceil(Math.sqrt(data.nodes.length)));
       const noteNodes: CanvasNode[] = [];
       for (let i = 0; i < data.nodes.length; i++) {
         const n = data.nodes[i];
         const prev = prevMap.get(n.slug);
+        const saved = savedLayout[n.slug];
         let content = '';
         try { content = (await api.getNote(projectName, n.slug))?.content || ''; } catch {}
         noteNodes.push({
           slug: n.slug, title: n.title, content,
-          x: prev?.x ?? (i % cols) * 80 + 60,
-          y: prev?.y ?? Math.floor(i / cols) * 80 + 60,
-          color: prev?.color ?? PALETTE[i % PALETTE.length],
+          x: prev?.x ?? saved?.x ?? (i % cols) * 80 + 60,
+          y: prev?.y ?? saved?.y ?? Math.floor(i / cols) * 80 + 60,
+          color: prev?.color ?? saved?.color ?? PALETTE[i % PALETTE.length],
         });
       }
       nodesRef.current = noteNodes;
       setNodes([...noteNodes]); setEdges([...data.edges]); setLoaded(true);
     } catch {}
-  }, [projectName]);
+  }, [projectName, loadLayout]);
 
   useEffect(() => { loadGraph(); }, [loadGraph, refreshKey]);
 
@@ -130,7 +155,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
         setNodes([...nodesRef.current]);
       }
     };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (moved) scheduleLayoutSave(); };
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
   };
 
@@ -189,17 +214,22 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
   };
 
-  // ── Zoom ──
-  const handleBgWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const oldS = scaleRef.current, newS = Math.min(4, Math.max(0.2, oldS * (e.deltaY > 0 ? 0.92 : 1.08)));
-    panRef.current.x = mx - (mx - panRef.current.x) * (newS / oldS);
-    panRef.current.y = my - (my - panRef.current.y) * (newS / oldS);
-    scaleRef.current = newS; rerender();
-  };
+  // ── Zoom (non-passive wheel listener to allow preventDefault) ──
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const oldS = scaleRef.current, newS = Math.min(4, Math.max(0.2, oldS * (e.deltaY > 0 ? 0.92 : 1.08)));
+      panRef.current.x = mx - (mx - panRef.current.x) * (newS / oldS);
+      panRef.current.y = my - (my - panRef.current.y) * (newS / oldS);
+      scaleRef.current = newS; rerender();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   // (popup is read-only viewer, no save needed)
 
@@ -208,7 +238,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-[#fafafa]"
-      onMouseDown={handleBgDown} onWheel={handleBgWheel}
+      onMouseDown={handleBgDown}
       onContextMenu={e => {
         e.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
@@ -350,7 +380,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
             <div className="text-[10px] text-slate-400 mb-1">색상</div>
             <div className="flex flex-wrap gap-1">
               {PALETTE.map(c => (
-                <button key={c} onClick={() => { const nd = nodesRef.current.find(n => n.slug === ctxMenu.node.slug); if (nd) nd.color = c; setNodes([...nodesRef.current]); setCtxMenu(null); }}
+                <button key={c} onClick={() => { const nd = nodesRef.current.find(n => n.slug === ctxMenu.node.slug); if (nd) nd.color = c; setNodes([...nodesRef.current]); scheduleLayoutSave(); setCtxMenu(null); }}
                   className="w-5 h-5 rounded-full border border-white hover:scale-125 transition-transform shadow-sm" style={{ backgroundColor: c }} />
               ))}
             </div>
