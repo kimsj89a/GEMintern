@@ -83,10 +83,9 @@ export default function WorkspacePage() {
       setDocCount(data.count || 0);
       const allDocs = Object.values(folderTree).flat() as string[];
       setSelectedDocs(prev => {
-        if (prev.length === 0) return allDocs; // first load → select all
-        // Preserve selection: keep docs that still exist, default to all if none remain
+        // Preserve existing selection, remove docs that no longer exist
         const remaining = prev.filter(d => allDocs.includes(d));
-        return remaining.length > 0 ? remaining : allDocs;
+        return remaining;
       });
     }).catch((err) => { console.error('[loadDocs]', err); setTree({}); setDocCount(0); });
   }, [currentProject]);
@@ -358,8 +357,16 @@ export default function WorkspacePage() {
             )}
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-4">
-            <div className="text-xs text-slate-400 mb-2">
-              {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : '전체 선택됨'}
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-400">
+                {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : '선택 없음'}
+              </span>
+              <div className="flex gap-1">
+                <button onClick={() => setSelectedDocs(Object.values(tree).flat() as string[])}
+                  className="px-1.5 py-0.5 text-[10px] text-blue-600 hover:bg-blue-50 rounded">일괄선택</button>
+                <button onClick={() => setSelectedDocs([])}
+                  className="px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-100 rounded">일괄해제</button>
+              </div>
             </div>
             <FolderTree tree={tree} projectName={currentProject} selectable
               selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}

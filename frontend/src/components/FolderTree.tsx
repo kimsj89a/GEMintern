@@ -105,11 +105,22 @@ export default function FolderTree({
 
   const toggleFolderDocs = (folder: string) => {
     if (!onSelectionChange) return;
-    const docs = tree[folder] || [];
-    if (docs.every(d => selectedDocs.includes(d)))
-      onSelectionChange(selectedDocs.filter(d => !docs.includes(d)));
+    // Collect docs from this folder AND all subfolders (paths starting with folder/)
+    const allDocs: string[] = [...(tree[folder] || [])];
+    if (folder !== '__root__') {
+      const prefix = folder + '/';
+      for (const [key, docs] of Object.entries(tree)) {
+        if (key.startsWith(prefix)) allDocs.push(...docs);
+      }
+    } else {
+      // Root: select ALL docs in all folders
+      for (const docs of Object.values(tree)) allDocs.push(...docs);
+    }
+    const unique = [...new Set(allDocs)];
+    if (unique.length > 0 && unique.every(d => selectedDocs.includes(d)))
+      onSelectionChange(selectedDocs.filter(d => !unique.includes(d)));
     else
-      onSelectionChange([...new Set([...selectedDocs, ...docs])]);
+      onSelectionChange([...new Set([...selectedDocs, ...unique])]);
   };
 
   // ── DnD ──
