@@ -1,9 +1,6 @@
 /**
  * NoteGraph — Obsidian Canvas style.
- *
- * HTML cards on a pannable/zoomable infinite canvas.
- * Connection lines drawn on a <canvas> layer underneath.
- * Cards can be resized from edges, minimized to dots.
+ * HTML cards + SVG bezier curves for connections.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -31,8 +28,8 @@ interface NoteGraphProps {
 const CARD_W = 240;
 const CARD_H = 160;
 const DOT_R = 6;
-const MIN_CARD_W = 120;
-const MIN_CARD_H = 80;
+const MIN_W = 120;
+const MIN_H = 80;
 
 const PALETTE = [
   '#ffffff', '#e0e7ff', '#dbeafe', '#dcfce7', '#fef9c3',
@@ -41,7 +38,6 @@ const PALETTE = [
 
 export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<CanvasNode[]>([]);
   const edgesRef = useRef<CanvasEdge[]>([]);
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
@@ -50,12 +46,9 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
   const panRef = useRef({ x: 0, y: 0 });
   const scaleRef = useRef(1);
-  const [, forceRender] = useState(0);
-  const rerender = () => forceRender(v => v + 1);
+  const [, setRenderTick] = useState(0);
+  const rerender = () => setRenderTick(v => v + 1);
 
-  const dragRef = useRef<{ slug: string; startX: number; startY: number; nodeStartX: number; nodeStartY: number; moved: boolean } | null>(null);
-  const resizeRef = useRef<{ slug: string; startX: number; startY: number; startW: number; startH: number } | null>(null);
-  const panDragRef = useRef<{ startX: number; startY: number; panStartX: number; panStartY: number } | null>(null);
   const [linkDrag, setLinkDrag] = useState<{ sourceSlug: string; mx: number; my: number } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: CanvasNode } | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
@@ -63,7 +56,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
 
   const existingSlugs = new Set(nodes.map(n => n.slug));
 
-  // ── Load ──
+  // ── Load — always fetch fresh content ──
   const loadGraph = useCallback(async () => {
     try {
       const data = await api.getNoteGraph(projectName);
@@ -73,10 +66,8 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
       for (let i = 0; i < data.nodes.length; i++) {
         const n = data.nodes[i];
         const prev = prevMap.get(n.slug);
-        let content = prev?.content || '';
-        if (!prev) {
-          try { content = (await api.getNote(projectName, n.slug))?.content || ''; } catch {}
-        }
+        let content = '';
+        try { content = (await api.getNote(projectName, n.slug))?.content || ''; } catch {}
         noteNodes.push({
           slug: n.slug, title: n.title, content,
           x: prev?.x ?? (i % cols) * (CARD_W + 40) + 60,
@@ -101,70 +92,16 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     return () => window.removeEventListener('click', close);
   }, [ctxMenu]);
 
-  // ── Draw edges ──
-  useEffect(() => {
-    const canvas = canvasRef.current, container = containerRef.current;
-    if (!canvas || !container) return;
-    let running = true;
-    const draw = () => {
-      if (!running) return;
-      const rect = container.getBoundingClientRect();
-      if (rect.width > 0 && (canvas.width !== rect.width || canvas.height !== rect.height)) {
-        canvas.width = rect.width; canvas.height = rect.height;
-      }
-      const ctx = canvas.getContext('2d');
-      if (!ctx || canvas.width < 2) { requestAnimationFrame(draw); return; }
-      const s = scaleRef.current, px = panRef.current.x, py = panRef.current.y;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const nodeMap = new Map(nodesRef.current.map(n => [n.slug, n]));
-      ctx.save(); ctx.translate(px, py); ctx.scale(s, s);
-
-      for (const e of edgesRef.current) {
-        const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
-        if (!a || !b) continue;
-        const ax = a.minimized ? a.x : a.x + a.w / 2;
-        const ay = a.minimized ? a.y : a.y + a.h / 2;
-        const bx = b.minimized ? b.x : b.x + b.w / 2;
-        const by = b.minimized ? b.y : b.y + b.h / 2;
-        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2.5 / s; ctx.globalAlpha = 0.5;
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-        ctx.globalAlpha = 1;
-        const ang = Math.atan2(by - ay, bx - ax);
-        const dist = b.minimized ? DOT_R + 2 : 20;
-        const arrX = bx - Math.cos(ang) * dist, arrY = by - Math.sin(ang) * dist;
-        ctx.fillStyle = '#6366f1'; ctx.globalAlpha = 0.7;
-        ctx.beginPath(); ctx.moveTo(arrX, arrY);
-        ctx.lineTo(arrX - Math.cos(ang - 0.4) * 10 / s, arrY - Math.sin(ang - 0.4) * 10 / s);
-        ctx.lineTo(arrX - Math.cos(ang + 0.4) * 10 / s, arrY - Math.sin(ang + 0.4) * 10 / s);
-        ctx.fill(); ctx.globalAlpha = 1;
-      }
-
-      if (linkDrag) {
-        const src = nodeMap.get(linkDrag.sourceSlug);
-        if (src) {
-          const sx = src.minimized ? src.x : src.x + src.w / 2;
-          const sy = src.minimized ? src.y : src.y + src.h / 2;
-          const wx = (linkDrag.mx - px) / s, wy = (linkDrag.my - py) / s;
-          ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2.5 / s;
-          ctx.setLineDash([6 / s, 4 / s]);
-          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(wx, wy); ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-      ctx.restore();
-      requestAnimationFrame(draw);
-    };
-    requestAnimationFrame(draw);
-    return () => { running = false; };
-  }, [edges, linkDrag]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const obs = new ResizeObserver(() => rerender());
-    obs.observe(container);
-    return () => obs.disconnect();
-  }, []);
+  // ── Bezier path from source right-top handle to target left edge ──
+  const getEdgePath = (a: CanvasNode, b: CanvasNode): string => {
+    const sx = a.minimized ? a.x : a.x + a.w; // right edge
+    const sy = a.minimized ? a.y : a.y + 14;    // near top (handle position)
+    const ex = b.minimized ? b.x : b.x;         // left edge
+    const ey = b.minimized ? b.y : b.y + b.h / 2;
+    const dx = Math.abs(ex - sx);
+    const cp = Math.max(50, dx * 0.4);
+    return `M${sx},${sy} C${sx + cp},${sy} ${ex - cp},${ey} ${ex},${ey}`;
+  };
 
   // ── Card drag ──
   const handleCardMouseDown = (e: React.MouseEvent, slug: string) => {
@@ -172,54 +109,50 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
     e.stopPropagation();
     const node = nodesRef.current.find(n => n.slug === slug);
     if (!node) return;
-    dragRef.current = { slug, startX: e.clientX, startY: e.clientY, nodeStartX: node.x, nodeStartY: node.y, moved: false };
+    const startX = e.clientX, startY = e.clientY, nx = node.x, ny = node.y;
     const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const dx = ev.clientX - dragRef.current.startX, dy = ev.clientY - dragRef.current.startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
-      if (dragRef.current.moved) {
-        const nd = nodesRef.current.find(n => n.slug === dragRef.current!.slug);
-        if (nd) { nd.x = dragRef.current.nodeStartX + dx / scaleRef.current; nd.y = dragRef.current.nodeStartY + dy / scaleRef.current; setNodes([...nodesRef.current]); }
-      }
+      const nd = nodesRef.current.find(n => n.slug === slug);
+      if (!nd) return;
+      nd.x = nx + (ev.clientX - startX) / scaleRef.current;
+      nd.y = ny + (ev.clientY - startY) / scaleRef.current;
+      setNodes([...nodesRef.current]);
     };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); dragRef.current = null; };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
   };
 
-  // ── Card resize (from bottom-right corner) ──
+  // ── Card resize ──
   const handleResizeStart = (e: React.MouseEvent, slug: string) => {
     e.stopPropagation(); e.preventDefault();
     const node = nodesRef.current.find(n => n.slug === slug);
     if (!node) return;
-    resizeRef.current = { slug, startX: e.clientX, startY: e.clientY, startW: node.w, startH: node.h };
+    const startX = e.clientX, startY = e.clientY, sw = node.w, sh = node.h;
     const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const nd = nodesRef.current.find(n => n.slug === resizeRef.current!.slug);
+      const nd = nodesRef.current.find(n => n.slug === slug);
       if (!nd) return;
-      nd.w = Math.max(MIN_CARD_W, resizeRef.current.startW + (ev.clientX - resizeRef.current.startX) / scaleRef.current);
-      nd.h = Math.max(MIN_CARD_H, resizeRef.current.startH + (ev.clientY - resizeRef.current.startY) / scaleRef.current);
+      nd.w = Math.max(MIN_W, sw + (ev.clientX - startX) / scaleRef.current);
+      nd.h = Math.max(MIN_H, sh + (ev.clientY - startY) / scaleRef.current);
       setNodes([...nodesRef.current]);
     };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); resizeRef.current = null; };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
   };
 
-  // ── Pan ──
+  // ── Pan (background drag) ──
   const handleBgMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    panDragRef.current = { startX: e.clientX, startY: e.clientY, panStartX: panRef.current.x, panStartY: panRef.current.y };
+    const startX = e.clientX, startY = e.clientY, px = panRef.current.x, py = panRef.current.y;
     const onMove = (ev: MouseEvent) => {
-      if (!panDragRef.current) return;
-      panRef.current.x = panDragRef.current.panStartX + ev.clientX - panDragRef.current.startX;
-      panRef.current.y = panDragRef.current.panStartY + ev.clientY - panDragRef.current.startY;
+      panRef.current.x = px + ev.clientX - startX;
+      panRef.current.y = py + ev.clientY - startY;
       rerender();
     };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); panDragRef.current = null; };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
   };
 
-  // ── Zoom ──
-  const handleWheel = (e: React.WheelEvent) => {
+  // ── Zoom (only on background, not inside cards) ──
+  const handleBgWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -250,7 +183,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
       const wx = (ev.clientX - r.left - px) / s, wy = (ev.clientY - r.top - py) / s;
       const target = nodesRef.current.find(n => {
         if (n.slug === slug) return false;
-        if (n.minimized) return Math.hypot(wx - n.x, wy - n.y) < DOT_R + 6;
+        if (n.minimized) return Math.hypot(wx - n.x, wy - n.y) < DOT_R + 10;
         return wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h;
       });
       if (target) {
@@ -282,24 +215,58 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
   };
 
   const s = scaleRef.current, px = panRef.current.x, py = panRef.current.y;
+  const nodeMap = new Map(nodes.map(n => [n.slug, n]));
 
   return (
-    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-slate-50"
-      onMouseDown={handleBgMouseDown} onWheel={handleWheel}
-      style={{ cursor: panDragRef.current ? 'grabbing' : 'default' }}>
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-[#fafafa]"
+      onMouseDown={handleBgMouseDown} onWheel={handleBgWheel}>
 
-      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }} />
+      {/* SVG layer for edges — same coordinate space as cards */}
+      <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 1, overflow: 'visible' }}>
+        <g transform={`translate(${px},${py}) scale(${s})`}>
+          {edges.map((e, i) => {
+            const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
+            if (!a || !b) return null;
+            const path = getEdgePath(a, b);
+            return (
+              <g key={`${e.source}-${e.target}-${i}`}>
+                <path d={path} fill="none" stroke="#6366f1" strokeWidth={2.5 / s} strokeOpacity={0.5} />
+                {/* Arrow marker at end */}
+                <circle
+                  cx={b.minimized ? b.x : b.x}
+                  cy={b.minimized ? b.y : b.y + b.h / 2}
+                  r={4 / s} fill="#6366f1" fillOpacity={0.6}
+                />
+              </g>
+            );
+          })}
+          {/* Link drag line */}
+          {linkDrag && (() => {
+            const src = nodeMap.get(linkDrag.sourceSlug);
+            if (!src) return null;
+            const sx = src.minimized ? src.x : src.x + src.w;
+            const sy = src.minimized ? src.y : src.y + 14;
+            const ex = (linkDrag.mx - px) / s;
+            const ey = (linkDrag.my - py) / s;
+            const dx = Math.abs(ex - sx);
+            const cp = Math.max(40, dx * 0.4);
+            return (
+              <path d={`M${sx},${sy} C${sx + cp},${sy} ${ex - cp},${ey} ${ex},${ey}`}
+                fill="none" stroke="#22c55e" strokeWidth={2.5 / s} strokeDasharray={`${6 / s} ${4 / s}`} />
+            );
+          })()}
+        </g>
+      </svg>
 
+      {/* Cards layer */}
       <div className="absolute inset-0" style={{ zIndex: 2, pointerEvents: 'none' }}>
         {loaded && nodes.map(node => {
           if (node.minimized) {
-            // Minimized: small dot
             return (
               <div key={node.slug}
                 className="absolute rounded-full border-2 cursor-pointer"
                 style={{
-                  left: node.x * s + px - DOT_R * s,
-                  top: node.y * s + py - DOT_R * s,
+                  left: node.x * s + px - DOT_R * s, top: node.y * s + py - DOT_R * s,
                   width: DOT_R * 2 * s, height: DOT_R * 2 * s,
                   backgroundColor: node.color === '#ffffff' ? '#6366f1' : node.color,
                   borderColor: node.slug === activeSlug ? '#4338ca' : '#9ca3af',
@@ -310,18 +277,16 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, node }); }}
                 title={node.title}
               >
-                {/* Title tooltip on hover */}
-                <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-slate-500 pointer-events-none"
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-slate-500 pointer-events-none"
                   style={{ fontSize: Math.max(8, 10 * s) }}>{node.title}</div>
               </div>
             );
           }
 
-          // Full card
           return (
             <div key={node.slug}
-              className={`absolute rounded-xl border-2 shadow-md overflow-hidden hover:shadow-lg ${
-                node.slug === activeSlug ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
+              className={`absolute rounded-xl border-2 shadow-md flex flex-col ${
+                node.slug === activeSlug ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-slate-300'
               }`}
               style={{
                 left: node.x * s + px, top: node.y * s + py,
@@ -332,32 +297,32 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
               }}
               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, node }); }}
             >
-              {/* Title bar — draggable */}
-              <div className="px-2 py-1 border-b border-slate-100 flex items-center gap-1 cursor-grab select-none"
+              {/* Title bar */}
+              <div className="px-2 py-1 border-b border-slate-100 flex items-center gap-1 cursor-grab select-none shrink-0"
                 onMouseDown={e => handleCardMouseDown(e, node.slug)}
                 style={{ fontSize: Math.max(10, 12 * s) }}>
-                {/* Minimize button */}
-                <button className="w-3 h-3 rounded-full bg-slate-300 hover:bg-amber-400 shrink-0 transition-colors"
+                <button className="text-slate-400 hover:text-amber-500 text-[10px] shrink-0 leading-none"
                   title="최소화"
                   onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); const nd = nodesRef.current.find(n => n.slug === node.slug); if (nd) { nd.minimized = true; setNodes([...nodesRef.current]); } }}
-                />
+                  onClick={e => { e.stopPropagation(); const nd = nodesRef.current.find(n => n.slug === node.slug); if (nd) { nd.minimized = true; setNodes([...nodesRef.current]); } }}>
+                  ⋯
+                </button>
                 <span className="font-semibold text-slate-700 truncate flex-1">{node.title}</span>
-                {/* Connect handle */}
                 <div className="w-3.5 h-3.5 rounded-full bg-indigo-400 hover:bg-indigo-600 cursor-crosshair shrink-0 opacity-40 hover:opacity-100 transition-opacity"
                   title="드래그하여 연결"
                   onMouseDown={e => handleConnectStart(e, node.slug)} />
               </div>
 
-              {/* Content */}
-              <div className="px-2 py-1 overflow-hidden text-slate-600 flex-1"
-                style={{ height: `calc(100% - ${28 * s}px)` }}>
+              {/* Content — scrollable inside card */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-1 text-slate-600"
+                onWheel={e => e.stopPropagation()} /* prevent zoom when scrolling card content */
+              >
                 {editingSlug === node.slug ? (
                   <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                     <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Escape') setEditingSlug(null); if (e.ctrlKey && e.key === 's') { e.preventDefault(); handleSaveEdit(node.slug); } }}
                       className="w-full border border-indigo-200 rounded p-1 resize-none focus:outline-none focus:border-indigo-400"
-                      style={{ height: '80%', fontSize: Math.max(9, 11 * s) }} />
+                      style={{ height: '85%', fontSize: Math.max(9, 11 * s) }} />
                     <div className="flex gap-1 mt-1">
                       <button onClick={e => { e.stopPropagation(); handleSaveEdit(node.slug); }}
                         className="px-2 py-0.5 text-white bg-indigo-500 rounded text-[10px]">저장</button>
@@ -366,7 +331,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full overflow-hidden cursor-pointer"
+                  <div className="cursor-pointer min-h-[20px]"
                     onClick={e => { e.stopPropagation(); setEditingSlug(node.slug); setEditContent(node.content); }}
                     onDoubleClick={e => { e.stopPropagation(); onNavigate(node.slug); }}
                     style={{ fontSize: Math.max(9, 11 * s) }}>
@@ -380,7 +345,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
                 )}
               </div>
 
-              {/* Resize handle (bottom-right) */}
+              {/* Resize handle */}
               <div className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
                 onMouseDown={e => handleResizeStart(e, node.slug)}>
                 <svg className="w-3 h-3 text-slate-300 absolute bottom-0.5 right-0.5" viewBox="0 0 6 6">
@@ -397,7 +362,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
       {!loaded && <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm z-10">캔버스 로딩 중...</div>}
 
       <div className="absolute top-2 left-2 text-[10px] text-slate-400 bg-white/80 backdrop-blur px-2 py-1 rounded-lg z-10">
-        드래그: 이동 · 더블클릭: 노트 열기 · ● 연결 · 모서리: 크기 조절
+        드래그: 이동 · 더블클릭: 노트 열기 · ● 연결 · 모서리: 크기 · ⋯ 최소화
       </div>
 
       {linkDrag && (
@@ -415,7 +380,6 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           className="w-7 h-7 bg-white border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 font-bold">-</button>
       </div>
 
-      {/* Context menu */}
       {ctxMenu && createPortal(
         <div className="fixed bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-[9999] min-w-[150px]"
           style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
@@ -435,21 +399,13 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate }: NoteG
           </div>
           <div className="border-t border-slate-100 my-1" />
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => { onNavigate(ctxMenu.node.slug); setCtxMenu(null); }}>
-            📝 노트 열기
+            onClick={() => { onNavigate(ctxMenu.node.slug); setCtxMenu(null); }}>📝 노트 열기</button>
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
+            onClick={() => { const nd = nodesRef.current.find(n => n.slug === ctxMenu.node.slug); if (nd) { nd.minimized = !nd.minimized; setNodes([...nodesRef.current]); } setCtxMenu(null); }}>
+            {ctxMenu.node.minimized ? '🔲 카드로 보기' : '⋯ 최소화'}
           </button>
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => {
-              const nd = nodesRef.current.find(n => n.slug === ctxMenu.node.slug);
-              if (nd) { nd.minimized = !nd.minimized; setNodes([...nodesRef.current]); }
-              setCtxMenu(null);
-            }}>
-            {ctxMenu.node.minimized ? '🔲 카드로 보기' : '⚫ 최소화'}
-          </button>
-          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => { setEditingSlug(ctxMenu.node.slug); setEditContent(ctxMenu.node.content); setCtxMenu(null); }}>
-            ✏️ 캔버스에서 편집
-          </button>
+            onClick={() => { setEditingSlug(ctxMenu.node.slug); setEditContent(ctxMenu.node.content); setCtxMenu(null); }}>✏️ 편집</button>
         </div>,
         document.body
       )}
