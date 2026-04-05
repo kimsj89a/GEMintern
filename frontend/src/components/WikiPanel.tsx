@@ -282,6 +282,7 @@ function WikiSectionItem({
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(section.content);
+  const [editTitle, setEditTitle] = useState(section.title);
   const [revising, setRevising] = useState(false);
   const [reviseInput, setReviseInput] = useState('');
   const [reviseLoading, setReviseLoading] = useState(false);
@@ -306,7 +307,10 @@ function WikiSectionItem({
   }, [preview, projectName]);
 
   const handleSave = async () => {
-    await api.patchWikiSection(projectName, section.id, { content: editContent });
+    await api.patchWikiSection(projectName, section.id, {
+      content: editContent,
+      ...(editTitle !== section.title ? { title: editTitle } : {}),
+    });
     setEditing(false);
     onUpdate();
   };
@@ -381,6 +385,12 @@ function WikiSectionItem({
         <div className="px-3 pb-3">
           {editing ? (
             <div className="space-y-2">
+              <input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="w-full text-sm font-semibold border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-400"
+                placeholder="섹션 제목"
+              />
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}

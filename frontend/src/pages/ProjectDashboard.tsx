@@ -5,6 +5,7 @@ import { api } from '../api/client';
 
 const STANDALONE_TOOLS = [
   { id: 'quick_chat', label: '빠른 채팅', icon: '💬', desc: '파일 업로드 + 즉시 AI 채팅' },
+  { id: 'compare', label: '신구비교', icon: '⚖️', desc: '텀싯↔계약서 비교표' },
   { id: 'draftdoc', label: '기안문', icon: '📝', desc: '기안문 작성' },
   { id: 'freedoc', label: '자유양식', icon: '✏️', desc: '자유 구조 문서' },
   { id: 'doc_updater', label: '문서 업데이트', icon: '🔄', desc: '기존 문서 수정' },

@@ -330,7 +330,13 @@ export default function FolderTree({
 
       {/* Context Menu */}
       {contextMenu && createPortal(
-        <div
+        <div ref={el => {
+          // Auto-reposition if menu overflows viewport
+          if (!el) return;
+          const rect = el.getBoundingClientRect();
+          if (rect.bottom > window.innerHeight) el.style.top = `${contextMenu.y - rect.height}px`;
+          if (rect.right > window.innerWidth) el.style.left = `${contextMenu.x - rect.width}px`;
+        }}
           className="fixed bg-white border border-[#E9E9E7] rounded-xl shadow-xl py-1.5 z-[9999] min-w-[168px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={e => e.stopPropagation()}
