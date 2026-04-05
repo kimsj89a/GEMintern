@@ -280,7 +280,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
         return (
           <div key={node.slug}>
             {/* Title above */}
-            <div className="absolute pointer-events-none text-center" style={{ left: cx - 50, top: cy - r - 16, width: 100, fontSize: Math.max(9, 11 * s) }}>
+            <div className="absolute pointer-events-none text-center" style={{ left: cx - 50, top: cy - r - 32, width: 100, fontSize: Math.max(9, 11 * s) }}>
               <span className="text-slate-600 font-medium whitespace-nowrap">{node.title}</span>
             </div>
             {/* Dot */}
