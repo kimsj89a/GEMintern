@@ -279,7 +279,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
               onDragOver={e => handleDragOver(e, i)}
               onDrop={() => handleDrop(i)}
               onDragEnd={() => { setDragSlug(null); setDropIndex(null); }}
-              onDoubleClick={() => { if (renamingSlug !== n.slug) selectNote(n.slug); }}
+              onClick={() => { if (renamingSlug !== n.slug) selectNote(n.slug); }}
               onContextMenu={e => { e.preventDefault(); setNoteCtx({ x: e.clientX, y: e.clientY, slug: n.slug, title: n.title }); }}
               className={`w-full text-left px-3 py-2 border-b transition-colors cursor-grab ${
                 dragSlug === n.slug ? 'opacity-40' : ''
