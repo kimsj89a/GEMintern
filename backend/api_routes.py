@@ -3343,7 +3343,7 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
             from google.genai import types
             client = AIClient(api_key=api_key)
             config = types.GenerateContentConfig(
-                max_output_tokens=2048,
+                max_output_tokens=8192,
                 temperature=0.7,
                 system_instruction=system_prompt,
             )
