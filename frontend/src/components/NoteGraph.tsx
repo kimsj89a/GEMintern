@@ -332,14 +332,20 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
       {popup && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
           onClick={() => setPopup(null)}
+          onMouseDown={e => e.stopPropagation()}
           onWheel={e => e.stopPropagation()}>
           <div className="bg-white rounded-2xl shadow-2xl w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
               <span className="font-bold text-slate-800 text-lg">{popup.title}</span>
               <div className="flex items-center gap-2">
+                <button onClick={async () => {
+                  try { await navigator.clipboard.writeText(popup.content); } catch {}
+                }}
+                  className="px-3 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">복사</button>
                 <button onClick={() => { setPopup(null); onNavigate(popup.slug); }}
                   className="px-3 py-1 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">편집</button>
                 <button onClick={() => setPopup(null)}
