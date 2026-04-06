@@ -29,17 +29,18 @@ def compare_contracts(
     from core_wiki import load_wiki
     from prompts import CONTRACT_COMPARE_PROMPTS
 
-    # Load wiki for context
+    # Load wiki for context (skip for standalone)
     wiki_text = ""
-    wiki = load_wiki(project_name, owner_id=owner_id)
-    if wiki and wiki.get("sections"):
-        parts = []
-        for sec in wiki["sections"]:
-            parts.append(f"## {sec.get('title', '')}\n{sec.get('content', '')}")
-        wiki_text = "\n\n".join(parts)
+    if project_name != "__standalone__":
+        wiki = load_wiki(project_name, owner_id=owner_id)
+        if wiki and wiki.get("sections"):
+            parts = []
+            for sec in wiki["sections"]:
+                parts.append(f"## {sec.get('title', '')}\n{sec.get('content', '')}")
+            wiki_text = "\n\n".join(parts)
 
-    # Load source docs
-    docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    # Load source docs (skip for standalone — inline_docs only)
+    docs = {} if project_name == "__standalone__" else load_project_docs_dict(project_name, owner_id=owner_id)
     if selected_docs:
         import os
         def _stem(name: str) -> str:

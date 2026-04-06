@@ -162,11 +162,18 @@ export const api = {
       method: 'POST',
     }),
   // Contract Comparison
-  contractCompare: (project: string, selectedDocs?: string[], inlineDocs?: Record<string, string>) =>
-    request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/contract-compare`, {
+  contractCompare: (project: string, selectedDocs?: string[], inlineDocs?: Record<string, string>) => {
+    if (project === '__standalone__' && inlineDocs) {
+      return request<{ task_id: string }>('/contract-compare-standalone', {
+        method: 'POST',
+        body: JSON.stringify({ inline_docs: inlineDocs }),
+      });
+    }
+    return request<{ task_id: string }>(`/projects/${encodeURIComponent(project)}/contract-compare`, {
       method: 'POST',
       body: JSON.stringify({ selected_docs: selectedDocs, inline_docs: inlineDocs }),
-    }),
+    });
+  },
 
   downloadExcelModel: async (project: string, excelB64: string, filename: string) => {
     const res = await fetchWithAuth(`${BASE}/projects/${encodeURIComponent(project)}/excel-model/download`, {
