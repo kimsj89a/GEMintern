@@ -213,6 +213,12 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                   ← {backlinks.length}
                 </button>
               )}
+              {/* Export */}
+              <button onClick={() => {
+                const blob = new Blob([`# ${title}\n\n${content}`], { type: 'text/markdown' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                a.download = `${title || 'note'}.md`; a.click(); URL.revokeObjectURL(a.href);
+              }} className="text-[10px] text-slate-400 hover:text-slate-600 px-1" title="MD 다운로드">↓MD</button>
               <button onClick={() => handleDelete()} className="text-slate-300 hover:text-red-500 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14"/></svg>
               </button>
@@ -246,6 +252,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                       if (e.key === 'i') { e.preventDefault(); applyTool('italic'); return; }
                       if (e.key === 'k') { e.preventDefault(); applyTool('link'); return; }
                       if (e.key === 's') { e.preventDefault(); doSave(); return; }
+                      if (e.key === 'p') { e.preventDefault(); setViewMode(v => v === 'preview' ? 'split' : 'preview'); return; }
                     }
 
                     // Tab: indent list / Shift+Tab: outdent list

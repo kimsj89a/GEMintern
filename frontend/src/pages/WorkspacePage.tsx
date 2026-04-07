@@ -46,6 +46,8 @@ export default function WorkspacePage() {
   const [showSlideModal, setShowSlideModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+  const [editingProjectName, setEditingProjectName] = useState(false);
+  const [projectNameValue, setProjectNameValue] = useState(currentProject);
   const [leftWidth, setLeftWidth] = useState(300);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -305,7 +307,24 @@ export default function WorkspacePage() {
           <button onClick={backToDashboard} className="text-slate-400 hover:text-slate-600 transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
-          <span className="text-lg font-bold text-slate-800">{currentProject}</span>
+          {editingProjectName ? (
+            <input autoFocus value={projectNameValue}
+              onChange={e => setProjectNameValue(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && projectNameValue.trim() && projectNameValue !== currentProject) {
+                  try { await api.renameProject(currentProject, projectNameValue.trim()); window.location.reload(); } catch {}
+                }
+                if (e.key === 'Escape') { setEditingProjectName(false); setProjectNameValue(currentProject); }
+              }}
+              onBlur={() => { setEditingProjectName(false); setProjectNameValue(currentProject); }}
+              className="text-lg font-bold text-slate-800 bg-transparent border-b-2 border-indigo-400 focus:outline-none px-1"
+            />
+          ) : (
+            <span className="text-lg font-bold text-slate-800 cursor-pointer hover:text-indigo-600 transition-colors"
+              onClick={() => { setEditingProjectName(true); setProjectNameValue(currentProject); }}>
+              {currentProject}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => { setView('legacy'); openTab('settings'); }}
