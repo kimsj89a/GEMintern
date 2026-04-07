@@ -248,17 +248,32 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                       if (e.key === 's') { e.preventDefault(); doSave(); return; }
                     }
 
-                    // Tab: indent / Shift+Tab: outdent
+                    // Tab: indent list / Shift+Tab: outdent list
                     if (e.key === 'Tab') {
                       e.preventDefault();
+                      const listM = currentLine.match(/^(\s*)([-*+]|\d+\.)\s/);
                       if (e.shiftKey) {
-                        // Outdent: remove leading 2 spaces
+                        // Outdent: remove leading 2 spaces, switch * → -
                         if (currentLine.startsWith('  ')) {
-                          const nc = val.slice(0, lineStart) + val.slice(lineStart + 2);
+                          let newLine = currentLine.slice(2);
+                          // If outdenting from *, switch to -
+                          if (newLine.match(/^\s*\*\s/)) newLine = newLine.replace(/^(\s*)\*/, '$1-');
+                          const nc = val.slice(0, lineStart) + newLine + val.slice(lineStart + currentLine.length);
                           setContent(nc); scheduleSave();
                           requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = Math.max(lineStart, start - 2); });
                         }
+                      } else if (listM) {
+                        // Indent list item: add 2 spaces, switch - → * for sub-level
+                        let newLine = '  ' + currentLine;
+                        // If it was top-level -, switch to * for visual distinction
+                        if (listM[1] === '' && listM[2] === '-') {
+                          newLine = '  * ' + currentLine.slice(listM[0].length);
+                        }
+                        const nc = val.slice(0, lineStart) + newLine + val.slice(lineStart + currentLine.length);
+                        setContent(nc); scheduleSave();
+                        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
                       } else {
+                        // Plain text: just insert 2 spaces
                         const nc = val.slice(0, start) + '  ' + val.slice(end);
                         setContent(nc); scheduleSave();
                         requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
