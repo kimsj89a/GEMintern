@@ -3,10 +3,22 @@ import { useAppStore } from '../stores/appStore';
 import { PAGE_REGISTRY } from '../pages';
 
 export default function TabContainer({ mobile, hideTabBar }: { mobile?: boolean; hideTabBar?: boolean } = {}) {
-  const { openTabs, activePage, setActivePage, closeTab } = useAppStore();
+  const { openTabs, activePage, setActivePage, closeTab, backToDashboard, view } = useAppStore();
+  const isToolView = view === 'tool';
+  const currentPage = PAGE_REGISTRY[activePage];
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-mesh">
+    <div className={`flex-1 flex flex-col h-full overflow-hidden ${isToolView ? 'bg-[#FAFAFA]' : 'bg-mesh'}`}
+      style={isToolView ? { fontFamily: "'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } : undefined}>
+      {/* Tool view header — back button, no sidebar */}
+      {isToolView && (
+        <header className="flex items-center gap-3 px-5 py-3 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
+          <button onClick={backToDashboard} className="text-[#9B9B9B] hover:text-[#3C3C3C] transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <span className="text-sm font-bold text-[#2A2A2A]">{currentPage?.label || activePage}</span>
+        </header>
+      )}
       {/* Tab bar — 모바일에서는 숨기기 가능 */}
       {!hideTabBar && <div className={`flex items-center bg-white/60 backdrop-blur-sm border-b border-slate-200/80 overflow-x-auto px-1 ${mobile ? 'min-h-[36px]' : 'min-h-[40px]'}`}>
         {openTabs.map((tabId) => {

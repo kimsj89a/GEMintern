@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type ViewMode = 'dashboard' | 'workspace' | 'legacy';
+type ViewMode = 'dashboard' | 'workspace' | 'legacy' | 'tool';
 
 interface AppState {
   view: ViewMode;
@@ -69,14 +69,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openLegacyTool: (page) => {
+    // All standalone tools render full-screen (no sidebar)
     const { openTabs } = get();
-    if (!openTabs.includes(page)) {
-      set({ view: 'legacy', activePage: page, openTabs: [...openTabs, page] });
-    } else {
-      set({ view: 'legacy', activePage: page });
-    }
+    const tabs = openTabs.includes(page) ? openTabs : [...openTabs, page];
+    set({ view: 'tool', activePage: page, openTabs: tabs });
     if (!_skipNextPush) {
-      window.history.pushState({ view: 'legacy', page }, '', `#tool/${page}`);
+      window.history.pushState({ view: 'tool', page }, '', `#tool/${page}`);
     }
   },
 
@@ -135,7 +133,7 @@ if (initHash.startsWith('#project/')) {
   const page = initHash.slice(6);
   if (page) {
     _skipNextPush = true;
-    useAppStore.getState().openLegacyTool(page);
+    useAppStore.getState().openLegacyTool(page); // routes to 'tool' view (fullscreen)
     _skipNextPush = false;
   }
 }
@@ -159,6 +157,10 @@ window.addEventListener('popstate', (e) => {
       activePanel: 'chat',
     });
     localStorage.setItem('lastProject', state.project);
+  } else if (state?.view === 'tool' && state?.page) {
+    const { openTabs } = useAppStore.getState();
+    const tabs = openTabs.includes(state.page) ? openTabs : [...openTabs, state.page];
+    useAppStore.setState({ view: 'tool', activePage: state.page, openTabs: tabs, activeTool: null });
   } else if (state?.view === 'legacy' && state?.page) {
     const { openTabs } = useAppStore.getState();
     const tabs = openTabs.includes(state.page) ? openTabs : [...openTabs, state.page];

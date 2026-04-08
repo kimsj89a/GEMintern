@@ -87,6 +87,11 @@ export default function App() {
     return <WorkspacePage />;
   }
 
+  // 독립 도구 뷰 (전체화면, 사이드바 없음)
+  if (view === 'tool') {
+    return <TabContainer hideTabBar />;
+  }
+
   // 레거시 뷰 (설정/관리자 등)
   if (isMobile) {
     return (
