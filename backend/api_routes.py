@@ -3795,5 +3795,3 @@ async def docx_markup_output(files: List[UploadFile] = File(...), user: dict = D
         except: pass
         try: shutil.rmtree(out_dir, ignore_errors=True)
         except: pass
-    finally:
-        os.unlink(tmp_path)
