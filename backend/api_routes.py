@@ -3692,3 +3692,98 @@ def add_session_message(session_id: int, data: dict, user: dict = Depends(get_cu
             (session_id,)
         )
     return {"ok": True}
+
+
+# ──────────────────────────────────────────
+# DOCX Markup Tool (tracked changes)
+# ──────────────────────────────────────────
+
+@router.post("/docx-markup/extract")
+async def docx_markup_extract(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """Extract tracked changes from DOCX file(s)."""
+    import tempfile
+    from docx_markup.core import DocxParser
+    results = {}
+    for f in files:
+        content = await f.read()
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            parser = DocxParser(tmp_path)
+            changes = parser.extract_changes()
+            results[f.filename] = [
+                {"type": c.change_type, "author": c.author, "date": c.date, "text": c.text, "context": c.context}
+                for c in changes
+            ]
+        except Exception as e:
+            results[f.filename] = {"error": str(e)}
+        finally:
+            os.unlink(tmp_path)
+    return {"results": results}
+
+
+@router.post("/docx-markup/compare")
+async def docx_markup_compare(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """Compare tracked changes across multiple DOCX files."""
+    import tempfile
+    from docx_markup.core import extract_all_changes
+    from docx_markup.compare import ChangeComparer
+    tmp_paths = []
+    file_changes = {}
+    for f in files:
+        content = await f.read()
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+            tmp.write(content)
+            tmp_paths.append(tmp.name)
+        try:
+            changes = extract_all_changes(tmp.name)
+            file_changes[f.filename] = changes
+        except Exception as e:
+            file_changes[f.filename] = []
+
+    comparer = ChangeComparer()
+    names = list(file_changes.keys())
+    report_lines = []
+    if len(names) >= 2:
+        result = comparer.compare_pair(file_changes[names[0]], file_changes[names[1]], names[0], names[1])
+        report_lines.append(f"동일 변경: {len(result.matched)}건")
+        report_lines.append(f"충돌: {len(result.conflicts)}건")
+        report_lines.append(f"단독 ({names[0]}): {len(result.only_a)}건")
+        report_lines.append(f"단독 ({names[1]}): {len(result.only_b)}건")
+        for conflict in result.conflicts[:20]:
+            report_lines.append(f"\n[충돌] {conflict.change_a.text[:80]} vs {conflict.change_b.text[:80]}")
+
+    for p in tmp_paths:
+        try: os.unlink(p)
+        except: pass
+    return {"report": "\n".join(report_lines), "file_count": len(names)}
+
+
+@router.post("/docx-markup/clean-redline")
+async def docx_markup_output(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """Generate Clean and Redline versions of a DOCX file."""
+    import tempfile, base64
+    from docx_markup.output import create_both_versions
+    if not files:
+        raise HTTPException(status_code=400, detail="파일을 업로드해주세요.")
+    f = files[0]
+    content = await f.read()
+    with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    out_dir = tempfile.mkdtemp()
+    try:
+        create_both_versions(tmp_path, out_dir)
+        stem = os.path.splitext(f.filename)[0]
+        result_files = {}
+        for suffix in ['_CLEAN.docx', '_REDLINE.docx']:
+            out_file = os.path.join(out_dir, stem + suffix)
+            if os.path.exists(out_file):
+                with open(out_file, 'rb') as fh:
+                    result_files[suffix.strip('_').lower()] = base64.b64encode(fh.read()).decode()
+        return {"files": result_files, "stem": stem}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        os.unlink(tmp_path)
