@@ -3702,24 +3702,25 @@ def add_session_message(session_id: int, data: dict, user: dict = Depends(get_cu
 async def docx_markup_extract(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     """Extract tracked changes from DOCX file(s)."""
     import tempfile
-    from docx_markup.core import DocxParser
     results = {}
     for f in files:
         content = await f.read()
-        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
+        tmp_path = os.path.join(tempfile.mkdtemp(), f.filename or 'input.docx')
+        with open(tmp_path, 'wb') as fh:
+            fh.write(content)
         try:
+            from docx_markup.core import DocxParser
             parser = DocxParser(tmp_path)
             changes = parser.extract_changes()
             results[f.filename] = [
-                {"type": c.change_type, "author": c.author, "date": c.date, "text": c.text, "context": c.context}
+                {"type": c.change_type, "author": c.author, "date": c.date, "text": c.text, "context": getattr(c, 'context', '')}
                 for c in changes
             ]
         except Exception as e:
             results[f.filename] = {"error": str(e)}
         finally:
-            os.unlink(tmp_path)
+            try: os.unlink(tmp_path)
+            except: pass
     return {"results": results}
 
 
@@ -3763,27 +3764,36 @@ async def docx_markup_compare(files: List[UploadFile] = File(...), user: dict = 
 @router.post("/docx-markup/clean-redline")
 async def docx_markup_output(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
     """Generate Clean and Redline versions of a DOCX file."""
-    import tempfile, base64
-    from docx_markup.output import create_both_versions
+    import tempfile, base64, shutil, traceback
     if not files:
         raise HTTPException(status_code=400, detail="파일을 업로드해주세요.")
     f = files[0]
     content = await f.read()
-    with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
+    tmp_path = os.path.join(tempfile.mkdtemp(), f.filename or 'input.docx')
+    with open(tmp_path, 'wb') as fh:
+        fh.write(content)
     out_dir = tempfile.mkdtemp()
     try:
+        from docx_markup.output import create_both_versions
         create_both_versions(tmp_path, out_dir)
         stem = os.path.splitext(f.filename)[0]
         result_files = {}
-        for suffix in ['_CLEAN.docx', '_REDLINE.docx']:
-            out_file = os.path.join(out_dir, stem + suffix)
-            if os.path.exists(out_file):
-                with open(out_file, 'rb') as fh:
-                    result_files[suffix.strip('_').lower()] = base64.b64encode(fh.read()).decode()
+        # Search output dir for any generated files
+        for fname in os.listdir(out_dir):
+            if fname.endswith('.docx'):
+                with open(os.path.join(out_dir, fname), 'rb') as fh:
+                    key = 'clean' if 'CLEAN' in fname.upper() else 'redline'
+                    result_files[key] = base64.b64encode(fh.read()).decode()
+        if not result_files:
+            return {"error": "Clean/Redline 파일이 생성되지 않았습니다. 문서에 tracked changes가 없을 수 있습니다."}
         return {"files": result_files, "stem": stem}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"docx-markup clean-redline error: {traceback.format_exc()}")
+        return {"error": f"처리 실패: {str(e)}"}
+    finally:
+        try: os.unlink(tmp_path)
+        except: pass
+        try: shutil.rmtree(out_dir, ignore_errors=True)
+        except: pass
     finally:
         os.unlink(tmp_path)

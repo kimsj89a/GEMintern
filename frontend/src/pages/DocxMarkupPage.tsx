@@ -25,8 +25,13 @@ export default function DocxMarkupPage() {
         headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
         body: formData,
       });
-      setResult(await res.json());
-    } catch (e: any) { setResult({ error: e.message }); }
+      if (res.ok) {
+        setResult(await res.json());
+      } else {
+        const text = await res.text();
+        try { setResult(JSON.parse(text)); } catch { setResult({ error: `서버 오류 (${res.status}): ${text.slice(0, 200)}` }); }
+      }
+    } catch (e: any) { setResult({ error: `요청 실패: ${e.message}` }); }
     setLoading(false);
   };
 
@@ -119,19 +124,22 @@ export default function DocxMarkupPage() {
           {/* Clean/Redline download */}
           {tab === 'output' && result.files && (
             <div className="flex gap-3">
-              {result.files['clean.docx'] && (
-                <button onClick={() => downloadB64(result.files['clean.docx'], `${result.stem}_CLEAN.docx`)}
+              {result.files.clean && (
+                <button onClick={() => downloadB64(result.files.clean, `${result.stem}_CLEAN.docx`)}
                   className="flex-1 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700 font-medium hover:bg-green-100">
                   ✅ Clean 버전 다운로드
                 </button>
               )}
-              {result.files['redline.docx'] && (
-                <button onClick={() => downloadB64(result.files['redline.docx'], `${result.stem}_REDLINE.docx`)}
+              {result.files.redline && (
+                <button onClick={() => downloadB64(result.files.redline, `${result.stem}_REDLINE.docx`)}
                   className="flex-1 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 font-medium hover:bg-red-100">
                   📝 Redline 버전 다운로드
                 </button>
               )}
             </div>
+          )}
+          {tab === 'output' && result.error && (
+            <div className="text-sm text-red-500">{result.error}</div>
           )}
         </div>
       )}
