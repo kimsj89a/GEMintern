@@ -42,9 +42,27 @@ export default function ProjectDashboard() {
   const loadProjects = async () => {
     try {
       const list = await api.listProjects();
-      setProjects(list);
+      // Apply saved order from localStorage
+      const savedOrder: string[] = (() => { try { return JSON.parse(localStorage.getItem('project_order') || '[]'); } catch { return []; } })();
+      if (savedOrder.length > 0) {
+        const byName = new Map(list.map((p: any) => [p.name || p, p]));
+        const ordered: any[] = [];
+        for (const name of savedOrder) {
+          if (byName.has(name)) { ordered.push(byName.get(name)); byName.delete(name); }
+        }
+        // Append any new projects not in saved order
+        for (const p of byName.values()) ordered.push(p);
+        setProjects(ordered);
+      } else {
+        setProjects(list);
+      }
     } catch { setProjects([]); }
     setLoading(false);
+  };
+
+  const saveProjectOrder = (list: any[]) => {
+    const names = list.map((p: any) => p.name || p);
+    localStorage.setItem('project_order', JSON.stringify(names));
   };
 
   useEffect(() => { loadProjects(); }, []);
@@ -188,6 +206,7 @@ export default function ProjectDashboard() {
                         const [moved] = reordered.splice(from, 1);
                         reordered.splice(idx, 0, moved);
                         setProjects(reordered);
+                        saveProjectOrder(reordered);
                       }
                     }
                     setDragProject(null); setDropIdx(null);
