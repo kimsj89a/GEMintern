@@ -90,20 +90,15 @@ export default function ProjectDashboard() {
     return PROJECT_EMOJIS[hash % PROJECT_EMOJIS.length];
   };
 
-  const getBgColor = (name: string) => {
-    const colors = ['bg-blue-50', 'bg-purple-50', 'bg-amber-50', 'bg-green-50', 'bg-rose-50', 'bg-cyan-50'];
-    const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-  };
+  // getBgColor removed — StyleSeed: white cards only
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
+    <div className="min-h-screen bg-[#FAFAFA]" style={{ fontFamily: "'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      {/* Header — StyleSeed: white card on #FAFAFA, shadow 4-8% */}
+      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)' }}>
-            💎
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base bg-indigo-500 text-white shadow-sm">
+            G
           </div>
           <span className="text-lg font-bold text-slate-800">GEM Intern</span>
         </div>
@@ -124,22 +119,22 @@ export default function ProjectDashboard() {
 
       {/* Content */}
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
-        {/* 독립 도구 */}
-        <h2 className="text-xl font-bold text-slate-800 mb-4">도구</h2>
+        {/* 독립 도구 — StyleSeed: card on #FAFAFA, single accent */}
+        <div className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider mb-3">도구</div>
         <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3 mb-10">
           {STANDALONE_TOOLS.map((tool) => (
             <button
               key={tool.id}
               onClick={() => openLegacyTool(tool.id)}
-              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center gap-2 transition-all hover:shadow-sm group"
+              className="bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 p-3.5 flex flex-col items-center gap-2.5 transition-all hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] group"
             >
-              <span className="text-2xl">{tool.icon}</span>
-              <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 text-center leading-tight">{tool.label}</span>
+              <span className="text-2xl group-hover:scale-110 transition-transform">{tool.icon}</span>
+              <span className="text-[11px] font-medium text-[#3C3C3C] group-hover:text-indigo-600 text-center leading-tight">{tool.label}</span>
             </button>
           ))}
         </div>
 
-        <h2 className="text-xl font-bold text-slate-800 mb-6">최근 프로젝트</h2>
+        <div className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider mb-4">프로젝트</div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -198,7 +193,7 @@ export default function ProjectDashboard() {
                     setDragProject(null); setDropIdx(null);
                   }}
                   onDragEnd={() => { setDragProject(null); setDropIdx(null); }}
-                  className={`${getBgColor(name)} rounded-2xl border ${dropIdx === idx ? 'border-blue-400 ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-300'} p-5 flex flex-col items-center justify-center gap-3 min-h-[160px] transition-all hover:shadow-md relative group cursor-pointer ${dragProject === name ? 'opacity-40' : ''}`}
+                  className={`bg-white rounded-2xl border ${dropIdx === idx ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-slate-200'} p-5 flex flex-col items-center justify-center gap-3 min-h-[160px] transition-all hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] relative group cursor-pointer ${dragProject === name ? 'opacity-40' : ''}`}
                   onClick={() => { if (!renaming) enterProject(name); }}
                   onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, name }); }}
                 >
@@ -211,10 +206,13 @@ export default function ProjectDashboard() {
                       onClick={e => e.stopPropagation()}
                       className="w-full px-2 py-1 text-sm text-center border border-blue-300 rounded-lg focus:outline-none" />
                   ) : (
-                    <span className="text-sm font-semibold text-slate-700 text-center leading-tight">{name}</span>
+                    <span className="text-sm font-semibold text-[#2A2A2A] text-center leading-tight">{name}</span>
                   )}
                   {p.doc_count != null && (
-                    <span className="text-xs text-slate-400">소스 {p.doc_count}개</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg font-bold text-[#3C3C3C]">{p.doc_count}</span>
+                      <span className="text-[10px] text-[#9B9B9B]">소스</span>
+                    </div>
                   )}
                 </div>
               );

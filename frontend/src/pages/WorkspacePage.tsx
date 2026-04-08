@@ -300,9 +300,9 @@ export default function WorkspacePage() {
 
   // ── 데스크톱: 3열 레이아웃 ──
   return (
-    <div className="flex flex-col h-screen bg-white">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 shrink-0">
+    <div className="flex flex-col h-screen bg-[#FAFAFA]" style={{ fontFamily: "'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      {/* 헤더 — StyleSeed */}
+      <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={backToDashboard} className="text-slate-400 hover:text-slate-600 transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -696,13 +696,13 @@ export default function WorkspacePage() {
           <div className="px-4 pb-4 space-y-2">
             {STUDIO_TOOLS.map(tool => (
               <button key={tool.id} onClick={() => handleToolClick(tool.id)}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-100 hover:border-slate-300 hover:bg-slate-50 transition-all text-left group">
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-white border border-slate-100 hover:border-indigo-200 hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)] transition-all text-left group">
                 <span className="text-xl">{tool.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-700 group-hover:text-slate-900">{tool.label}</div>
-                  <div className="text-[11px] text-slate-400">{tool.desc}</div>
+                  <div className="text-sm font-medium text-[#2A2A2A] group-hover:text-indigo-600">{tool.label}</div>
+                  <div className="text-[11px] text-[#9B9B9B]">{tool.desc}</div>
                 </div>
-                <svg className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                <svg className="w-4 h-4 text-slate-200 group-hover:text-indigo-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
               </button>
             ))}
           </div>
