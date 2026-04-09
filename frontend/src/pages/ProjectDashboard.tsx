@@ -114,7 +114,7 @@ export default function ProjectDashboard() {
   return (
     <div className="min-h-screen bg-[#FAFAFA]" style={{ fontFamily: "'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
       {/* Header — StyleSeed: white card on #FAFAFA, shadow 4-8% */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 bg-white border-b border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base bg-indigo-500 text-white shadow-sm">
             G
@@ -137,18 +137,18 @@ export default function ProjectDashboard() {
       </header>
 
       {/* Content */}
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+      <div className="max-w-5xl mx-auto px-3 md:px-8 py-4 md:py-8">
         {/* 독립 도구 — StyleSeed: card on #FAFAFA, single accent */}
         <div className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider mb-3">도구</div>
-        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3 mb-10">
+        <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-9 gap-2 md:gap-3 mb-8 md:mb-10">
           {STANDALONE_TOOLS.map((tool) => (
             <button
               key={tool.id}
               onClick={() => openLegacyTool(tool.id)}
-              className="bg-white rounded-2xl border border-slate-100 hover:border-indigo-200 p-3.5 flex flex-col items-center gap-2.5 transition-all hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] group"
+              className="bg-white rounded-xl md:rounded-2xl border border-slate-100 hover:border-indigo-200 p-2.5 md:p-3.5 flex flex-col items-center gap-1.5 md:gap-2.5 transition-all hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] group"
             >
-              <span className="text-2xl group-hover:scale-110 transition-transform">{tool.icon}</span>
-              <span className="text-[11px] font-medium text-[#3C3C3C] group-hover:text-indigo-600 text-center leading-tight">{tool.label}</span>
+              <span className="text-xl md:text-2xl group-hover:scale-110 transition-transform">{tool.icon}</span>
+              <span className="text-[9px] md:text-[11px] font-medium text-[#3C3C3C] group-hover:text-indigo-600 text-center leading-tight">{tool.label}</span>
             </button>
           ))}
         </div>
@@ -160,7 +160,7 @@ export default function ProjectDashboard() {
             <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {/* 새 프로젝트 만들기 카드 */}
             {creating ? (
               <div className="bg-white rounded-2xl border-2 border-blue-300 p-5 flex flex-col items-center gap-3">
@@ -180,7 +180,7 @@ export default function ProjectDashboard() {
             ) : (
               <button
                 onClick={() => setCreating(true)}
-                className="bg-white rounded-2xl border-2 border-dashed border-slate-200 hover:border-blue-300 p-5 flex flex-col items-center justify-center gap-3 min-h-[160px] transition-all hover:shadow-sm group"
+                className="bg-white rounded-xl md:rounded-2xl border-2 border-dashed border-slate-200 hover:border-blue-300 p-4 md:p-5 flex flex-col items-center justify-center gap-2 md:gap-3 min-h-[100px] md:min-h-[160px] transition-all hover:shadow-sm group"
               >
                 <div className="w-12 h-12 rounded-full bg-slate-100 group-hover:bg-blue-50 flex items-center justify-center transition-colors">
                   <span className="text-2xl text-blue-500">+</span>
@@ -213,7 +213,7 @@ export default function ProjectDashboard() {
                     setDragProject(null); setDropIdx(null);
                   }}
                   onDragEnd={() => { setDragProject(null); setDropIdx(null); }}
-                  className={`bg-white rounded-2xl border ${dropIdx === idx ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-slate-200'} p-5 flex flex-col items-center justify-center gap-3 min-h-[160px] transition-all hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] relative group cursor-pointer ${dragProject === name ? 'opacity-40' : ''}`}
+                  className={`bg-white rounded-xl md:rounded-2xl border ${dropIdx === idx ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-slate-200'} p-4 md:p-5 flex flex-col items-center justify-center gap-2 md:gap-3 min-h-[100px] md:min-h-[160px] transition-all hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] relative group cursor-pointer ${dragProject === name ? 'opacity-40' : ''}`}
                   onClick={() => { if (!renaming) enterProject(name); }}
                   onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, name }); }}
                 >

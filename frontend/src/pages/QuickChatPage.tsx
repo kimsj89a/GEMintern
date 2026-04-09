@@ -159,7 +159,7 @@ export default function QuickChatPage() {
         </div>
 
         {/* Right sidebar: uploaded files */}
-        <div className="w-56 shrink-0 border-l border-slate-100 bg-white flex flex-col overflow-hidden">
+        <div className="hidden md:flex w-56 shrink-0 border-l border-slate-100 bg-white flex-col overflow-hidden">
           <div className="px-4 pt-4 pb-2">
             <div className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider mb-2">첨부 파일</div>
             <div

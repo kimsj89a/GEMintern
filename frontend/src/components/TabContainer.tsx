@@ -12,7 +12,7 @@ export default function TabContainer({ mobile, hideTabBar }: { mobile?: boolean;
       style={isToolView ? { fontFamily: "'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" } : undefined}>
       {/* Tool view header — back button, no sidebar */}
       {isToolView && (
-        <header className="flex items-center gap-3 px-5 py-3 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
+        <header className="flex items-center gap-3 px-4 md:px-5 py-3 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
           <button onClick={backToDashboard} className="text-[#9B9B9B] hover:text-[#3C3C3C] transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
           </button>

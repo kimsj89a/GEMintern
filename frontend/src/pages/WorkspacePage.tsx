@@ -229,14 +229,14 @@ export default function WorkspacePage() {
   // ── 모바일: 패널 탭 전환 ──
   if (isMobile) {
     return (
-      <div className="flex flex-col h-screen bg-white">
-        {/* 헤더 */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 shrink-0">
-          <button onClick={backToDashboard} className="text-slate-400 hover:text-slate-600">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <div className="flex flex-col h-screen bg-[#FAFAFA]" style={{ fontFamily: "'Noto Sans KR', -apple-system, sans-serif" }}>
+        {/* 헤더 — StyleSeed */}
+        <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
+          <button onClick={backToDashboard} className="text-[#9B9B9B] hover:text-[#3C3C3C]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
-          <span className="text-base font-bold text-slate-800 truncate">{currentProject}</span>
-          <span className="text-xs text-slate-400 ml-auto">소스 {docCount}개</span>
+          <span className="text-sm font-bold text-[#2A2A2A] truncate flex-1">{currentProject}</span>
+          <span className="text-[10px] text-[#9B9B9B]">{docCount}개</span>
         </div>
 
         {/* 콘텐츠 */}
@@ -271,9 +271,9 @@ export default function WorkspacePage() {
               <div className="grid grid-cols-2 gap-3">
                 {STUDIO_TOOLS.map(tool => (
                   <button key={tool.id} onClick={() => handleToolClick(tool.id)}
-                    className="flex flex-col items-center gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all">
-                    <span className="text-2xl">{tool.icon}</span>
-                    <span className="text-sm font-medium text-slate-700">{tool.label}</span>
+                    className="flex flex-col items-center gap-2 p-3 bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)] transition-all">
+                    <span className="text-xl">{tool.icon}</span>
+                    <span className="text-xs font-medium text-[#2A2A2A]">{tool.label}</span>
                     <span className="text-[10px] text-slate-400">{tool.desc}</span>
                   </button>
                 ))}
@@ -282,13 +282,13 @@ export default function WorkspacePage() {
           )}
         </div>
 
-        {/* 하단 탭 */}
-        <div className="flex border-t border-slate-200 shrink-0 safe-area-bottom" style={{ height: 52 }}>
+        {/* 하단 탭 — StyleSeed */}
+        <div className="flex bg-white border-t border-slate-100 shrink-0 safe-area-bottom shadow-[0_-1px_3px_rgba(0,0,0,0.04)]" style={{ height: 52 }}>
           {(['sources', 'chat', 'studio'] as const).map(panel => (
             <button key={panel} onClick={() => setActivePanel(panel)}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${activePanel === panel ? 'text-blue-600' : 'text-slate-400'}`}>
-              <span className="text-lg">{panel === 'sources' ? '📁' : panel === 'chat' ? '💬' : '🛠'}</span>
-              <span className={`text-[10px] ${activePanel === panel ? 'font-semibold' : ''}`}>
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${activePanel === panel ? 'text-indigo-600' : 'text-[#9B9B9B]'}`}>
+              <span className="text-base">{panel === 'sources' ? '📁' : panel === 'chat' ? '💬' : '🛠'}</span>
+              <span className={`text-[10px] ${activePanel === panel ? 'font-bold' : ''}`}>
                 {panel === 'sources' ? '출처' : panel === 'chat' ? '채팅' : '스튜디오'}
               </span>
             </button>
