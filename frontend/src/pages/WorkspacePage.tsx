@@ -226,71 +226,106 @@ export default function WorkspacePage() {
 
   const isMobile = window.innerWidth < 768;
 
-  // ── 모바일: 패널 탭 전환 ──
+  // ── 모바일: 패널 탭 전환 (하단 탭 항상 표시) ──
   if (isMobile) {
+    const mobileActiveTool = activeTool;
     return (
       <div className="flex flex-col h-screen bg-[#FAFAFA]" style={{ fontFamily: "'Noto Sans KR', -apple-system, sans-serif" }}>
-        {/* 헤더 — StyleSeed */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
-          <button onClick={backToDashboard} className="text-[#9B9B9B] hover:text-[#3C3C3C]">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
-          </button>
-          <span className="text-sm font-bold text-[#2A2A2A] truncate flex-1">{currentProject}</span>
-          <span className="text-[10px] text-[#9B9B9B]">{docCount}개</span>
+        {/* 헤더 */}
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-b border-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.04)] shrink-0">
+          {mobileActiveTool ? (
+            <button onClick={() => setActiveTool(null)} className="text-[#9B9B9B] hover:text-[#3C3C3C]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+          ) : (
+            <button onClick={backToDashboard} className="text-[#9B9B9B] hover:text-[#3C3C3C]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+          )}
+          <span className="text-sm font-bold text-[#2A2A2A] truncate flex-1">
+            {mobileActiveTool ? (STUDIO_TOOLS.find(t => t.id === mobileActiveTool)?.label || mobileActiveTool) : currentProject}
+          </span>
+          {!mobileActiveTool && <span className="text-[10px] text-[#9B9B9B]">{selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}` : `${docCount}개`}</span>}
         </div>
 
-        {/* 콘텐츠 */}
+        {/* 콘텐츠 — 도구가 열려있으면 도구 표시, 아니면 패널 탭 전환 */}
         <div className="flex-1 overflow-hidden">
-          {activePanel === 'sources' && (
-            <div className="h-full overflow-y-auto p-4 space-y-3">
-              <FilePicker onFilesSelected={handleUpload} loading={uploading}
-              localFolderConnected={localFolder.connected}
-              localFolderName={localFolder.folderName}
-              onConnectFolder={handleConnectFolder}
-              onRescanFolder={handleRescanFolder}
-              onDisconnectFolder={localFolder.disconnect}
-              localScanning={localFolder.scanning}
-            />
-              <div className="text-xs text-slate-400">
-                {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : `전체 ${docCount}개`}
-              </div>
-              <FolderTree tree={tree} projectName={currentProject} selectable
-                selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
-                onDocDownload={(doc) => api.downloadDoc(currentProject, doc)} />
+          {mobileActiveTool ? (
+            <div className="h-full overflow-y-auto">
+              {mobileActiveTool === 'wiki' && <WikiPanel projectName={currentProject} selectedDocs={selectedDocs} />}
+              {mobileActiveTool === 'notes' && <ResearchPanel projectName={currentProject} />}
+              {mobileActiveTool === 'chat' && (
+                <ChatWidget messages={messages} onSend={handleSend} loading={loading}
+                  onStop={handleStop} placeholder="자료에 대해 질문하세요..." projectName={currentProject} />
+              )}
             </div>
-          )}
-          {activePanel === 'chat' && (
-            <div className="h-full flex flex-col">
-              <ChatWidget messages={messages} onSend={handleSend} loading={loading}
-                onStop={handleStop} placeholder="자료에 대해 질문하세요..." projectName={currentProject} />
-            </div>
-          )}
-          {activePanel === 'studio' && (
-            <div className="h-full overflow-y-auto p-4">
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">스튜디오</div>
-              <div className="grid grid-cols-2 gap-3">
-                {STUDIO_TOOLS.map(tool => (
-                  <button key={tool.id} onClick={() => handleToolClick(tool.id)}
-                    className="flex flex-col items-center gap-2 p-3 bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)] transition-all">
-                    <span className="text-xl">{tool.icon}</span>
-                    <span className="text-xs font-medium text-[#2A2A2A]">{tool.label}</span>
-                    <span className="text-[10px] text-slate-400">{tool.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+          ) : (
+            <>
+              {activePanel === 'sources' && (
+                <div className="h-full overflow-y-auto p-3 space-y-2">
+                  <FilePicker onFilesSelected={handleUpload} loading={uploading}
+                    localFolderConnected={localFolder.connected}
+                    localFolderName={localFolder.folderName}
+                    onConnectFolder={handleConnectFolder}
+                    onRescanFolder={handleRescanFolder}
+                    onDisconnectFolder={localFolder.disconnect}
+                    localScanning={localFolder.scanning} />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-[#9B9B9B]">
+                      {selectedDocs.length > 0 ? `${selectedDocs.length}/${docCount}개 선택` : '선택 없음'}
+                    </span>
+                    <div className="flex gap-1">
+                      <button onClick={() => setSelectedDocs(Object.values(tree).flat() as string[])}
+                        className="px-1.5 py-0.5 text-[9px] text-indigo-600 hover:bg-indigo-50 rounded">전체선택</button>
+                      <button onClick={() => setSelectedDocs([])}
+                        className="px-1.5 py-0.5 text-[9px] text-[#9B9B9B] hover:bg-slate-100 rounded">해제</button>
+                    </div>
+                  </div>
+                  <FolderTree tree={tree} projectName={currentProject} selectable
+                    selectedDocs={selectedDocs} onSelectionChange={setSelectedDocs}
+                    onDocDownload={(doc) => api.downloadDoc(currentProject, doc)}
+                    onDocDelete={async (doc) => {
+                      if (!confirm(`'${doc}' 삭제?`)) return;
+                      try { await api.trashDoc(currentProject, doc); loadDocs(); } catch {}
+                    }} />
+                </div>
+              )}
+              {activePanel === 'chat' && (
+                <div className="h-full flex flex-col">
+                  <ChatWidget messages={messages} onSend={handleSend} loading={loading}
+                    onStop={handleStop} placeholder="자료에 대해 질문하세요..." projectName={currentProject} />
+                </div>
+              )}
+              {activePanel === 'studio' && (
+                <div className="h-full overflow-y-auto p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {STUDIO_TOOLS.map(tool => (
+                      <button key={tool.id} onClick={() => handleToolClick(tool.id)}
+                        className="flex flex-col items-center gap-1.5 p-3 bg-white rounded-xl border border-slate-100 active:bg-indigo-50 transition-all">
+                        <span className="text-lg">{tool.icon}</span>
+                        <span className="text-[11px] font-medium text-[#2A2A2A]">{tool.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* 하단 탭 — StyleSeed */}
+        {/* 하단 탭 — 항상 표시 */}
         <div className="flex bg-white border-t border-slate-100 shrink-0 safe-area-bottom shadow-[0_-1px_3px_rgba(0,0,0,0.04)]" style={{ height: 52 }}>
-          {(['sources', 'chat', 'studio'] as const).map(panel => (
-            <button key={panel} onClick={() => setActivePanel(panel)}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${activePanel === panel ? 'text-indigo-600' : 'text-[#9B9B9B]'}`}>
-              <span className="text-base">{panel === 'sources' ? '📁' : panel === 'chat' ? '💬' : '🛠'}</span>
-              <span className={`text-[10px] ${activePanel === panel ? 'font-bold' : ''}`}>
-                {panel === 'sources' ? '출처' : panel === 'chat' ? '채팅' : '스튜디오'}
-              </span>
+          {([
+            { id: 'sources' as const, icon: '📁', label: '출처' },
+            { id: 'chat' as const, icon: '💬', label: '채팅' },
+            { id: 'studio' as const, icon: '🛠', label: '메인' },
+          ]).map(tab => (
+            <button key={tab.id} onClick={() => { setActivePanel(tab.id); setActiveTool(null); }}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                !mobileActiveTool && activePanel === tab.id ? 'text-indigo-600' : 'text-[#9B9B9B]'
+              }`}>
+              <span className="text-base">{tab.icon}</span>
+              <span className={`text-[10px] ${!mobileActiveTool && activePanel === tab.id ? 'font-bold' : ''}`}>{tab.label}</span>
             </button>
           ))}
         </div>
