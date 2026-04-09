@@ -3005,12 +3005,14 @@ def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_use
 def markdown_to_docx(req: MarkdownToDocxRequest, user: dict = Depends(get_current_user)):
     """마크다운 텍스트를 Word 문서로 변환."""
     from fastapi.responses import Response
-    import utils
+    if not req.markdown or not req.markdown.strip():
+        raise HTTPException(status_code=400, detail="변환할 마크다운이 없습니다.")
     try:
+        import utils
         docx_bytes = utils.create_docx(req.markdown)
     except Exception as e:
         import traceback
-        traceback.print_exc()
+        logger.error(f"markdown-to-docx error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Word 변환 오류: {e}")
     return Response(
         content=docx_bytes,
