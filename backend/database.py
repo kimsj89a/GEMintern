@@ -177,6 +177,20 @@ def init_db():
                 FOREIGN KEY (note_id) REFERENCES research_notes(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_tags_tag ON note_tags(project_id, tag);
+
+            -- Timeline events
+            CREATE TABLE IF NOT EXISTS timeline_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                event_date TEXT NOT NULL,
+                end_date TEXT,
+                color TEXT DEFAULT '#6366f1',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
         """)
 
     # Migrate: add canvas columns to existing research_notes table

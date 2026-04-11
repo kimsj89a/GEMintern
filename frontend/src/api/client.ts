@@ -401,6 +401,16 @@ export const api = {
   getNoteTags: (project: string) =>
     request<any[]>(`/projects/${encodeURIComponent(project)}/notes/tags`),
 
+  // Timeline
+  listTimeline: (project: string) =>
+    request<any[]>(`/projects/${encodeURIComponent(project)}/timeline`),
+  createTimelineEvent: (project: string, data: { title: string; content?: string; event_date: string; end_date?: string; color?: string }) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/timeline`, { method: 'POST', body: JSON.stringify(data) }),
+  updateTimelineEvent: (project: string, id: number, data: any) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/timeline/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteTimelineEvent: (project: string, id: number) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/timeline/${id}`, { method: 'DELETE' }),
+
   // NPS
   npsSearch: (params: URLSearchParams) =>
     request<{ data: any[]; total: number; page: number; perPage: number; error?: string }>(

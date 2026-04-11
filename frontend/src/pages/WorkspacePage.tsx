@@ -20,6 +20,7 @@ import QaPanel from '../components/QaPanel';
 import ExcelModelPanel from '../components/ExcelModelPanel';
 import DocAnalysisPanel from '../components/DocAnalysisPanel';
 import ResearchPanel from '../components/ResearchPanel';
+import TimelinePanel from '../components/TimelinePanel';
 import { useLocalFolder } from '../hooks/useLocalFolder';
 
 // ── 스튜디오 도구 정의 ──
@@ -33,6 +34,7 @@ const STUDIO_TOOLS = [
   { id: 'analysis', label: '자료 분석', icon: '🔍', desc: '문서별 순차 분석·요약' },
   { id: 'excel', label: 'Excel 모델', icon: '📊', desc: 'PEF 캐시플로우 모델' },
   { id: 'ppt', label: 'PPT 생성', icon: '📑', desc: '발표자료 슬라이드', page: 'ppt_tools' },
+  { id: 'timeline', label: '타임라인', icon: '📅', desc: '프로젝트 일정·간트차트' },
 ];
 
 
@@ -254,6 +256,7 @@ export default function WorkspacePage() {
             <div className="h-full overflow-y-auto">
               {mobileActiveTool === 'wiki' && <WikiPanel projectName={currentProject} selectedDocs={selectedDocs} />}
               {mobileActiveTool === 'notes' && <ResearchPanel projectName={currentProject} />}
+              {mobileActiveTool === 'timeline' && <TimelinePanel projectName={currentProject} />}
               {mobileActiveTool === 'chat' && (
                 <ChatWidget messages={messages} onSend={handleSend} loading={loading}
                   onStop={handleStop} placeholder="자료에 대해 질문하세요..." projectName={currentProject} />
@@ -647,8 +650,22 @@ export default function WorkspacePage() {
             </div>
           </div>
 
+          {/* 타임라인 — 항상 마운트, display 토글 */}
+          <div className={`flex-1 flex flex-col overflow-hidden ${activeTool === 'timeline' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
+              <button onClick={() => setActiveTool(null)}
+                className="text-slate-400 hover:text-slate-600">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <span className="text-sm font-bold text-slate-700">📅 타임라인</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <TimelinePanel projectName={currentProject} />
+            </div>
+          </div>
+
           {/* 기타 도구 — 조건부 렌더링 */}
-          {activeTool && !['wiki', 'review', 'report', 'qa', 'excel', 'analysis', 'notes'].includes(activeTool) ? (
+          {activeTool && !['wiki', 'review', 'report', 'qa', 'excel', 'analysis', 'notes', 'timeline'].includes(activeTool) ? (
             <>
               <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-100">
                 <button onClick={() => setActiveTool(null)}

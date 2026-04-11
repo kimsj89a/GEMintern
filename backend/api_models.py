@@ -36,6 +36,22 @@ class NoteUpdate(BaseModel):
     tags: Optional[list[str]] = None
 
 
+class TimelineEventCreate(BaseModel):
+    title: str
+    content: str = ""
+    event_date: str  # YYYY-MM-DD
+    end_date: Optional[str] = None  # YYYY-MM-DD
+    color: str = "#6366f1"
+
+
+class TimelineEventUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    event_date: Optional[str] = None
+    end_date: Optional[str] = None
+    color: Optional[str] = None
+
+
 class GenerateRequest(BaseModel):
     project_name: str
     template_option: str = "free_summary"

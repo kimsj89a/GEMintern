@@ -12,7 +12,7 @@ from fastapi.responses import Response
 
 from pydantic import BaseModel
 from backend.api_models import (
-    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest, NoteCreate, NoteUpdate,
+    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest, NoteCreate, NoteUpdate, TimelineEventCreate, TimelineEventUpdate,
     GenerateRequest, QaRequest, AnalysisRequest,
     CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
     SaveResearchRequest,
@@ -3797,3 +3797,62 @@ async def docx_markup_output(files: List[UploadFile] = File(...), user: dict = D
         except: pass
         try: shutil.rmtree(out_dir, ignore_errors=True)
         except: pass
+
+
+# ──────────────────────────────────────────
+# Timeline
+# ──────────────────────────────────────────
+
+@router.get("/projects/{name}/timeline")
+def list_timeline_events(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        project = conn.execute("SELECT id FROM projects WHERE name = ? AND owner_id = ?", (name, user["id"])).fetchone()
+        if not project: return []
+        rows = conn.execute(
+            "SELECT id, title, content, event_date, color, created_at, updated_at FROM timeline_events WHERE project_id = ? ORDER BY event_date",
+            (project["id"],)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.post("/projects/{name}/timeline")
+def create_timeline_event(name: str, req: TimelineEventCreate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        project = conn.execute("SELECT id FROM projects WHERE name = ? AND owner_id = ?", (name, user["id"])).fetchone()
+        if not project: raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+        conn.execute(
+            "INSERT INTO timeline_events (project_id, title, content, event_date, end_date, color) VALUES (?, ?, ?, ?, ?, ?)",
+            (project["id"], req.title, req.content, req.event_date, req.end_date, req.color),
+        )
+        row = conn.execute("SELECT * FROM timeline_events WHERE project_id = ? ORDER BY id DESC LIMIT 1", (project["id"],)).fetchone()
+    return dict(row)
+
+
+@router.patch("/projects/{name}/timeline/{event_id}")
+def update_timeline_event(name: str, event_id: int, req: TimelineEventUpdate, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        sets, params = ["updated_at = CURRENT_TIMESTAMP"], []
+        if req.title is not None: sets.append("title = ?"); params.append(req.title)
+        if req.content is not None: sets.append("content = ?"); params.append(req.content)
+        if req.event_date is not None: sets.append("event_date = ?"); params.append(req.event_date)
+        if req.end_date is not None: sets.append("end_date = ?"); params.append(req.end_date)
+        if req.color is not None: sets.append("color = ?"); params.append(req.color)
+        params.append(event_id)
+        conn.execute(f"UPDATE timeline_events SET {', '.join(sets)} WHERE id = ?", params)
+        row = conn.execute("SELECT * FROM timeline_events WHERE id = ?", (event_id,)).fetchone()
+    return dict(row) if row else {"error": "이벤트를 찾을 수 없습니다."}
+
+
+@router.delete("/projects/{name}/timeline/{event_id}")
+def delete_timeline_event(name: str, event_id: int, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    from backend.database import get_db
+    with get_db() as conn:
+        conn.execute("DELETE FROM timeline_events WHERE id = ?", (event_id,))
+    return {"ok": True}
