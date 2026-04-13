@@ -281,7 +281,7 @@ export const api = {
   },
 
   // QuickMail
-  quickmailGenerate: (data: { prompt: string; context?: string; tone?: string; language?: string }) =>
+  quickmailGenerate: (data: { prompt: string; context?: string; tone?: string; length?: string; language?: string }) =>
     request<{ task_id: string }>('/quickmail/generate', { method: 'POST', body: JSON.stringify(data) }),
 
   // Vector RAG

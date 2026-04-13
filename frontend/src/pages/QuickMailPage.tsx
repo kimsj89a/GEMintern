@@ -7,6 +7,12 @@ const TONES = [
   { value: 'casual', label: '캐주얼 (해요체)' },
 ];
 
+const LENGTHS = [
+  { value: 'short', label: '짧게 (50자)' },
+  { value: 'medium', label: '중간 (100자)' },
+  { value: 'long', label: '길게 (200자)' },
+];
+
 const LANGUAGES = [
   { value: '한국어', label: '한국어' },
   { value: 'English', label: 'English' },
@@ -17,6 +23,7 @@ export default function QuickMailPage() {
   const [context, setContext] = useState('');
   const [prompt, setPrompt] = useState('');
   const [tone, setTone] = useState('professional');
+  const [length, setLength] = useState('medium');
   const [language, setLanguage] = useState('한국어');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,6 +40,7 @@ export default function QuickMailPage() {
         prompt: prompt.trim(),
         context: context.trim(),
         tone,
+        length,
         language,
       });
       const poll = async () => {
@@ -114,6 +122,13 @@ export default function QuickMailPage() {
             <select value={tone} onChange={(e) => setTone(e.target.value)}
               className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm bg-white focus:outline-none focus:border-[#2383E2]">
               {TONES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs font-semibold text-[#787774] uppercase tracking-wider mb-1">길이</label>
+            <select value={length} onChange={(e) => setLength(e.target.value)}
+              className="w-full px-3 py-2 border border-[#E9E9E7] rounded-lg text-sm bg-white focus:outline-none focus:border-[#2383E2]">
+              {LENGTHS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <div className="flex-1">
