@@ -11,6 +11,7 @@ const LENGTHS = [
   { value: 'short', label: '짧게 (50자)' },
   { value: 'medium', label: '중간 (100자)' },
   { value: 'long', label: '길게 (200자)' },
+  { value: 'unlimited', label: '무제한 (기존)' },
 ];
 
 const LANGUAGES = [

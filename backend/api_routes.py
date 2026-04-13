@@ -3331,6 +3331,7 @@ _LENGTH_MAP = {
     "short": "약 50자 내외로 매우 간결하게 (1~2문장)",
     "medium": "약 100자 내외로 적당한 분량으로 (2~4문장)",
     "long": "약 200자 내외로 충분히 상세하게 (4~6문장)",
+    "unlimited": "",
 }
 
 @router.post("/quickmail/generate")
@@ -3343,13 +3344,14 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
     is_reply = bool(req.context.strip())
     tone_label = _TONE_MAP.get(req.tone, "비즈니스 (합니다체)")
     length_label = _LENGTH_MAP.get(req.length, _LENGTH_MAP["medium"])
+    length_line = f"- 본문 분량: {length_label}\n" if length_label else ""
 
     system_prompt = (
         "당신은 비즈니스 이메일 작성 전문가입니다.\n"
         f"{'주어진 원본 메일에 대한 답장을 작성하세요.' if is_reply else '사용자의 요청에 맞는 이메일 본문을 작성하세요.'}\n\n"
         "[필수 규칙 - 반드시 지킬 것]\n"
         f"- {tone_label} 어조로 {req.language}(으)로 작성\n"
-        f"- 본문 분량: {length_label}\n"
+        f"{length_line}"
         "- 제목(Subject)은 포함하지 말 것 (별도 요청 시에만 포함)\n"
         "- 절대로 마크다운 서식(**, *, #, - 등)을 사용하지 말 것. 순수 텍스트만 사용\n"
         "- 절대로 [이름], [회의 장소], [Your Name], [안건] 등 대괄호 플레이스홀더를 사용하지 말 것\n"
