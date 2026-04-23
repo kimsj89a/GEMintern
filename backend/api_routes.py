@@ -1719,6 +1719,32 @@ def get_note_tags(name: str, user: dict = Depends(get_current_user)):
     return core_notes.get_tags(name, user["id"])
 
 
+@router.get("/projects/{name}/notes/search")
+def search_notes_route(
+    name: str,
+    q: str = "",
+    tags: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = 100,
+    user: dict = Depends(get_current_user),
+):
+    """Full-text + tag + date range search across notes.
+    `tags` is a comma-separated list. Hierarchical tag prefixes match descendants.
+    """
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    return core_notes.search_notes(
+        name, user["id"],
+        query=q,
+        tags=tag_list,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        limit=max(1, min(500, limit)),
+    )
+
+
 @router.get("/projects/{name}/notes/{slug}")
 def get_note(name: str, slug: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
@@ -1748,6 +1774,46 @@ def save_canvas_positions(name: str, body: dict, user: dict = Depends(get_curren
     _verify_project_ownership(name, user["id"])
     import core_notes
     return core_notes.save_canvas_positions(name, user["id"], body.get("positions", {}))
+
+
+@router.post("/projects/{name}/notes/{slug}/summarize")
+def summarize_note_route(name: str, slug: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key가 설정되지 않았습니다. (GEMINI_API_KEY)")
+    import core_notes
+    result = core_notes.summarize_note(name, user["id"], slug, api_key)
+    if "error" in result and not result.get("summary"):
+        raise HTTPException(status_code=502, detail=result["error"])
+    return result
+
+
+@router.post("/projects/{name}/notes/{slug}/related")
+def related_notes_route(name: str, slug: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key가 설정되지 않았습니다. (GEMINI_API_KEY)")
+    import core_notes
+    result = core_notes.recommend_related_notes(name, user["id"], slug, api_key)
+    if "error" in result and not result.get("items"):
+        raise HTTPException(status_code=502, detail=result["error"])
+    return result
+
+
+@router.post("/projects/{name}/notes/{slug}/auto-tag")
+def auto_tag_note_route(name: str, slug: str, body: dict = None, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key가 설정되지 않았습니다. (GEMINI_API_KEY)")
+    import core_notes
+    apply = bool((body or {}).get("apply", False))
+    result = core_notes.auto_tag_note(name, user["id"], slug, api_key, apply=apply)
+    if "error" in result and not result.get("tags"):
+        raise HTTPException(status_code=502, detail=result["error"])
+    return result
 
 
 @router.get("/projects/{name}/notes/{slug}/backlinks")

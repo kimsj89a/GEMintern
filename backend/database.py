@@ -1,6 +1,7 @@
 """SQLite database for user auth and usage tracking."""
 import json
 import os
+import sys
 import sqlite3
 import hashlib
 import secrets
@@ -200,6 +201,66 @@ def init_db():
         conn.execute("ALTER TABLE research_notes ADD COLUMN canvas_color TEXT DEFAULT NULL")
     except Exception:
         pass  # columns already exist
+
+    # ── FTS5 full-text search for research_notes ──
+    # Try trigram tokenizer first (SQLite 3.34+, supports partial/CJK substring match),
+    # fall back to unicode61 if unavailable.
+    with get_db() as conn:
+        fts_created = False
+        try:
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                    title, content,
+                    content='research_notes', content_rowid='id',
+                    tokenize='trigram'
+                )
+            """)
+            fts_created = True
+        except Exception:
+            try:
+                conn.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                        title, content,
+                        content='research_notes', content_rowid='id',
+                        tokenize='unicode61'
+                    )
+                """)
+                fts_created = True
+            except Exception:
+                fts_created = False
+
+        if fts_created:
+            try:
+                conn.executescript("""
+                    CREATE TRIGGER IF NOT EXISTS notes_fts_ai AFTER INSERT ON research_notes BEGIN
+                        INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+                    END;
+                    CREATE TRIGGER IF NOT EXISTS notes_fts_ad AFTER DELETE ON research_notes BEGIN
+                        INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
+                    END;
+                    CREATE TRIGGER IF NOT EXISTS notes_fts_au AFTER UPDATE ON research_notes BEGIN
+                        INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
+                        INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+                    END;
+                """)
+            except Exception as e:
+                print(f"[DB] FTS5 trigger creation failed: {e}", file=sys.stderr)
+            # Rebuild index whenever FTS row count diverges from research_notes
+            try:
+                fts_cnt = conn.execute("SELECT count(*) AS c FROM notes_fts").fetchone()["c"]
+                rn_cnt = conn.execute("SELECT count(*) AS c FROM research_notes").fetchone()["c"]
+                if fts_cnt != rn_cnt:
+                    print(
+                        f"[DB] FTS5 index out of sync (fts={fts_cnt}, notes={rn_cnt}); rebuilding",
+                        file=sys.stderr,
+                    )
+                    conn.execute("DELETE FROM notes_fts")
+                    conn.execute(
+                        "INSERT INTO notes_fts(rowid, title, content) "
+                        "SELECT id, title, content FROM research_notes"
+                    )
+            except Exception as e:
+                print(f"[DB] FTS5 backfill failed: {e}", file=sys.stderr)
 
     # Bootstrap admin user from env vars
     admin_user = os.environ.get("ADMIN_USERNAME")
