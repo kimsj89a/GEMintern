@@ -3,15 +3,22 @@
  * Canvas shows dots with popup editor on double-click.
  * Note list on right side for browsing.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import NoteMarkdownViewer from './NoteMarkdownViewer';
 import NoteGraph from './NoteGraph';
 
-interface Note { id: number; slug: string; title: string; content?: string; tags_json?: string; created_at: string; updated_at: string; }
+interface Note { id: number; slug: string; title: string; content?: string; tags_json?: string; snippet?: string; created_at: string; updated_at: string; }
 interface Backlink { slug: string; title: string; context: string; }
 interface TagInfo { tag: string; count: number; }
+
+// Allow only <mark>…</mark> in FTS5 snippet, escape everything else.
+function sanitizeSnippet(s: string): string {
+  const esc = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return esc.replace(/&lt;mark&gt;/g, '<mark class="bg-yellow-100 text-slate-800 rounded px-0.5">')
+            .replace(/&lt;\/mark&gt;/g, '</mark>');
+}
 
 const TOOLS: Record<string, { prefix: string; suffix: string; placeholder: string; block?: boolean }> = {
   bold: { prefix: '**', suffix: '**', placeholder: '굵은 텍스트' },
@@ -32,9 +39,14 @@ const TOOLS: Record<string, { prefix: string; suffix: string; placeholder: strin
 
 export default function ResearchPanel({ projectName }: { projectName: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
+  const [searchResults, setSearchResults] = useState<Note[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [showAdvSearch, setShowAdvSearch] = useState(false);
   const [allTags, setAllTags] = useState<TagInfo[]>([]);
   const [showList, setShowList] = useState(true);
 
@@ -57,6 +69,46 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   const [showBacklinks, setShowBacklinks] = useState(true);
   const [showGraph, setShowGraph] = useState(true); // Default to graph view
 
+  // AI panel
+  type AiResult =
+    | { type: 'summary'; loading: boolean; text?: string; error?: string }
+    | { type: 'related'; loading: boolean; items?: { slug: string; title: string; reason: string }[]; error?: string }
+    | { type: 'tags'; loading: boolean; tags?: string[]; applied?: boolean; error?: string };
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+
+  const runSummarize = async () => {
+    if (!projectName || !activeSlug) return;
+    setAiMenuOpen(false);
+    setAiResult({ type: 'summary', loading: true });
+    try {
+      const r = await api.summarizeNote(projectName, activeSlug);
+      setAiResult({ type: 'summary', loading: false, text: r.summary, error: r.error });
+    } catch (e: any) { setAiResult({ type: 'summary', loading: false, error: String(e?.message || e) }); }
+  };
+  const runRelated = async () => {
+    if (!projectName || !activeSlug) return;
+    setAiMenuOpen(false);
+    setAiResult({ type: 'related', loading: true });
+    try {
+      const r = await api.relatedNotes(projectName, activeSlug);
+      setAiResult({ type: 'related', loading: false, items: r.items || [], error: r.error });
+    } catch (e: any) { setAiResult({ type: 'related', loading: false, error: String(e?.message || e) }); }
+  };
+  const runAutoTag = async (apply = false) => {
+    if (!projectName || !activeSlug) return;
+    setAiMenuOpen(false);
+    setAiResult({ type: 'tags', loading: true });
+    try {
+      const r = await api.autoTagNote(projectName, activeSlug, apply);
+      setAiResult({ type: 'tags', loading: false, tags: r.tags || [], applied: r.applied, error: r.error });
+      if (apply) { loadTags(); loadNotes(); }
+    } catch (e: any) { setAiResult({ type: 'tags', loading: false, error: String(e?.message || e) }); }
+  };
+
+  // Reset AI panel when active note changes
+  useEffect(() => { setAiResult(null); setAiMenuOpen(false); }, [activeSlug]);
+
   // Context menu
   const [noteCtx, setNoteCtx] = useState<{ x: number; y: number; slug: string; title: string } | null>(null);
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null);
@@ -66,8 +118,8 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
 
   const loadNotes = useCallback(async () => {
     if (!projectName) return;
-    try { setNotes(await api.listNotes(projectName, tagFilter || undefined)); } catch {}
-  }, [projectName, tagFilter]);
+    try { setNotes(await api.listNotes(projectName)); } catch {}
+  }, [projectName]);
 
   const loadTags = useCallback(async () => {
     if (!projectName) return;
@@ -75,6 +127,28 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   }, [projectName]);
 
   useEffect(() => { loadNotes(); loadTags(); }, [loadNotes, loadTags]);
+
+  // ── Backend search (FTS5 + tags + date range) ──
+  const isSearchActive = !!search.trim() || selectedTags.size > 0 || !!dateFrom || !!dateTo;
+  useEffect(() => {
+    if (!projectName) return;
+    if (!isSearchActive) { setSearchResults(null); return; }
+    let cancelled = false;
+    setSearchLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.searchNotes(projectName, {
+          q: search.trim() || undefined,
+          tags: selectedTags.size > 0 ? Array.from(selectedTags) : undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        });
+        if (!cancelled) setSearchResults(r);
+      } catch { if (!cancelled) setSearchResults([]); }
+      finally { if (!cancelled) setSearchLoading(false); }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [projectName, search, selectedTags, dateFrom, dateTo, isSearchActive]);
 
   useEffect(() => {
     if (!noteCtx) return;
@@ -146,6 +220,139 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     setGraphRefreshKey(k => k + 1);
   }, [projectName, activeSlug, loadNotes]);
 
+  // ── Autocomplete: slash menu + [[ note picker ──
+  type AcMode = null | 'slash' | 'link';
+  const [acMode, setAcMode] = useState<AcMode>(null);
+  const [acQuery, setAcQuery] = useState('');
+  const [acIndex, setAcIndex] = useState(0);
+  const [acTriggerStart, setAcTriggerStart] = useState(0); // index in textarea where trigger starts (inclusive of '/' or '[[')
+
+  const closeAc = useCallback(() => { setAcMode(null); setAcQuery(''); setAcIndex(0); }, []);
+
+  // Slash command items
+  type SlashCmd = { id: string; label: string; hint: string; toolId: string };
+  const SLASH_CMDS = useMemo<SlashCmd[]>(() => [
+    { id: 'h2', label: '제목 H2', hint: '## ', toolId: 'h2' },
+    { id: 'h3', label: '소제목 H3', hint: '### ', toolId: 'h3' },
+    { id: 'ul', label: '글머리 목록', hint: '- ', toolId: 'ul' },
+    { id: 'ol', label: '번호 목록', hint: '1. ', toolId: 'ol' },
+    { id: 'check', label: '체크박스', hint: '- [ ] ', toolId: 'check' },
+    { id: 'quote', label: '인용', hint: '> ', toolId: 'quote' },
+    { id: 'code', label: '인라인 코드', hint: '`code`', toolId: 'code' },
+    { id: 'codeblock', label: '코드 블록', hint: '```', toolId: '__codeblock' },
+    { id: 'hr', label: '구분선', hint: '---', toolId: 'hr' },
+    { id: 'link', label: '노트 링크', hint: '[[…]]', toolId: 'link' },
+    { id: 'tag', label: '태그', hint: '#tag', toolId: 'tag' },
+    { id: 'table', label: '표', hint: '⊞', toolId: 'table' },
+    { id: 'strike', label: '취소선', hint: '~~~~', toolId: 'strike' },
+  ], []);
+
+  const slashFiltered = useMemo(() => {
+    const q = acQuery.toLowerCase();
+    if (!q) return SLASH_CMDS;
+    return SLASH_CMDS.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q));
+  }, [acQuery, SLASH_CMDS]);
+
+  const linkFiltered = useMemo(() => {
+    const q = acQuery.toLowerCase();
+    const list = q ? notes.filter(n => n.title.toLowerCase().includes(q) || n.slug.includes(q)) : notes;
+    return list.slice(0, 8);
+  }, [acQuery, notes]);
+
+  // Reset highlight on filter change
+  useEffect(() => { setAcIndex(0); }, [acQuery, acMode]);
+
+  // Replace trigger range with text. Reads textarea.value directly so fast typing
+  // never desyncs from React state. Closes autocomplete.
+  const replaceTrigger = useCallback((insertText: string, caretOffset?: number) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cur = ta.value;
+    const caret = ta.selectionStart;
+    const before = cur.slice(0, acTriggerStart);
+    const after = cur.slice(caret);
+    const next = before + insertText + after;
+    setContent(next); scheduleSave();
+    requestAnimationFrame(() => {
+      ta.focus();
+      const pos = before.length + (caretOffset ?? insertText.length);
+      ta.setSelectionRange(pos, pos);
+    });
+    closeAc();
+  }, [acTriggerStart, scheduleSave, closeAc]);
+
+  // Slash commands compute their own insertion against ta.value so we don't depend
+  // on React state catching up between setContent and the next frame.
+  const acceptSlash = useCallback((cmdId: string) => {
+    const cmd = SLASH_CMDS.find(c => c.id === cmdId);
+    if (!cmd) { closeAc(); return; }
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cur = ta.value;
+    const caret = ta.selectionStart;
+    const before = cur.slice(0, acTriggerStart);
+    const after = cur.slice(caret);
+
+    if (cmd.toolId === '__codeblock') {
+      const insert = '```\n\n```';
+      const next = before + insert + after;
+      setContent(next); scheduleSave(); closeAc();
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = before.length + 4; // inside the fences
+        ta.setSelectionRange(pos, pos);
+      });
+      return;
+    }
+
+    const tool = TOOLS[cmd.toolId];
+    if (!tool) { closeAc(); return; }
+    // Block-level tools want a leading newline if not already at line start.
+    const needsNl = !!tool.block && before.length > 0 && before[before.length - 1] !== '\n';
+    const lead = needsNl ? '\n' : '';
+    const insert = lead + tool.prefix + tool.placeholder + tool.suffix;
+    const next = before + insert + after;
+    setContent(next); scheduleSave(); closeAc();
+    requestAnimationFrame(() => {
+      ta.focus();
+      const selStart = before.length + lead.length + tool.prefix.length;
+      const selEnd = selStart + tool.placeholder.length;
+      ta.setSelectionRange(selStart, selEnd);
+    });
+  }, [SLASH_CMDS, acTriggerStart, scheduleSave, closeAc]);
+
+  const acceptLink = useCallback((noteTitle: string) => {
+    replaceTrigger(`[[${noteTitle}]]`);
+  }, [replaceTrigger]);
+
+  // Detect triggers from textarea state
+  const detectAcTriggers = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) { closeAc(); return; }
+    const caret = ta.selectionStart;
+    const text = ta.value.slice(0, caret);
+
+    // [[query → link mode
+    const linkM = text.match(/\[\[([^\[\]\n]{0,40})$/);
+    if (linkM) {
+      setAcMode('link');
+      setAcQuery(linkM[1]);
+      setAcTriggerStart(caret - linkM[0].length); // include '[['
+      return;
+    }
+    // /query → slash mode (only at line start or after whitespace, max 20 chars)
+    const slashM = text.match(/(?:^|\s)\/([^\s\/\n]{0,20})$/);
+    if (slashM) {
+      setAcMode('slash');
+      setAcQuery(slashM[1]);
+      // trigger starts at the '/' character
+      const slashIdx = caret - slashM[1].length - 1;
+      setAcTriggerStart(slashIdx);
+      return;
+    }
+    closeAc();
+  }, [closeAc]);
+
   const applyTool = (toolId: string) => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -170,7 +377,7 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     })();
   }, [existingSlugs, notes, selectNote, projectName, loadNotes]);
 
-  const filteredNotes = search ? notes.filter(n => n.title.toLowerCase().includes(search.toLowerCase())) : notes;
+  const filteredNotes: Note[] = isSearchActive ? (searchResults || []) : notes;
   const ToolBtn = ({ id, label }: { id: string; label: string }) => (
     <button onClick={() => applyTool(id)} className="px-1.5 py-0.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded" title={id}>{label}</button>
   );
@@ -213,6 +420,21 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                   ← {backlinks.length}
                 </button>
               )}
+              {/* AI menu */}
+              <div className="relative">
+                <button onClick={() => setAiMenuOpen(v => !v)}
+                  className={`px-1.5 py-0.5 text-[10px] rounded border ${aiMenuOpen || aiResult ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                  title="AI 보조">✨ AI</button>
+                {aiMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[140px]"
+                    onMouseLeave={() => setAiMenuOpen(false)}>
+                    <button onClick={runSummarize} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">📝 요약</button>
+                    <button onClick={runRelated} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">🔗 관련 노트</button>
+                    <button onClick={() => runAutoTag(false)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">🏷 태그 추천</button>
+                    <button onClick={() => runAutoTag(true)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">🏷 태그 추천+적용</button>
+                  </div>
+                )}
+              </div>
               {/* Export */}
               <button onClick={() => {
                 const blob = new Blob([`# ${title}\n\n${content}`], { type: 'text/markdown' });
@@ -235,11 +457,77 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                 <ToolBtn id="ul" label="•" /><ToolBtn id="ol" label="1." /><ToolBtn id="check" label="☐" /><ToolBtn id="quote" label=">" /><ToolBtn id="code" label="</>" /><ToolBtn id="hr" label="—" /><ToolBtn id="strike" label="S̶" /><ToolBtn id="table" label="⊞" />
               </div>
             )}
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden relative">
+              {/* Autocomplete dropdown — anchored above textarea bottom */}
+              {acMode && (
+                <div className="absolute bottom-2 left-4 z-20 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden text-xs"
+                  style={{ width: 280, maxHeight: 240 }}
+                  onMouseDown={e => e.preventDefault()}>
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 bg-slate-50 border-b border-slate-100">
+                    {acMode === 'slash' ? `슬래시 명령 ${acQuery && `· /${acQuery}`}` : `노트 링크 ${acQuery && `· ${acQuery}`}`}
+                  </div>
+                  <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
+                    {acMode === 'slash' ? (
+                      slashFiltered.length === 0 ? (
+                        <div className="px-3 py-2 text-slate-400">일치하는 명령 없음</div>
+                      ) : slashFiltered.map((c, i) => (
+                        <button key={c.id}
+                          onMouseEnter={() => setAcIndex(i)}
+                          onClick={() => acceptSlash(c.id)}
+                          className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 ${i === acIndex ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'}`}>
+                          <span>{c.label}</span>
+                          <code className="text-[10px] text-slate-400">{c.hint}</code>
+                        </button>
+                      ))
+                    ) : (
+                      <>
+                        {linkFiltered.length === 0 && acQuery && (
+                          <button onClick={() => acceptLink(acQuery)}
+                            className="w-full text-left px-3 py-1.5 text-indigo-600 hover:bg-indigo-50 italic">
+                            새 노트로 링크: "{acQuery}"
+                          </button>
+                        )}
+                        {linkFiltered.map((n, i) => (
+                          <button key={n.slug}
+                            onMouseEnter={() => setAcIndex(i)}
+                            onClick={() => acceptLink(n.title)}
+                            className={`w-full text-left px-3 py-1.5 ${i === acIndex ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'}`}>
+                            <div className="font-medium truncate">{n.title}</div>
+                            <div className="text-[10px] text-slate-400">{n.slug}</div>
+                          </button>
+                        ))}
+                        {linkFiltered.length === 0 && !acQuery && (
+                          <div className="px-3 py-2 text-slate-400">노트 없음</div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="px-3 py-1 text-[10px] text-slate-400 bg-slate-50 border-t border-slate-100">↑↓ 선택 · Enter 적용 · Esc 취소</div>
+                </div>
+              )}
               {viewMode !== 'preview' && (
                 <textarea ref={textareaRef} value={content}
-                  onChange={e => { setContent(e.target.value); scheduleSave(); }}
+                  onChange={e => { setContent(e.target.value); scheduleSave(); requestAnimationFrame(detectAcTriggers); }}
+                  onKeyUp={() => { if (acMode) detectAcTriggers(); }}
+                  onClick={() => { if (acMode) detectAcTriggers(); }}
+                  onBlur={() => setTimeout(closeAc, 150)}
                   onKeyDown={e => {
+                    // Autocomplete navigation has highest priority
+                    if (acMode) {
+                      const list = acMode === 'slash' ? slashFiltered : linkFiltered;
+                      if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+                      if (e.key === 'ArrowDown') { e.preventDefault(); setAcIndex(i => list.length ? (i + 1) % list.length : 0); return; }
+                      if (e.key === 'ArrowUp') { e.preventDefault(); setAcIndex(i => list.length ? (i - 1 + list.length) % list.length : 0); return; }
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        if (list.length) {
+                          e.preventDefault();
+                          if (acMode === 'slash') acceptSlash((list[acIndex] as any).id);
+                          else acceptLink((list[acIndex] as any).title);
+                          return;
+                        }
+                      }
+                    }
+
                     const ta = textareaRef.current!;
                     const start = ta.selectionStart, end = ta.selectionEnd;
                     const val = content;
@@ -323,10 +611,46 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
               )}
               {viewMode !== 'edit' && (
                 <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} px-6 py-4 overflow-y-auto text-[15px] leading-relaxed bg-white`}>
-                  {content ? <NoteMarkdownViewer content={content} existingSlugs={existingSlugs} onNavigate={handleNavigate} onTagClick={tag => setTagFilter(tag)} /> : <span className="text-slate-400">미리보기</span>}
+                  {content ? <NoteMarkdownViewer content={content} existingSlugs={existingSlugs} onNavigate={handleNavigate} onTagClick={tag => setSelectedTags(prev => { const n = new Set(prev); n.add(tag); return n; })} /> : <span className="text-slate-400">미리보기</span>}
                 </div>
               )}
             </div>
+            {aiResult && (
+              <div className="border-t border-indigo-100 px-3 py-2 bg-indigo-50/40 max-h-44 overflow-y-auto">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[10px] font-semibold text-indigo-700">
+                    ✨ AI · {aiResult.type === 'summary' ? '요약' : aiResult.type === 'related' ? '관련 노트' : '태그 추천'}
+                    {aiResult.loading && <span className="ml-1 text-slate-400">생성중…</span>}
+                  </div>
+                  <button onClick={() => setAiResult(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                </div>
+                {aiResult.error && <div className="text-xs text-red-600">{aiResult.error}</div>}
+                {!aiResult.loading && aiResult.type === 'summary' && aiResult.text && (
+                  <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{aiResult.text}</div>
+                )}
+                {!aiResult.loading && aiResult.type === 'related' && (
+                  <div className="space-y-1">
+                    {(aiResult.items || []).length === 0 && <div className="text-xs text-slate-400">관련 노트 없음</div>}
+                    {(aiResult.items || []).map(it => (
+                      <button key={it.slug} onClick={() => selectNote(it.slug)}
+                        className="block w-full text-left px-2 py-1 rounded hover:bg-white">
+                        <span className="font-medium text-indigo-600 text-xs">{it.title}</span>
+                        {it.reason && <span className="text-[10px] text-slate-500 ml-2">{it.reason}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!aiResult.loading && aiResult.type === 'tags' && (
+                  <div className="flex flex-wrap gap-1">
+                    {(aiResult.tags || []).length === 0 && <div className="text-xs text-slate-400">추천 태그 없음</div>}
+                    {(aiResult.tags || []).map(t => (
+                      <span key={t} className="px-1.5 py-0.5 text-[10px] rounded-full bg-white border border-indigo-200 text-indigo-700">#{t}</span>
+                    ))}
+                    {aiResult.applied && <span className="text-[10px] text-green-600 ml-2">노트에 적용됨</span>}
+                  </div>
+                )}
+              </div>
+            )}
             {showBacklinks && backlinks.length > 0 && (
               <div className="border-t border-slate-200 px-3 py-2 bg-slate-50/50 max-h-28 overflow-y-auto">
                 <div className="text-[10px] font-semibold text-slate-400 mb-1">← 백링크</div>
@@ -357,8 +681,34 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
               className={`w-full px-2 py-1 text-xs rounded-lg border flex items-center justify-center gap-1 ${showGraph ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
               🕸 {showGraph ? '캔버스' : '캔버스 보기'}
             </button>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="검색..."
-              className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+            <div className="flex items-center gap-1">
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="제목·본문 검색..."
+                className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+              <button onClick={() => setShowAdvSearch(v => !v)} title="고급 검색"
+                className={`px-1.5 py-1 text-[10px] rounded border ${showAdvSearch || dateFrom || dateTo ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'text-slate-400 border-slate-200 hover:bg-slate-50'}`}>⚙</button>
+            </div>
+            {showAdvSearch && (
+              <div className="space-y-1 pt-1 border-t border-slate-100">
+                <div className="flex items-center gap-1">
+                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                    className="flex-1 px-1.5 py-0.5 text-[10px] border border-slate-200 rounded focus:outline-none focus:border-indigo-400" />
+                  <span className="text-[10px] text-slate-400">~</span>
+                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                    className="flex-1 px-1.5 py-0.5 text-[10px] border border-slate-200 rounded focus:outline-none focus:border-indigo-400" />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <button onClick={() => { setDateFrom(''); setDateTo(''); }}
+                    className="w-full text-[10px] text-slate-400 hover:text-slate-600 py-0.5">날짜 초기화</button>
+                )}
+              </div>
+            )}
+            {isSearchActive && (
+              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                <span>{searchLoading ? '검색중…' : `${filteredNotes.length}건`}</span>
+                <button onClick={() => { setSearch(''); setSelectedTags(new Set()); setDateFrom(''); setDateTo(''); }}
+                  className="text-slate-400 hover:text-indigo-600">초기화</button>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {filteredNotes.map(n => (
@@ -378,7 +728,12 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
                 ) : (
                   <>
                     <div className="text-xs font-medium text-slate-700 truncate">{n.title}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{new Date(n.updated_at).toLocaleDateString('ko')}</div>
+                    {isSearchActive && n.snippet ? (
+                      <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-2"
+                        dangerouslySetInnerHTML={{ __html: sanitizeSnippet(n.snippet) }} />
+                    ) : (
+                      <div className="text-[10px] text-slate-400 mt-0.5">{new Date(n.updated_at).toLocaleDateString('ko')}</div>
+                    )}
                   </>
                 )}
               </div>
@@ -386,16 +741,29 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             {filteredNotes.length === 0 && <div className="px-3 py-4 text-xs text-slate-400 text-center">{notes.length === 0 ? '노트 없음' : '결과 없음'}</div>}
           </div>
           {allTags.length > 0 && (
-            <div className="border-t border-slate-200 p-2 max-h-28 overflow-y-auto">
-              <div className="text-[10px] font-semibold text-slate-400 mb-1">태그</div>
+            <div className="border-t border-slate-200 p-2 max-h-32 overflow-y-auto">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[10px] font-semibold text-slate-400">태그 (다중선택 AND)</div>
+                {selectedTags.size > 0 && (
+                  <button onClick={() => setSelectedTags(new Set())}
+                    className="text-[10px] text-slate-400 hover:text-indigo-600">해제</button>
+                )}
+              </div>
               <div className="flex flex-wrap gap-1">
-                {tagFilter && <button onClick={() => setTagFilter(null)} className="px-1.5 py-0.5 text-[10px] bg-red-50 text-red-500 rounded-full">✕</button>}
-                {allTags.filter(t => !t.tag.includes('/')).map(t => (
-                  <button key={t.tag} onClick={() => setTagFilter(t.tag === tagFilter ? null : t.tag)}
-                    className={`px-1.5 py-0.5 text-[10px] rounded-full ${t.tag === tagFilter ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50'}`}>
-                    #{t.tag} <span className="opacity-60">{t.count}</span>
-                  </button>
-                ))}
+                {allTags.filter(t => !t.tag.includes('/')).map(t => {
+                  const active = selectedTags.has(t.tag);
+                  return (
+                    <button key={t.tag}
+                      onClick={() => setSelectedTags(prev => {
+                        const next = new Set(prev);
+                        if (next.has(t.tag)) next.delete(t.tag); else next.add(t.tag);
+                        return next;
+                      })}
+                      className={`px-1.5 py-0.5 text-[10px] rounded-full ${active ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50'}`}>
+                      #{t.tag} <span className="opacity-60">{t.count}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
