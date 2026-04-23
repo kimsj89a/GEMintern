@@ -400,6 +400,22 @@ export const api = {
     request<{ nodes: any[]; edges: any[] }>(`/projects/${encodeURIComponent(project)}/notes/graph`),
   getNoteTags: (project: string) =>
     request<any[]>(`/projects/${encodeURIComponent(project)}/notes/tags`),
+  searchNotes: (project: string, opts: { q?: string; tags?: string[]; date_from?: string; date_to?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.q) p.set('q', opts.q);
+    if (opts.tags && opts.tags.length) p.set('tags', opts.tags.join(','));
+    if (opts.date_from) p.set('date_from', opts.date_from);
+    if (opts.date_to) p.set('date_to', opts.date_to);
+    if (opts.limit) p.set('limit', String(opts.limit));
+    const qs = p.toString();
+    return request<any[]>(`/projects/${encodeURIComponent(project)}/notes/search${qs ? `?${qs}` : ''}`);
+  },
+  summarizeNote: (project: string, slug: string) =>
+    request<{ summary?: string; error?: string }>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/summarize`, { method: 'POST' }),
+  relatedNotes: (project: string, slug: string) =>
+    request<{ items?: { slug: string; title: string; reason: string }[]; error?: string }>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/related`, { method: 'POST' }),
+  autoTagNote: (project: string, slug: string, apply = false) =>
+    request<{ tags?: string[]; applied?: boolean; error?: string }>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/auto-tag`, { method: 'POST', body: JSON.stringify({ apply }) }),
 
   // Timeline
   listTimeline: (project: string) =>
