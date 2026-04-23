@@ -232,12 +232,25 @@ def refine_report_with_context(api_key, model_name, current_text, chat_history,
 # Phase-specific helper functions
 # ========================================
 
-def generate_material_summary(api_key, model_name, file_context):
-    """Phase 1: 수집 자료 심층 분석 (출처 태깅, 교차 분석, 리스크 분류)"""
+def generate_material_summary(api_key, model_name, file_context, mode=None):
+    """Phase 1: 수집 자료 심층 분석 (출처 태깅, 교차 분석, 리스크 분류).
+
+    mode='text_organize' → 비정형 텍스트를 마크다운 불릿 구조로 정리하는 변형.
+    """
     client = get_client(api_key)
-    system_prompt = prompts.LOGIC_PROMPTS.get('material_summary', '')
-    doc_count = file_context.count('===== 문서:')
-    prompt = f"[수집된 자료 ({doc_count}건)]\n{file_context}"
+    if mode == 'text_organize':
+        system_prompt = (
+            "당신은 비정형 텍스트를 가독성 좋은 마크다운 구조로 정리하는 편집자입니다.\n"
+            "- 입력의 사실과 의미를 보존하면서 중복·말줄임을 정리하세요.\n"
+            "- 주제는 ##/### 헤딩, 항목은 - 불릿. 필요 시 표를 사용하세요.\n"
+            "- 정보를 임의로 추가하거나 추측하지 마세요.\n"
+            "- 서문/인사말 없이 바로 본문(헤딩 또는 불릿)으로 시작하세요."
+        )
+        prompt = file_context
+    else:
+        system_prompt = prompts.LOGIC_PROMPTS.get('material_summary', '')
+        doc_count = file_context.count('===== 문서:')
+        prompt = f"[수집된 자료 ({doc_count}건)]\n{file_context}"
     config = types.GenerateContentConfig(
         max_output_tokens=16384,
         temperature=0.3,
