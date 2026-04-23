@@ -3,10 +3,9 @@
  * All notes shown as colored dots. Double-click to open popup editor.
  * Bezier edges between connected dots.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
-import NoteMarkdownViewer from './NoteMarkdownViewer';
 
 interface CanvasNode {
   slug: string;
@@ -14,6 +13,7 @@ interface CanvasNode {
   content: string;
   x: number; y: number;
   color: string;
+  tags: string[];
 }
 
 interface CanvasEdge { source: string; target: string }
@@ -45,8 +45,10 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
   const [, setTick] = useState(0);
   const rerender = () => setTick(v => v + 1);
 
-  // Popup viewer (read-only preview)
-  const [popup, setPopup] = useState<{ slug: string; title: string; content: string } | null>(null);
+  // Popup editor (inline edit)
+  const [popup, setPopup] = useState<{ slug: string; title: string; content: string; dirty?: boolean; saving?: boolean } | null>(null);
+  const popupSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPatchRef = useRef<{ slug: string; patch: { title?: string; content?: string } } | null>(null);
 
   // Drag / link
   const [linkDrag, setLinkDrag] = useState<{ sourceSlug: string; mx: number; my: number } | null>(null);
@@ -54,7 +56,50 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
   const [edgeCtx, setEdgeCtx] = useState<{ x: number; y: number; edge: CanvasEdge } | null>(null);
   const [bgCtx, setBgCtx] = useState<{ x: number; y: number; wx: number; wy: number } | null>(null);
 
-  const existingSlugs = new Set(nodes.map(n => n.slug));
+  // ── Filter / search / auto-color ──
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+  const [autoColor, setAutoColor] = useState(false);
+
+  // Tag → color map (deterministic by tag name hash, stable across renders)
+  const tagColorMap = useMemo(() => {
+    const all = new Set<string>();
+    nodes.forEach(n => n.tags.forEach(t => all.add(t.split('/')[0])));
+    const sorted = Array.from(all).sort();
+    const m = new Map<string, string>();
+    sorted.forEach((t, i) => m.set(t, PALETTE[i % PALETTE.length]));
+    return m;
+  }, [nodes]);
+
+  const colorOf = useCallback((n: CanvasNode) => {
+    if (!autoColor) return n.color;
+    const root = n.tags[0]?.split('/')[0];
+    return (root && tagColorMap.get(root)) || n.color;
+  }, [autoColor, tagColorMap]);
+
+  // All tags for filter chips (with counts)
+  const tagList = useMemo(() => {
+    const counts = new Map<string, number>();
+    nodes.forEach(n => n.tags.forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [nodes]);
+
+  const matchesNode = useCallback((n: CanvasNode) => {
+    if (activeTags.size > 0) {
+      // hierarchical match: filter "투자" matches "투자/PEF"
+      const hit = Array.from(activeTags).some(at =>
+        n.tags.some(t => t === at || t.startsWith(at + '/'))
+      );
+      if (!hit) return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      if (!n.title.toLowerCase().includes(q) && !(n.content || '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }, [activeTags, searchQuery]);
+
+  const isFiltering = activeTags.size > 0 || !!searchQuery.trim();
 
   // ── Persist layout to server ──
   const saveLayout = useCallback(() => {
@@ -86,19 +131,18 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
       const data = await api.getNoteGraph(projectName);
       const prevMap = new Map(nodesRef.current.map(n => [n.slug, n]));
       const cols = Math.max(4, Math.ceil(Math.sqrt(data.nodes.length)));
-      const noteNodes: CanvasNode[] = [];
-      for (let i = 0; i < data.nodes.length; i++) {
-        const n = data.nodes[i];
+      // Backend now ships content in graph payload — no per-node round-trip needed.
+      const noteNodes: CanvasNode[] = data.nodes.map((n: any, i: number) => {
         const prev = prevMap.get(n.slug);
-        let content = '';
-        try { content = (await api.getNote(projectName, n.slug))?.content || ''; } catch {}
-        noteNodes.push({
-          slug: n.slug, title: n.title, content,
+        return {
+          slug: n.slug, title: n.title,
+          content: typeof n.content === 'string' ? n.content : '',
           x: prev?.x ?? n.canvas_x ?? (i % cols) * 80 + 60,
           y: prev?.y ?? n.canvas_y ?? Math.floor(i / cols) * 80 + 60,
           color: prev?.color ?? n.canvas_color ?? PALETTE[i % PALETTE.length],
-        });
-      }
+          tags: Array.isArray(n.tags) ? n.tags : [],
+        };
+      });
       nodesRef.current = noteNodes;
       setNodes([...noteNodes]); setEdges([...data.edges]); setLoaded(true);
     } catch {}
@@ -113,6 +157,60 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [ctxMenu, edgeCtx, bgCtx]);
+
+  // ── Debounced popup save (merges title+content patches; flush actually persists) ──
+  const performPopupSave = useCallback(async () => {
+    const pending = pendingPatchRef.current;
+    if (!pending) return;
+    pendingPatchRef.current = null;
+    const { slug, patch } = pending;
+    setPopup(p => p && p.slug === slug ? { ...p, saving: true } : p);
+    try {
+      await api.updateNote(projectName, slug, patch);
+      const node = nodesRef.current.find(n => n.slug === slug);
+      if (node) {
+        if (patch.title !== undefined) node.title = patch.title;
+        if (patch.content !== undefined) node.content = patch.content;
+        setNodes([...nodesRef.current]);
+      }
+      setPopup(p => p && p.slug === slug ? { ...p, saving: false, dirty: false } : p);
+    } catch {
+      setPopup(p => p && p.slug === slug ? { ...p, saving: false } : p);
+    }
+  }, [projectName]);
+
+  const schedulePopupSave = useCallback((slug: string, patch: { title?: string; content?: string }) => {
+    if (popupSaveTimer.current) clearTimeout(popupSaveTimer.current);
+    // Merge with any pending patch for the same note so we never drop a field
+    const prev = pendingPatchRef.current;
+    pendingPatchRef.current = (prev && prev.slug === slug)
+      ? { slug, patch: { ...prev.patch, ...patch } }
+      : { slug, patch };
+    setPopup(p => p && p.slug === slug ? { ...p, dirty: true } : p);
+    popupSaveTimer.current = setTimeout(() => { performPopupSave(); }, 600);
+  }, [performPopupSave]);
+
+  const flushPopupSave = useCallback(async () => {
+    if (popupSaveTimer.current) {
+      clearTimeout(popupSaveTimer.current);
+      popupSaveTimer.current = null;
+    }
+    await performPopupSave();
+  }, [performPopupSave]);
+
+  // ── Delete node ──
+  const deleteNode = async (node: CanvasNode) => {
+    if (!window.confirm(`"${node.title}" 노트를 삭제하시겠습니까?\n연결된 백링크와 태그도 함께 제거됩니다.`)) return;
+    try {
+      await api.deleteNote(projectName, node.slug);
+      nodesRef.current = nodesRef.current.filter(n => n.slug !== node.slug);
+      setNodes([...nodesRef.current]);
+      setEdges(prev => prev.filter(e => e.source !== node.slug && e.target !== node.slug));
+      if (popup?.slug === node.slug) setPopup(null);
+      onNoteCreated?.();
+      loadGraph();
+    } catch {}
+  };
 
   // ── Delete edge ──
   const deleteEdge = async (edge: CanvasEdge) => {
@@ -240,6 +338,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
       {edges.map((e, i) => {
         const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
         if (!a || !b) return null;
+        const dim = isFiltering && (!matchesNode(a) || !matchesNode(b));
         const out = getOutPort(a), inp = getInPort(b);
         const pad = 30;
         const minX = Math.min(out.x, inp.x) - pad, minY = Math.min(out.y, inp.y) - pad;
@@ -247,7 +346,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
         const lsx = out.x - minX, lsy = out.y - minY, lex = inp.x - minX, ley = inp.y - minY;
         const path = bezierPath(lsx, lsy, lex, ley);
         return (
-          <svg key={`e-${i}`} style={{ position: 'absolute', left: minX, top: minY, width: w, height: h, pointerEvents: 'none', zIndex: 0, overflow: 'visible' }}>
+          <svg key={`e-${i}`} style={{ position: 'absolute', left: minX, top: minY, width: w, height: h, pointerEvents: 'none', zIndex: 0, overflow: 'visible', opacity: dim ? 0.1 : 1 }}>
             <path d={path} fill="none" stroke="transparent" strokeWidth="14" style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
               onContextMenu={ev => { ev.preventDefault(); ev.stopPropagation(); setEdgeCtx({ x: ev.clientX, y: ev.clientY, edge: e }); }} />
             <path d={path} fill="none" stroke="#6366f1" strokeWidth="2" strokeOpacity="0.45" style={{ pointerEvents: 'none' }} />
@@ -277,8 +376,10 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
         const cx = node.x * s + px, cy = node.y * s + py;
         const r = DOT_R * s;
         const isActive = node.slug === activeSlug || node.slug === popup?.slug;
+        const dim = isFiltering && !matchesNode(node);
+        const fill = colorOf(node);
         return (
-          <div key={node.slug}>
+          <div key={node.slug} style={{ opacity: dim ? 0.18 : 1, transition: 'opacity 0.15s' }}>
             {/* Title above */}
             <div className="absolute pointer-events-none text-center" style={{ left: cx - 50, top: cy - r - 32, width: 100, fontSize: Math.max(9, 11 * s) }}>
               <span className="text-slate-600 font-medium whitespace-nowrap">{node.title}</span>
@@ -287,7 +388,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
             <div className="absolute rounded-full cursor-grab border-2 transition-shadow"
               style={{
                 left: cx - r, top: cy - r, width: r * 2, height: r * 2,
-                backgroundColor: node.color,
+                backgroundColor: fill,
                 borderColor: isActive ? '#4338ca' : 'rgba(255,255,255,0.8)',
                 boxShadow: isActive ? '0 0 0 3px rgba(99,102,241,0.3)' : '0 1px 3px rgba(0,0,0,0.15)',
                 zIndex: 3,
@@ -314,9 +415,66 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
 
       {/* HUD */}
       {!loaded && <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm z-10">로딩 중...</div>}
-      <div className="absolute top-2 left-2 text-[10px] text-slate-400 bg-white/80 backdrop-blur px-2 py-1 rounded-lg z-10">
-        더블클릭: 노트 열기 · 드래그: 이동 · 포트 드래그: 연결 · 우클릭: 메뉴
+
+      {/* Top toolbar: search + tag filter + auto color */}
+      <div className="absolute top-2 left-2 right-2 flex items-start gap-2 z-10 pointer-events-none">
+        <div className="flex flex-col gap-1.5 pointer-events-auto" style={{ minWidth: 240, maxWidth: 'calc(100% - 200px)' }}>
+          {/* Search */}
+          <div className="flex items-center gap-1 bg-white/90 backdrop-blur border border-slate-200 rounded-lg px-2 h-7 shadow-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-400">
+              <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+            </svg>
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="제목·내용 검색"
+              className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 text-xs leading-none">✕</button>
+            )}
+            <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer pl-1.5 ml-1 border-l border-slate-200">
+              <input type="checkbox" checked={autoColor} onChange={e => setAutoColor(e.target.checked)} className="w-3 h-3" />
+              태그색
+            </label>
+          </div>
+          {/* Tag chips */}
+          {tagList.length > 0 && (
+            <div className="flex flex-wrap gap-1 bg-white/80 backdrop-blur border border-slate-200 rounded-lg px-1.5 py-1 shadow-sm max-h-[72px] overflow-y-auto">
+              {tagList.map(([tag, count]) => {
+                const active = activeTags.has(tag);
+                const root = tag.split('/')[0];
+                const dot = autoColor ? tagColorMap.get(root) : null;
+                return (
+                  <button key={tag}
+                    onClick={() => setActiveTags(prev => {
+                      const next = new Set(prev);
+                      if (next.has(tag)) next.delete(tag); else next.add(tag);
+                      return next;
+                    })}
+                    className={`inline-flex items-center gap-1 text-[10px] px-1.5 h-5 rounded-full border transition ${
+                      active ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}>
+                    {dot && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: dot }} />}
+                    <span>#{tag}</span>
+                    <span className={active ? 'text-indigo-100' : 'text-slate-400'}>{count}</span>
+                  </button>
+                );
+              })}
+              {activeTags.size > 0 && (
+                <button onClick={() => setActiveTags(new Set())}
+                  className="text-[10px] px-1.5 h-5 rounded-full text-slate-500 hover:text-slate-700">전체해제</button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom-left help */}
+      <div className="absolute bottom-2 left-2 text-[10px] text-slate-400 bg-white/80 backdrop-blur px-2 py-1 rounded-lg z-10">
+        더블클릭: 빠른 편집 · 드래그: 이동 · 포트 드래그: 연결 · 우클릭: 메뉴
         {edges.length > 0 && <span className="ml-1 text-indigo-500">· {edges.length}개 연결</span>}
+        {isFiltering && <span className="ml-1 text-amber-600">· 필터 적용중</span>}
       </div>
       {linkDrag && <div className="absolute top-2 right-2 text-xs text-green-600 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg animate-pulse z-10">🔗 노드에 놓으면 연결</div>}
       <div className="absolute bottom-2 right-2 flex gap-1 z-10">
@@ -328,39 +486,46 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
           className="w-7 h-7 bg-white border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 font-bold">-</button>
       </div>
 
-      {/* ── Note popup modal ── */}
+      {/* ── Note popup editor (inline edit) ── */}
       {popup && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-          onClick={() => setPopup(null)}
+          onClick={() => { flushPopupSave(); setPopup(null); }}
           onMouseDown={e => e.stopPropagation()}
           onWheel={e => e.stopPropagation()}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden"
+          <div className="bg-white rounded-2xl shadow-2xl w-[640px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}
             onMouseDown={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}>
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-              <span className="font-bold text-slate-800 text-lg">{popup.title}</span>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 gap-3">
+              <input
+                value={popup.title}
+                onChange={e => { const v = e.target.value; setPopup(p => p ? { ...p, title: v } : p); schedulePopupSave(popup.slug, { title: v }); }}
+                placeholder="제목"
+                className="flex-1 font-bold text-slate-800 text-lg bg-transparent outline-none focus:bg-slate-50 rounded px-2 py-1 -mx-2"
+              />
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[10px] text-slate-400 min-w-[40px] text-right">
+                  {popup.saving ? '저장중…' : popup.dirty ? '편집중' : '저장됨'}
+                </span>
                 <button onClick={async () => {
                   try { await navigator.clipboard.writeText(popup.content); } catch {}
                 }}
                   className="px-3 py-1 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">복사</button>
-                <button onClick={() => { setPopup(null); onNavigate(popup.slug); }}
-                  className="px-3 py-1 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">편집</button>
-                <button onClick={() => setPopup(null)}
+                <button onClick={async () => { await flushPopupSave(); const slug = popup.slug; setPopup(null); onNavigate(slug); }}
+                  className="px-3 py-1 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">노트로 열기</button>
+                <button onClick={() => { flushPopupSave(); setPopup(null); }}
                   className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
               </div>
             </div>
-            {/* Read-only rendered content */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 text-[15px] leading-relaxed">
-              {popup.content ? (
-                <NoteMarkdownViewer content={popup.content} existingSlugs={existingSlugs}
-                  onNavigate={slug => { setPopup(null); onNavigate(slug); }} />
-              ) : (
-                <span className="text-slate-400 italic">내용이 없습니다. "편집" 버튼을 눌러 작성하세요.</span>
-              )}
-            </div>
+            {/* Inline editable content */}
+            <textarea
+              value={popup.content}
+              onChange={e => { const v = e.target.value; setPopup(p => p ? { ...p, content: v } : p); schedulePopupSave(popup.slug, { content: v }); }}
+              placeholder="내용을 입력하세요. [[다른노트]] 로 링크할 수 있습니다."
+              className="flex-1 px-6 py-4 text-[15px] leading-relaxed outline-none resize-none font-mono"
+              style={{ minHeight: '320px' }}
+            />
           </div>
         </div>,
         document.body
@@ -382,9 +547,12 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
           </div>
           <div className="border-t border-slate-100 my-1" />
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => { setPopup({ slug: ctxMenu.node.slug, title: ctxMenu.node.title, content: ctxMenu.node.content }); setCtxMenu(null); }}>📝 미리보기</button>
+            onClick={() => { setPopup({ slug: ctxMenu.node.slug, title: ctxMenu.node.title, content: ctxMenu.node.content }); setCtxMenu(null); }}>📝 빠른 편집</button>
           <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => { onNavigate(ctxMenu.node.slug); setCtxMenu(null); }}>📄 에디터에서 열기</button>
+            onClick={() => { onNavigate(ctxMenu.node.slug); setCtxMenu(null); }}>📄 노트로 열기</button>
+          <div className="border-t border-slate-100 my-1" />
+          <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600"
+            onClick={() => { const node = ctxMenu.node; setCtxMenu(null); deleteNode(node); }}>🗑 노드 삭제</button>
         </div>,
         document.body
       )}
@@ -399,7 +567,7 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
               if (!newTitle) { setBgCtx(null); return; }
               const note = await api.createNote(projectName, { title: newTitle });
               if (note?.slug) {
-                nodesRef.current.push({ slug: note.slug, title: note.title, content: '', x: bgCtx.wx, y: bgCtx.wy, color: PALETTE[nodesRef.current.length % PALETTE.length] });
+                nodesRef.current.push({ slug: note.slug, title: note.title, content: '', x: bgCtx.wx, y: bgCtx.wy, color: PALETTE[nodesRef.current.length % PALETTE.length], tags: [] });
                 setNodes([...nodesRef.current]);
                 loadGraph();
                 onNoteCreated?.();
