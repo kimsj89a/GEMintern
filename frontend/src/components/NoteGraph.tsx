@@ -84,6 +84,34 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [nodes]);
 
+  // Search matches: direct title/content hit + all downstream nodes reachable via outgoing edges
+  const searchMatchSet = useMemo<Set<string> | null>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const direct = new Set<string>();
+    nodes.forEach(n => {
+      if (n.title.toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q)) {
+        direct.add(n.slug);
+      }
+    });
+    const adj = new Map<string, string[]>();
+    edges.forEach(e => {
+      const arr = adj.get(e.source);
+      if (arr) arr.push(e.target); else adj.set(e.source, [e.target]);
+    });
+    const result = new Set(direct);
+    const queue = Array.from(direct);
+    while (queue.length) {
+      const cur = queue.shift()!;
+      const next = adj.get(cur);
+      if (!next) continue;
+      for (const t of next) {
+        if (!result.has(t)) { result.add(t); queue.push(t); }
+      }
+    }
+    return result;
+  }, [nodes, edges, searchQuery]);
+
   const matchesNode = useCallback((n: CanvasNode) => {
     if (activeTags.size > 0) {
       // hierarchical match: filter "투자" matches "투자/PEF"
@@ -92,12 +120,9 @@ export default function NoteGraph({ projectName, activeSlug, onNavigate, refresh
       );
       if (!hit) return false;
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      if (!n.title.toLowerCase().includes(q) && !(n.content || '').toLowerCase().includes(q)) return false;
-    }
+    if (searchMatchSet && !searchMatchSet.has(n.slug)) return false;
     return true;
-  }, [activeTags, searchQuery]);
+  }, [activeTags, searchMatchSet]);
 
   const isFiltering = activeTags.size > 0 || !!searchQuery.trim();
 
