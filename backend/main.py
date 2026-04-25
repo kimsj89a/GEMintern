@@ -44,6 +44,12 @@ app.include_router(auth_router, prefix="/api")
 @app.on_event("startup")
 def on_startup():
     init_db()
+    try:
+        from core_note_templates import seed_global_templates
+        seed_global_templates()
+    except Exception as e:
+        import sys
+        print(f"[startup] seed_global_templates failed: {e}", file=sys.stderr)
 
 
 @app.websocket("/ws/stream")

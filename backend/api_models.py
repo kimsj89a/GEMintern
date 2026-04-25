@@ -36,6 +36,25 @@ class NoteUpdate(BaseModel):
     tags: Optional[list[str]] = None
 
 
+class QuickCaptureRequest(BaseModel):
+    content: str = ""
+
+
+class PromoteInboxRequest(BaseModel):
+    title: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
+class NoteTemplateUpsert(BaseModel):
+    name: str
+    body: str
+
+
+class NoteFromTemplateRequest(BaseModel):
+    template_name: str
+    title: Optional[str] = None  # 사용자가 입력. 없으면 template name 사용
+
+
 class TimelineEventCreate(BaseModel):
     title: str
     content: str = ""

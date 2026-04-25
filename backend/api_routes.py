@@ -12,7 +12,9 @@ from fastapi.responses import Response
 
 from pydantic import BaseModel
 from backend.api_models import (
-    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest, NoteCreate, NoteUpdate, TimelineEventCreate, TimelineEventUpdate,
+    ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest, NoteCreate, NoteUpdate,
+    QuickCaptureRequest, PromoteInboxRequest, NoteTemplateUpsert, NoteFromTemplateRequest,
+    TimelineEventCreate, TimelineEventUpdate,
     GenerateRequest, QaRequest, AnalysisRequest,
     CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
     SaveResearchRequest,
@@ -1745,6 +1747,81 @@ def search_notes_route(
     )
 
 
+# ── Quick Capture (브레인덤프) ──
+# 주의: 아래 라우트들은 모두 `/notes/{slug}` 보다 먼저 등록되어야 함
+# (FastAPI는 등록 순서대로 매칭, slug가 'inbox'/'quick' 등을 잡아먹지 않도록)
+
+@router.post("/projects/{name}/notes/quick")
+def quick_capture_route(name: str, req: QuickCaptureRequest = None, user: dict = Depends(get_current_user)):
+    """즉시 인박스 노트 생성. 자동 제목, 빈 콘텐츠 가능."""
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.quick_capture(name, user["id"], (req.content if req else "") or "")
+
+
+@router.get("/projects/{name}/notes/inbox")
+def list_inbox_route(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return core_notes.list_inbox(name, user["id"])
+
+
+@router.get("/projects/{name}/notes/inbox/count")
+def inbox_count_route(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    return {"count": core_notes.inbox_count(name, user["id"])}
+
+
+# ── Templates ──
+
+@router.get("/projects/{name}/note-templates")
+def list_note_templates(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_note_templates
+    return core_note_templates.list_templates(name, user["id"])
+
+
+@router.get("/projects/{name}/note-templates/{template_name}")
+def get_note_template(name: str, template_name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_note_templates
+    tpl = core_note_templates.get_template(name, user["id"], template_name)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다.")
+    return tpl
+
+
+@router.put("/projects/{name}/note-templates/{template_name}")
+def upsert_note_template(name: str, template_name: str, req: NoteTemplateUpsert, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_note_templates
+    # path param이 진실 이름. body의 name은 무시 (URL과 일치 강제)
+    return core_note_templates.save_user_template(name, user["id"], template_name, req.body)
+
+
+@router.delete("/projects/{name}/note-templates/{template_name}")
+def delete_note_template(name: str, template_name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_note_templates
+    res = core_note_templates.delete_user_template(name, user["id"], template_name)
+    if "error" in res:
+        raise HTTPException(status_code=404 if "찾을 수 없" in res["error"] else 400, detail=res["error"])
+    return res
+
+
+@router.post("/projects/{name}/notes/from-template")
+def create_note_from_template(name: str, req: NoteFromTemplateRequest, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_note_templates, core_notes
+    tpl = core_note_templates.get_template(name, user["id"], req.template_name)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다.")
+    title = (req.title or tpl["name"]).strip()
+    body = core_note_templates.render_template(tpl["body"], title=title, project=name)
+    return core_notes.create_note(name, user["id"], title, body, [])
+
+
 @router.get("/projects/{name}/notes/{slug}")
 def get_note(name: str, slug: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
@@ -1821,6 +1898,21 @@ def get_note_backlinks(name: str, slug: str, user: dict = Depends(get_current_us
     _verify_project_ownership(name, user["id"])
     import core_notes
     return core_notes.get_backlinks(name, user["id"], slug)
+
+
+@router.post("/projects/{name}/notes/{slug}/promote")
+def promote_inbox_route(name: str, slug: str, req: PromoteInboxRequest = None, user: dict = Depends(get_current_user)):
+    """인박스에서 정식 노트로 승격 (is_inbox=0). 옵션으로 제목·태그 동시 변경."""
+    _verify_project_ownership(name, user["id"])
+    import core_notes
+    res = core_notes.promote_from_inbox(
+        name, user["id"], slug,
+        tags=(req.tags if req else None),
+        new_title=(req.title if req else None),
+    )
+    if "error" in res:
+        raise HTTPException(status_code=404, detail=res["error"])
+    return res
 
 
 # ========================================

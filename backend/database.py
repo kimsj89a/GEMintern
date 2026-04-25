@@ -202,6 +202,12 @@ def init_db():
     except Exception:
         pass  # columns already exist
 
+    # Migrate: add inbox flag for Quick Capture (브레인덤프) workflow
+    try:
+        conn.execute("ALTER TABLE research_notes ADD COLUMN is_inbox INTEGER DEFAULT 0")
+    except Exception:
+        pass  # column already exists
+
     # ── FTS5 full-text search for research_notes ──
     # Try trigram tokenizer first (SQLite 3.34+, supports partial/CJK substring match),
     # fall back to unicode61 if unavailable.

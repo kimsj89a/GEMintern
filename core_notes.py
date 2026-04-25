@@ -1,6 +1,7 @@
 """
 Research notes module — Obsidian-like wikilinks, backlinks, tags.
 """
+import datetime
 import json
 import re
 from typing import Dict, List, Optional
@@ -129,7 +130,7 @@ def list_notes(project_name: str, owner_id: int, tag: str = None) -> List[Dict]:
         if tag:
             # Filter by tag (includes hierarchy: filtering "투자" also matches "투자/PEF")
             rows = conn.execute("""
-                SELECT DISTINCT rn.id, rn.slug, rn.title, rn.tags_json, rn.created_at, rn.updated_at
+                SELECT DISTINCT rn.id, rn.slug, rn.title, rn.tags_json, rn.is_inbox, rn.created_at, rn.updated_at
                 FROM research_notes rn
                 JOIN note_tags nt ON nt.note_id = rn.id
                 WHERE rn.project_id = ? AND (nt.tag = ? OR nt.tag LIKE ?)
@@ -137,10 +138,101 @@ def list_notes(project_name: str, owner_id: int, tag: str = None) -> List[Dict]:
             """, (pid, tag, f"{tag}/%")).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, slug, title, tags_json, created_at, updated_at FROM research_notes WHERE project_id = ? ORDER BY updated_at DESC",
+                "SELECT id, slug, title, tags_json, is_inbox, created_at, updated_at FROM research_notes WHERE project_id = ? ORDER BY updated_at DESC",
                 (pid,),
             ).fetchall()
     return [dict(r) for r in rows]
+
+
+def list_inbox(project_name: str, owner_id: int) -> List[Dict]:
+    """Return inbox notes (is_inbox=1) — Quick Capture 미정리 항목."""
+    pid = _get_project_id(project_name, owner_id)
+    if not pid:
+        return []
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, slug, title, tags_json, is_inbox, created_at, updated_at "
+            "FROM research_notes WHERE project_id = ? AND is_inbox = 1 "
+            "ORDER BY created_at DESC",
+            (pid,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def inbox_count(project_name: str, owner_id: int) -> int:
+    pid = _get_project_id(project_name, owner_id)
+    if not pid:
+        return 0
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM research_notes WHERE project_id = ? AND is_inbox = 1",
+            (pid,),
+        ).fetchone()
+    return int(row["c"]) if row else 0
+
+
+def quick_capture(project_name: str, owner_id: int, content: str = '') -> Dict:
+    """Brain dump entry point. Auto-titled `Quick YYYY-MM-DD HH:MM`, lands in inbox."""
+    pid = _get_project_id(project_name, owner_id)
+    if not pid:
+        return {"error": "프로젝트를 찾을 수 없습니다."}
+    now = datetime.datetime.now()
+    title = now.strftime("Quick %Y-%m-%d %H:%M")
+    base_slug = slugify(title)
+    slug = base_slug
+    with get_db() as conn:
+        # Disambiguate slug if multiple captures within the same minute
+        i = 2
+        while conn.execute(
+            "SELECT id FROM research_notes WHERE project_id = ? AND slug = ?", (pid, slug)
+        ).fetchone():
+            slug = f"{base_slug}-{i}"
+            i += 1
+        conn.execute(
+            "INSERT INTO research_notes (project_id, slug, title, content, tags_json, is_inbox) "
+            "VALUES (?, ?, ?, ?, ?, 1)",
+            (pid, slug, title, content, json.dumps([], ensure_ascii=False)),
+        )
+        note = conn.execute(
+            "SELECT id, slug, title, content, tags_json, is_inbox, created_at, updated_at "
+            "FROM research_notes WHERE project_id = ? AND slug = ?",
+            (pid, slug),
+        ).fetchone()
+    note = dict(note)
+    if content:
+        compute_backlinks(pid, note["id"], content)
+        compute_tags(pid, note["id"], content, [])
+    return note
+
+
+def promote_from_inbox(project_name: str, owner_id: int, slug: str, tags: List[str] = None, new_title: str = None) -> Dict:
+    """Move a note out of inbox. Optionally retitle and apply tags in one step."""
+    pid = _get_project_id(project_name, owner_id)
+    if not pid:
+        return {"error": "프로젝트를 찾을 수 없습니다."}
+    with get_db() as conn:
+        note = conn.execute(
+            "SELECT id, content, tags_json FROM research_notes WHERE project_id = ? AND slug = ?",
+            (pid, slug),
+        ).fetchone()
+        if not note:
+            return {"error": f"노트 '{slug}'를 찾을 수 없습니다."}
+        sets = ["is_inbox = 0", "updated_at = CURRENT_TIMESTAMP"]
+        params: List = []
+        if new_title is not None and new_title.strip():
+            sets.append("title = ?")
+            params.append(new_title.strip())
+        if tags is not None:
+            sets.append("tags_json = ?")
+            params.append(json.dumps(tags, ensure_ascii=False))
+        params.extend([pid, slug])
+        conn.execute(
+            f"UPDATE research_notes SET {', '.join(sets)} WHERE project_id = ? AND slug = ?",
+            params,
+        )
+    if tags is not None:
+        compute_tags(pid, note["id"], note["content"], tags)
+    return {"success": True}
 
 
 def create_note(project_name: str, owner_id: int, title: str, content: str = '', tags: List[str] = None) -> Dict:
@@ -181,7 +273,7 @@ def get_note(project_name: str, owner_id: int, slug: str) -> Optional[Dict]:
         return None
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, slug, title, content, tags_json, created_at, updated_at FROM research_notes WHERE project_id = ? AND slug = ?",
+            "SELECT id, slug, title, content, tags_json, is_inbox, created_at, updated_at FROM research_notes WHERE project_id = ? AND slug = ?",
             (pid, slug),
         ).fetchone()
     return dict(row) if row else None
