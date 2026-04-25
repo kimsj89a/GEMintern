@@ -8,10 +8,12 @@ import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import NoteMarkdownViewer from './NoteMarkdownViewer';
 import NoteGraph from './NoteGraph';
+import TemplateManager from './TemplateManager';
 
-interface Note { id: number; slug: string; title: string; content?: string; tags_json?: string; snippet?: string; created_at: string; updated_at: string; }
+interface Note { id: number; slug: string; title: string; content?: string; tags_json?: string; snippet?: string; is_inbox?: number; created_at: string; updated_at: string; }
 interface Backlink { slug: string; title: string; context: string; }
 interface TagInfo { tag: string; count: number; }
+interface NoteTemplate { name: string; scope: 'global' | 'user'; editable: boolean; body?: string; }
 
 // Allow only <mark>…</mark> in FTS5 snippet, escape everything else.
 function sanitizeSnippet(s: string): string {
@@ -114,6 +116,19 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
+  // ── Quick Capture (브레인덤프) + Inbox + Templates ──
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickText, setQuickText] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [showInbox, setShowInbox] = useState(true);
+  const [promoteTarget, setPromoteTarget] = useState<Note | null>(null);
+  const [promoteTitle, setPromoteTitle] = useState('');
+  const [promoteTags, setPromoteTags] = useState<string[]>([]);
+  const [promoteTagInput, setPromoteTagInput] = useState('');
+  const [templates, setTemplates] = useState<NoteTemplate[]>([]);
+  const [newNoteMenuOpen, setNewNoteMenuOpen] = useState(false);
+  const [tplMgrOpen, setTplMgrOpen] = useState(false);
+
   const existingSlugs = new Set(notes.map(n => n.slug));
 
   const loadNotes = useCallback(async () => {
@@ -126,7 +141,16 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     try { setAllTags(await api.getNoteTags(projectName)); } catch {}
   }, [projectName]);
 
-  useEffect(() => { loadNotes(); loadTags(); }, [loadNotes, loadTags]);
+  const loadTemplates = useCallback(async () => {
+    if (!projectName) return;
+    try { setTemplates(await api.listNoteTemplates(projectName)); } catch {}
+  }, [projectName]);
+
+  useEffect(() => { loadNotes(); loadTags(); loadTemplates(); }, [loadNotes, loadTags, loadTemplates]);
+
+  // Split notes into inbox vs regular for separate UI sections
+  const inboxNotes = useMemo(() => notes.filter(n => n.is_inbox), [notes]);
+  const nonInboxNotes = useMemo(() => notes.filter(n => !n.is_inbox), [notes]);
 
   // ── Backend search (FTS5 + tags + date range) ──
   const isSearchActive = !!search.trim() || selectedTags.size > 0 || !!dateFrom || !!dateTo;
@@ -176,6 +200,73 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     if (note?.slug) {
       await loadNotes(); await loadTags();
       selectNote(note.slug);
+      setGraphRefreshKey(k => k + 1);
+    }
+  }, [projectName, loadNotes, loadTags, selectNote]);
+
+  // ── Quick Capture ──
+  const openQuickCapture = useCallback(() => {
+    setQuickText('');
+    setQuickOpen(true);
+  }, []);
+
+  const submitQuickCapture = useCallback(async () => {
+    if (!projectName) return;
+    setQuickSaving(true);
+    try {
+      const note = await api.quickCapture(projectName, quickText);
+      if (note?.slug) {
+        await loadNotes();
+        setQuickOpen(false);
+        setQuickText('');
+        setShowInbox(true);
+      }
+    } catch {} finally { setQuickSaving(false); }
+  }, [projectName, quickText, loadNotes]);
+
+  // Global hotkey: Ctrl+Shift+M → Quick Capture
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+        // 입력 요소에 포커스가 있어도 Quick Capture는 글로벌하게 열어준다
+        e.preventDefault();
+        openQuickCapture();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openQuickCapture]);
+
+  // ── Promote inbox note ──
+  const openPromote = useCallback((n: Note) => {
+    setPromoteTarget(n);
+    setPromoteTitle(n.title.startsWith('Quick ') ? '' : n.title);
+    setPromoteTags([]);
+    setPromoteTagInput('');
+  }, []);
+
+  const submitPromote = useCallback(async () => {
+    if (!projectName || !promoteTarget) return;
+    try {
+      await api.promoteInboxNote(projectName, promoteTarget.slug, {
+        title: promoteTitle.trim() || undefined,
+        tags: promoteTags.length > 0 ? promoteTags : undefined,
+      });
+      setPromoteTarget(null);
+      await loadNotes(); await loadTags();
+    } catch {}
+  }, [projectName, promoteTarget, promoteTitle, promoteTags, loadNotes, loadTags]);
+
+  // ── Templates ──
+  const handleCreateFromTemplate = useCallback(async (templateName: string) => {
+    if (!projectName) return;
+    const userTitle = window.prompt(`"${templateName}" 템플릿으로 새 노트 — 제목:`, templateName);
+    if (userTitle === null) return; // cancelled
+    const note = await api.createNoteFromTemplate(projectName, templateName, userTitle.trim() || undefined);
+    if (note?.slug) {
+      await loadNotes(); await loadTags();
+      selectNote(note.slug);
+      setNewNoteMenuOpen(false);
       setGraphRefreshKey(k => k + 1);
     }
   }, [projectName, loadNotes, loadTags, selectNote]);
@@ -377,7 +468,10 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
     })();
   }, [existingSlugs, notes, selectNote, projectName, loadNotes]);
 
-  const filteredNotes: Note[] = isSearchActive ? (searchResults || []) : notes;
+  // Inbox 노트는 일반 목록에서 제외 (전용 섹션에서 따로 보여줌)
+  const filteredNotes: Note[] = isSearchActive
+    ? (searchResults || []).filter(n => !n.is_inbox)
+    : nonInboxNotes;
   const ToolBtn = ({ id, label }: { id: string; label: string }) => (
     <button onClick={() => applyTool(id)} className="px-1.5 py-0.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded" title={id}>{label}</button>
   );
@@ -671,11 +765,33 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
       {showList && (
         <div className="w-48 shrink-0 border-l border-slate-200 flex flex-col overflow-hidden bg-white">
           <div className="p-2 space-y-1.5 border-b border-slate-100">
-            <div className="flex gap-1">
+            <div className="flex gap-1 relative">
               <button onClick={handleCreate}
-                className="flex-1 px-2 py-1.5 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">+ 새 노트</button>
+                className="flex-1 px-2 py-1.5 text-xs bg-indigo-500 text-white rounded-l-lg hover:bg-indigo-600">+ 새 노트</button>
+              <button onClick={() => setNewNoteMenuOpen(v => !v)}
+                title="템플릿으로 만들기"
+                className="px-2 py-1.5 text-xs bg-indigo-500 text-white rounded-r-lg hover:bg-indigo-600 border-l border-indigo-400">▾</button>
               <button onClick={() => setShowList(false)}
                 className="px-1.5 py-1.5 text-slate-400 hover:text-slate-600 text-xs">✕</button>
+              {newNoteMenuOpen && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[180px] py-1"
+                  onMouseLeave={() => setNewNoteMenuOpen(false)}>
+                  <button onClick={() => { handleCreate(); setNewNoteMenuOpen(false); }}
+                    className="block w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">📝 빈 노트</button>
+                  {templates.length > 0 && <div className="border-t border-slate-100 my-1" />}
+                  {templates.map(t => (
+                    <button key={`${t.scope}-${t.name}`}
+                      onClick={() => handleCreateFromTemplate(t.name)}
+                      className="block w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 truncate">
+                      <span className="text-slate-400 mr-1">{t.scope === 'global' ? '📋' : '⭐'}</span>
+                      {t.name}
+                    </button>
+                  ))}
+                  <div className="border-t border-slate-100 my-1" />
+                  <button onClick={() => { setTplMgrOpen(true); setNewNoteMenuOpen(false); }}
+                    className="block w-full text-left px-3 py-1.5 text-[11px] text-slate-500 hover:bg-slate-50">⚙ 템플릿 관리</button>
+                </div>
+              )}
             </div>
             <button onClick={() => setShowGraph(!showGraph)}
               className={`w-full px-2 py-1 text-xs rounded-lg border flex items-center justify-center gap-1 ${showGraph ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
@@ -711,6 +827,32 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
+            {/* 📥 인박스 (Quick Capture 모은 곳) */}
+            {!isSearchActive && inboxNotes.length > 0 && (
+              <div className="border-b-2 border-amber-100 bg-amber-50/40">
+                <button onClick={() => setShowInbox(v => !v)}
+                  className="w-full px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 flex items-center justify-between">
+                  <span>📥 인박스 ({inboxNotes.length})</span>
+                  <span className="text-amber-400">{showInbox ? '▾' : '▸'}</span>
+                </button>
+                {showInbox && inboxNotes.map(n => (
+                  <div key={n.slug}
+                    onClick={() => selectNote(n.slug)}
+                    onContextMenu={e => { e.preventDefault(); setNoteCtx({ x: e.clientX, y: e.clientY, slug: n.slug, title: n.title }); }}
+                    className={`group w-full text-left px-3 py-1.5 border-b border-amber-50 cursor-pointer flex items-start gap-1 ${
+                      n.slug === activeSlug ? 'bg-amber-100/60 border-l-2 border-l-amber-500' : 'hover:bg-amber-50'
+                    }`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-slate-700 truncate">{n.title}</div>
+                      <div className="text-[10px] text-amber-600/60 mt-0.5">{new Date(n.created_at).toLocaleString('ko', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); openPromote(n); }}
+                      title="정리해서 정식 노트로 승격"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 text-[10px] bg-amber-500 text-white rounded hover:bg-amber-600">📁</button>
+                  </div>
+                ))}
+              </div>
+            )}
             {filteredNotes.map(n => (
               <div key={n.slug}
                 onClick={() => selectNote(n.slug)}
@@ -776,6 +918,123 @@ export default function ResearchPanel({ projectName }: { projectName: string }) 
           className="absolute top-2 right-2 z-10 px-2 py-1 text-[10px] bg-white border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 shadow-sm">
           목록 ▸
         </button>
+      )}
+
+      {/* ⚡ Floating Quick Capture button (Ctrl+Shift+M) */}
+      <button onClick={openQuickCapture}
+        title="빠른 메모 (Ctrl+Shift+M)"
+        className="fixed bottom-6 right-6 z-30 w-12 h-12 rounded-full bg-amber-500 text-white shadow-lg hover:bg-amber-600 hover:scale-105 transition-all flex items-center justify-center text-xl">
+        ⚡
+      </button>
+
+      {/* Quick Capture modal */}
+      {quickOpen && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+          onClick={() => setQuickOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[520px] max-w-[90vw] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-700">⚡ 빠른 메모 — 인박스</div>
+              <span className="text-[10px] text-slate-400">Ctrl+Enter 저장 · Esc 닫기</span>
+            </div>
+            <textarea autoFocus
+              value={quickText}
+              onChange={e => setQuickText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') { setQuickOpen(false); }
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitQuickCapture(); }
+              }}
+              placeholder="떠오르는 생각을 그대로… (제목은 자동, 인박스에 저장됨)"
+              className="px-5 py-4 text-[14px] leading-relaxed outline-none resize-none font-mono"
+              style={{ minHeight: '180px' }} />
+            <div className="px-5 py-3 border-t border-slate-200 flex justify-between items-center bg-slate-50">
+              <div className="text-[11px] text-slate-500">자동 제목: Quick {new Date().toLocaleString('ko', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\. /g, '-').replace(/\.$/, '')}</div>
+              <div className="flex gap-2">
+                <button onClick={() => setQuickOpen(false)}
+                  className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 rounded-lg">취소</button>
+                <button onClick={submitQuickCapture} disabled={quickSaving}
+                  className="px-4 py-1.5 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50">
+                  {quickSaving ? '저장중…' : '인박스에 담기'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Promote (인박스 → 정식 노트) modal */}
+      {promoteTarget && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+          onClick={() => setPromoteTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[480px] max-w-[90vw] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-slate-200">
+              <div className="text-sm font-semibold text-slate-700">📁 인박스에서 정리</div>
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate">현재: {promoteTarget.title}</div>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">제목 (선택, 비우면 그대로)</label>
+                <input value={promoteTitle} onChange={e => setPromoteTitle(e.target.value)}
+                  placeholder="예: 한화비전 IR 미팅 메모"
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">태그</label>
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {promoteTags.map(t => (
+                    <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-indigo-50 text-indigo-600 rounded-full">
+                      #{t}
+                      <button onClick={() => setPromoteTags(prev => prev.filter(x => x !== t))}
+                        className="text-indigo-400 hover:text-indigo-700">×</button>
+                    </span>
+                  ))}
+                </div>
+                <input value={promoteTagInput}
+                  onChange={e => setPromoteTagInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                      e.preventDefault();
+                      const t = promoteTagInput.trim().replace(/^#/, '');
+                      if (t && !promoteTags.includes(t)) setPromoteTags(prev => [...prev, t]);
+                      setPromoteTagInput('');
+                    }
+                  }}
+                  placeholder="태그 입력 후 Enter (예: 인터뷰)"
+                  className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+                {allTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {allTags.filter(t => !t.tag.includes('/') && !promoteTags.includes(t.tag)).slice(0, 12).map(t => (
+                      <button key={t.tag} onClick={() => setPromoteTags(prev => [...prev, t.tag])}
+                        className="px-1.5 py-0.5 text-[10px] bg-slate-100 text-slate-600 rounded-full hover:bg-indigo-50 hover:text-indigo-600">
+                        + #{t.tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+              <button onClick={() => setPromoteTarget(null)}
+                className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 rounded-lg">취소</button>
+              <button onClick={submitPromote}
+                className="px-4 py-1.5 text-xs bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">정리 완료</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Template manager modal */}
+      {tplMgrOpen && createPortal(
+        <TemplateManager
+          projectName={projectName}
+          templates={templates}
+          onClose={() => setTplMgrOpen(false)}
+          onChanged={loadTemplates}
+        />,
+        document.body
       )}
 
       {/* Note list context menu */}

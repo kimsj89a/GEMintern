@@ -417,6 +417,42 @@ export const api = {
   autoTagNote: (project: string, slug: string, apply = false) =>
     request<{ tags?: string[]; applied?: boolean; error?: string }>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/auto-tag`, { method: 'POST', body: JSON.stringify({ apply }) }),
 
+  // Quick Capture (브레인덤프) + Inbox
+  quickCapture: (project: string, content = '') =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/quick`, {
+      method: 'POST', body: JSON.stringify({ content }),
+    }),
+  listInbox: (project: string) =>
+    request<any[]>(`/projects/${encodeURIComponent(project)}/notes/inbox`),
+  inboxCount: (project: string) =>
+    request<{ count: number }>(`/projects/${encodeURIComponent(project)}/notes/inbox/count`),
+  promoteInboxNote: (project: string, slug: string, data: { title?: string; tags?: string[] } = {}) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/${encodeURIComponent(slug)}/promote`, {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+
+  // Note Templates
+  listNoteTemplates: (project: string) =>
+    request<{ name: string; scope: 'global' | 'user'; editable: boolean }[]>(
+      `/projects/${encodeURIComponent(project)}/note-templates`
+    ),
+  getNoteTemplate: (project: string, templateName: string) =>
+    request<{ name: string; scope: 'global' | 'user'; editable: boolean; body: string }>(
+      `/projects/${encodeURIComponent(project)}/note-templates/${encodeURIComponent(templateName)}`
+    ),
+  upsertNoteTemplate: (project: string, templateName: string, body: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/note-templates/${encodeURIComponent(templateName)}`, {
+      method: 'PUT', body: JSON.stringify({ name: templateName, body }),
+    }),
+  deleteNoteTemplate: (project: string, templateName: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/note-templates/${encodeURIComponent(templateName)}`, {
+      method: 'DELETE',
+    }),
+  createNoteFromTemplate: (project: string, templateName: string, title?: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/notes/from-template`, {
+      method: 'POST', body: JSON.stringify({ template_name: templateName, title }),
+    }),
+
   // Timeline
   listTimeline: (project: string) =>
     request<any[]>(`/projects/${encodeURIComponent(project)}/timeline`),
