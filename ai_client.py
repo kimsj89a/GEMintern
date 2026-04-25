@@ -236,6 +236,26 @@ def get_client(api_key: str) -> AIClient:
 
 # ── 헬퍼: 상태 메시지 청크 생성 ──
 
+# ── OpenAI client (RAG-Anything 전용, Phase 1에서는 Phase 2 이후 호출 대비 정의만) ──
+
+OPENAI_RAG_MODEL = "gpt-5.4-2026-03-05"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"
+
+
+def get_openai_client(api_key: str | None = None):
+    """OpenAI client factory (RAG-Anything pipeline 전용).
+
+    AIClient(Gemini/Anthropic 라우팅)와 분리. 이유: RAG-Anything은 OpenAI SDK를
+    직접 받기 때문에 어댑터 래핑이 불필요하고, 다른 코드 경로(Gemini/Claude)와
+    상호 간섭이 없도록 별도 함수로 노출.
+    """
+    import openai
+    key = api_key or os.environ.get("OPENAI_API_KEY", "")
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY가 설정되지 않았습니다 (RAG-Anything 사용 시 필수).")
+    return openai.OpenAI(api_key=key)
+
+
 def make_status_chunk(text: str):
     """진행 상황 알림용 청크 생성. Gemini types가 있으면 사용, 없으면 래퍼 반환."""
     try:
