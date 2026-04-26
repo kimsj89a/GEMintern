@@ -21,6 +21,35 @@ interface PlanSection { title: string; key_message?: string; slide_count?: numbe
 interface DeckPlan { title?: string; audience?: string; tone?: string; estimated_total_slides?: number; sections: PlanSection[] }
 interface ChatTurn { role: 'assistant' | 'user'; text: string }
 
+// PR3: outline 단계 template type 옵션 (planner type_hint + mckinsey 매핑 키 동일)
+const TYPE_HINT_OPTIONS: { value: string; label: string; group: string }[] = [
+  { value: 'title', label: '표지', group: '구조' },
+  { value: 'divider', label: '섹션 구분', group: '구조' },
+  { value: 'agenda', label: '목차', group: '구조' },
+  { value: 'executive_summary', label: 'Executive Summary', group: '요약' },
+  { value: 'pull_quote', label: '인용', group: '요약' },
+  { value: 'stat_hero', label: 'Big Number', group: '요약' },
+  { value: 'kpi_dashboard', label: 'KPI Dashboard', group: '숫자' },
+  { value: 'data_table', label: '데이터 테이블', group: '숫자' },
+  { value: 'two_column', label: '2단 비교', group: '비교' },
+  { value: 'comparison', label: '비교 테이블', group: '비교' },
+  { value: 'before_after', label: 'Before/After', group: '비교' },
+  { value: 'pros_cons', label: 'Pros/Cons', group: '비교' },
+  { value: 'risk_matrix', label: 'Risk Matrix', group: '매트릭스' },
+  { value: 'bcg_matrix', label: 'BCG/Growth-Share', group: '매트릭스' },
+  { value: 'column_chart', label: 'Column Chart', group: '차트' },
+  { value: 'line_chart', label: 'Line Chart', group: '차트' },
+  { value: 'bubble_chart', label: 'Bubble Chart', group: '차트' },
+  { value: 'stacked_column', label: 'Stacked Column', group: '차트' },
+  { value: 'timeline_flow', label: 'Phases (Chevron)', group: '프로세스' },
+  { value: 'process_flow', label: 'Process Flow', group: '프로세스' },
+  { value: 'funnel', label: 'Funnel', group: '프로세스' },
+  { value: 'gantt', label: 'Gantt Timeline', group: '프로세스' },
+  { value: 'org_chart', label: '조직도', group: '조직' },
+  { value: 'numbered_blocks', label: '번호 블록', group: '일반' },
+  { value: 'grid_cards', label: '그리드 카드', group: '일반' },
+];
+
 const LENGTH_OPTIONS: { id: Length; label: string; pages: string }[] = [
   { id: 'short', label: '짧게', pages: '5-8p' },
   { id: 'default', label: '기본값', pages: '10-15p' },
@@ -155,6 +184,73 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   }, [currentProject, plan, selectedDocs, buildUserGoal]);
 
   const handleGenerate = startPlanning;
+
+  // ── PR3: 플랜 직접 편집 헬퍼 (LLM 거치지 않고 즉시 반영) ──
+  const updatePlan = useCallback((mut: (p: DeckPlan) => DeckPlan) => {
+    setPlan(prev => prev ? mut(JSON.parse(JSON.stringify(prev))) : prev);
+  }, []);
+
+  const updateSlide = useCallback((sIdx: number, slIdx: number, patch: Partial<PlanSlide>) => {
+    updatePlan(p => {
+      const sl = p.sections[sIdx]?.slides[slIdx];
+      if (sl) Object.assign(sl, patch);
+      return p;
+    });
+  }, [updatePlan]);
+
+  const removeSlide = useCallback((sIdx: number, slIdx: number) => {
+    updatePlan(p => {
+      const sec = p.sections[sIdx];
+      if (sec) {
+        sec.slides.splice(slIdx, 1);
+        sec.slide_count = sec.slides.length;
+      }
+      return p;
+    });
+  }, [updatePlan]);
+
+  const moveSlide = useCallback((sIdx: number, slIdx: number, dir: -1 | 1) => {
+    updatePlan(p => {
+      const arr = p.sections[sIdx]?.slides;
+      if (!arr) return p;
+      const j = slIdx + dir;
+      if (j < 0 || j >= arr.length) return p;
+      [arr[slIdx], arr[j]] = [arr[j], arr[slIdx]];
+      return p;
+    });
+  }, [updatePlan]);
+
+  const addSlide = useCallback((sIdx: number) => {
+    updatePlan(p => {
+      const sec = p.sections[sIdx];
+      if (sec) {
+        sec.slides.push({ title: '새 슬라이드', type_hint: 'two_column', purpose: '' });
+        sec.slide_count = sec.slides.length;
+      }
+      return p;
+    });
+  }, [updatePlan]);
+
+  const removeSection = useCallback((sIdx: number) => {
+    if (!confirm('섹션 전체를 삭제하시겠습니까?')) return;
+    updatePlan(p => { p.sections.splice(sIdx, 1); return p; });
+  }, [updatePlan]);
+
+  const moveSection = useCallback((sIdx: number, dir: -1 | 1) => {
+    updatePlan(p => {
+      const j = sIdx + dir;
+      if (j < 0 || j >= p.sections.length) return p;
+      [p.sections[sIdx], p.sections[j]] = [p.sections[j], p.sections[sIdx]];
+      return p;
+    });
+  }, [updatePlan]);
+
+  const addSection = useCallback(() => {
+    updatePlan(p => {
+      p.sections.push({ title: '새 섹션', key_message: '', slide_count: 0, slides: [] });
+      return p;
+    });
+  }, [updatePlan]);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -348,28 +444,72 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
                   <div className="text-[11px] text-slate-500 italic">톤·스타일: {plan.tone}</div>
                 )}
                 {(plan.sections || []).map((sec, i) => (
-                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <div className="flex items-baseline justify-between mb-1">
-                      <div className="text-sm font-bold text-slate-800">{sec.title}</div>
-                      <div className="text-[11px] text-slate-400">{sec.slide_count || sec.slides?.length || 0}장</div>
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm group/sec">
+                    <div className="flex items-center gap-2 mb-1">
+                      <input value={sec.title}
+                        onChange={e => updatePlan(p => { p.sections[i].title = e.target.value; return p; })}
+                        className="flex-1 text-sm font-bold text-slate-800 bg-transparent outline-none focus:bg-slate-50 rounded px-1 -mx-1" />
+                      <div className="text-[11px] text-slate-400">{sec.slides?.length || 0}장</div>
+                      <div className="opacity-0 group-hover/sec:opacity-100 flex items-center gap-0.5 transition-opacity">
+                        <button onClick={() => moveSection(i, -1)} disabled={i === 0}
+                          title="위로" className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-20">↑</button>
+                        <button onClick={() => moveSection(i, 1)} disabled={i === plan.sections.length - 1}
+                          title="아래로" className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-20">↓</button>
+                        <button onClick={() => removeSection(i)} title="섹션 삭제"
+                          className="px-1 text-slate-400 hover:text-red-600">🗑</button>
+                      </div>
                     </div>
-                    {sec.key_message && (
-                      <div className="text-xs text-indigo-600 mb-2 italic">↳ {sec.key_message}</div>
-                    )}
+                    <input value={sec.key_message || ''}
+                      onChange={e => updatePlan(p => { p.sections[i].key_message = e.target.value; return p; })}
+                      placeholder="↳ 이 섹션의 핵심 메시지 (선택)"
+                      className="w-full text-xs text-indigo-600 italic bg-transparent outline-none focus:bg-slate-50 rounded px-1 -mx-1 mb-2 placeholder:text-slate-300" />
                     <div className="space-y-1">
                       {(sec.slides || []).map((sl, j) => (
-                        <div key={j} className="flex items-start gap-2 text-xs text-slate-600 py-0.5">
-                          <span className="text-slate-300 shrink-0 w-4">{j + 1}.</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-slate-700">{sl.title}</span>
-                            {sl.type_hint && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">{sl.type_hint}</span>}
-                            {sl.purpose && <div className="text-[11px] text-slate-400 mt-0.5">{sl.purpose}</div>}
+                        <div key={j} className="group/sl flex items-start gap-2 text-xs py-1 hover:bg-slate-50 rounded px-1 -mx-1">
+                          <span className="text-slate-300 shrink-0 w-4 pt-1">{j + 1}.</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <input value={sl.title}
+                                onChange={e => updateSlide(i, j, { title: e.target.value })}
+                                className="flex-1 font-medium text-slate-700 bg-transparent outline-none focus:bg-white border border-transparent focus:border-slate-200 rounded px-1.5 py-0.5" />
+                              <select value={sl.type_hint || 'two_column'}
+                                onChange={e => updateSlide(i, j, { type_hint: e.target.value })}
+                                className="text-[10px] px-1 py-0.5 bg-slate-100 text-slate-600 rounded border-0 focus:outline-none focus:ring-1 focus:ring-indigo-300 max-w-[140px]">
+                                {['구조', '요약', '숫자', '비교', '매트릭스', '차트', '프로세스', '조직', '일반'].map(g => (
+                                  <optgroup key={g} label={g}>
+                                    {TYPE_HINT_OPTIONS.filter(o => o.group === g).map(o => (
+                                      <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
+                              <div className="opacity-0 group-hover/sl:opacity-100 flex gap-0.5 transition-opacity shrink-0">
+                                <button onClick={() => moveSlide(i, j, -1)} disabled={j === 0}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 disabled:opacity-20 px-1">↑</button>
+                                <button onClick={() => moveSlide(i, j, 1)} disabled={j === sec.slides.length - 1}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 disabled:opacity-20 px-1">↓</button>
+                                <button onClick={() => removeSlide(i, j)}
+                                  className="text-[10px] text-slate-400 hover:text-red-600 px-1">×</button>
+                              </div>
+                            </div>
+                            <input value={sl.purpose || ''}
+                              onChange={e => updateSlide(i, j, { purpose: e.target.value })}
+                              placeholder="이 슬라이드가 보여줄 것 (선택)"
+                              className="w-full text-[11px] text-slate-500 bg-transparent outline-none focus:bg-white border border-transparent focus:border-slate-200 rounded px-1.5 py-0.5 mt-0.5 placeholder:text-slate-300" />
                           </div>
                         </div>
                       ))}
+                      <button onClick={() => addSlide(i)}
+                        className="w-full text-[11px] text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded py-1.5 border border-dashed border-slate-200 hover:border-indigo-300">
+                        + 슬라이드 추가
+                      </button>
                     </div>
                   </div>
                 ))}
+                <button onClick={addSection}
+                  className="w-full text-xs text-slate-400 hover:text-indigo-600 hover:bg-white hover:border-indigo-300 rounded-xl py-3 border border-dashed border-slate-300">
+                  + 섹션 추가
+                </button>
               </div>
             )}
           </div>
