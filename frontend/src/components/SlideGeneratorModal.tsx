@@ -443,7 +443,9 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
               className="text-slate-400 hover:text-slate-600 disabled:opacity-30">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
-            <span className="font-bold text-slate-800">📋 슬라이드 플래닝</span>
+            <span className="font-bold text-slate-800">
+              {mode === 'teaser' ? '🎯 Teaser 플래닝' : '📚 IM 플래닝 (Q&A)'}
+            </span>
             {plan && (
               <span className="text-xs text-slate-500">
                 {plan.title || '(제목 미정)'} · 약 {totalSlides}장 · {plan.audience || '청중 미정'}
@@ -557,8 +559,11 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
 
           {/* Chat */}
           <div className="w-96 shrink-0 border-l border-slate-200 flex flex-col bg-white">
-            <div className="px-4 py-2.5 border-b border-slate-200 text-xs font-semibold text-slate-600">
-              💬 대화로 플랜 다듬기
+            <div className="px-4 py-2.5 border-b border-slate-200 text-xs font-semibold text-slate-600 flex items-center justify-between">
+              <span>💬 {mode === 'teaser' ? '필요하면 한 줄로 수정' : '자유롭게 대화'}</span>
+              {mode === 'teaser' && plan && (
+                <span className="text-[10px] text-emerald-600 font-normal">→ 바로 [확정] 가능</span>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
               {chat.map((m, i) => (
@@ -581,7 +586,10 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
             </div>
             <div className="border-t border-slate-200 p-2">
               <div className="flex flex-wrap gap-1 mb-2">
-                {['3장은 빼줘', '재무 슬라이드 추가', '더 짧게 (15장 이하)', 'Risk 섹션 강화'].map(s => (
+                {(mode === 'teaser'
+                  ? ['더 짧게', '시장 분석 강조', 'Investment Highlights 추가', '재무 페이지 추가']
+                  : ['Risk 섹션 강화', 'Valuation 상세화', 'Cap Table 추가', 'Exit 시나리오 보강', '경쟁사 비교 추가']
+                ).map(s => (
                   <button key={s} onClick={() => setFeedback(s)}
                     className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full hover:bg-slate-200">
                     {s}
