@@ -42,6 +42,8 @@ class PptPlanRequest(BaseModel):
     user_goal: str = ""
     prior_plan: Optional[Dict[str, Any]] = None
     user_feedback: str = ""
+    mode: str = "im"  # 'teaser' | 'im'
+    target_pages: int = 30
 
 
 class QuickCaptureRequest(BaseModel):

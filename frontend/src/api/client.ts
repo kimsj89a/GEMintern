@@ -265,6 +265,7 @@ export const api = {
   pptPlan: (data: {
     project_name?: string; selected_docs?: string[];
     user_goal?: string; prior_plan?: any; user_feedback?: string;
+    mode?: 'teaser' | 'im'; target_pages?: number;
   }) =>
     request<{ message: string; plan: { title?: string; audience?: string; tone?: string; estimated_total_slides?: number; sections: { title: string; key_message?: string; slide_count?: number; slides: { title: string; type_hint?: string; purpose?: string }[] }[] } }>(
       '/ppt/plan', { method: 'POST', body: JSON.stringify(data) },

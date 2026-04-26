@@ -633,6 +633,8 @@ def generate_ppt_plan(
     user_goal: str = "",
     prior_plan: dict | None = None,
     user_feedback: str = "",
+    mode: str = "im",  # 'teaser' | 'im'
+    target_pages: int = 30,
     **_kwargs,
 ):
     """Phase 0 인터랙티브 플래닝.
@@ -642,12 +644,32 @@ def generate_ppt_plan(
     을 다시 돌려준다. 사용자가 [확정] 누르면 호출자가 plan.sections 를
     기존 outline 형식으로 변환해서 generate_slides_from_outline 으로 진입.
 
+    mode='teaser' — 짧은 메시지, 정확히 target_pages 매수, 한번에 마무리 권장
+    mode='im' — Q&A 적극 권장, target_pages 근사, 사용자에게 물어볼 점 자유
+
     Returns: dict { "message": str, "plan": {...} }
     """
     import json as _json
     client = get_client(api_key)
 
     planner_prompt = prompts.LOGIC_PROMPTS.get('ppt_planner', '')
+
+    # Mode 별 추가 지시 (system prompt 뒤에 append)
+    if mode == "teaser":
+        mode_directive = (
+            f"\n\n[Mode: Teaser]\n"
+            f"- 정확히 {target_pages}매로 작성 (estimated_total_slides == {target_pages}).\n"
+            f"- 한 번에 마무리 가능한 수준의 plan. message 는 '확정해도 좋고, 수정 사항 있으면 알려달라' 톤으로 1문장.\n"
+            f"- 추가 질문 자제, 핵심만."
+        )
+    else:
+        mode_directive = (
+            f"\n\n[Mode: IM]\n"
+            f"- 약 {target_pages}매 (±5) 권장.\n"
+            f"- 자료에서 모호하거나 데이터가 부족한 영역이 있으면 message 에서 사용자에게 자유롭게 질문하라.\n"
+            f"- 질문 개수에 제한 없음. 정말 명확하면 0개도 OK, 필요하면 5개도 가능."
+        )
+    planner_prompt = planner_prompt + mode_directive
 
     parts = []
     if user_goal:
@@ -661,7 +683,10 @@ def generate_ppt_plan(
     if user_feedback:
         parts.append(f"[User Feedback]\n{user_feedback}")
 
-    user_content = "\n\n".join(parts) if parts else "자료 없이 일반적인 PE IM 덱 골격을 제안하세요."
+    default_prompt = (
+        f"자료 없이 {mode.upper()} 모드 ({target_pages}p) 덱 골격을 제안하세요."
+    )
+    user_content = "\n\n".join(parts) if parts else default_prompt
 
     config = types.GenerateContentConfig(
         max_output_tokens=8192,

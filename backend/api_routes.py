@@ -2528,6 +2528,8 @@ def ppt_plan(req: PptPlanRequest, user: dict = Depends(get_current_user)):
             user_goal=req.user_goal,
             prior_plan=req.prior_plan,
             user_feedback=req.user_feedback,
+            mode=req.mode,
+            target_pages=req.target_pages,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"플래닝 실패: {e}")

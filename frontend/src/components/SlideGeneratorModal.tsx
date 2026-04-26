@@ -15,6 +15,7 @@ interface Props {
 
 type Format = 'detailed' | 'presentation';
 type Length = 'short' | 'default' | 'detailed';
+type DeckMode = 'teaser' | 'im';
 
 interface PlanSlide { title: string; type_hint?: string; purpose?: string }
 interface PlanSection { title: string; key_message?: string; slide_count?: number; slides: PlanSlide[] }
@@ -67,6 +68,11 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [step, setStep] = useState<'config' | 'planning' | 'preview'>('config');
   const [useMckinsey, setUseMckinsey] = useState(false);
+  const [mode, setMode] = useState<DeckMode>('teaser');
+  // PR4: 모드별 페이지 수 슬라이더 (Teaser 5~15, IM 20~50)
+  const [teaserPages, setTeaserPages] = useState(10);
+  const [imPages, setImPages] = useState(30);
+  const targetPages = mode === 'teaser' ? teaserPages : imPages;
 
   // Planning state (Phase 0 인터랙티브 플래닝)
   const [plan, setPlan] = useState<DeckPlan | null>(null);
@@ -79,14 +85,17 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
 
   const lengthGuide = LENGTH_OPTIONS.find(l => l.id === length)?.pages || '10-15p';
 
-  // 사용자 목적 1줄 — config 의 description + 형식·길이 메타를 합침
+  // 사용자 목적 1줄 — config 의 description + 모드·페이지수 메타를 합침
   const buildUserGoal = useCallback(() => {
+    const modeLabel = mode === 'teaser'
+      ? `Teaser 모드 (핵심만, 정확히 ${teaserPages}p)`
+      : `IM 모드 (정밀 분석, 약 ${imPages}p, Q&A로 목차 다듬기)`;
     return [
-      description || '발표자료',
+      description || (mode === 'teaser' ? 'Deal Teaser' : 'Information Memorandum'),
+      `유형: ${modeLabel}`,
       `형식: ${format === 'detailed' ? '자세한 자료 (보고서형)' : '발표자 슬라이드 (시각적)'}`,
-      `길이: ${lengthGuide}`,
     ].join('\n');
-  }, [description, format, lengthGuide]);
+  }, [description, format, mode, teaserPages, imPages]);
 
   // ── Phase 0: 인터랙티브 플래닝 시작 ──
   const startPlanning = useCallback(async () => {
@@ -101,6 +110,7 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
         project_name: currentProject,
         selected_docs: selectedDocs,
         user_goal: buildUserGoal(),
+        mode, target_pages: targetPages,
       });
       setPlan(r.plan as DeckPlan);
       setChat(prev => [...prev, { role: 'assistant', text: r.message || '제안한 플랜을 확인해주세요.' }]);
@@ -125,6 +135,7 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
         user_goal: buildUserGoal(),
         prior_plan: plan,
         user_feedback: fb,
+        mode, target_pages: targetPages,
       });
       setPlan(r.plan as DeckPlan);
       setChat(prev => [...prev, { role: 'assistant', text: r.message || '플랜을 갱신했습니다.' }]);
@@ -298,6 +309,50 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
           </div>
 
           <div className="p-6 space-y-6">
+            {/* 모드 — Teaser vs IM */}
+            <div>
+              <div className="text-sm font-semibold text-slate-700 mb-3">덱 유형</div>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setMode('teaser')}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${mode === 'teaser' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-semibold text-slate-800">🎯 Teaser</span>
+                    {mode === 'teaser' && <span className="text-blue-500">✓</span>}
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">10p 내외 빠른 자료 — 핵심만, 한 번에 마무리</p>
+                </button>
+                <button onClick={() => setMode('im')}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${mode === 'im' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-semibold text-slate-800">📚 IM</span>
+                    {mode === 'im' && <span className="text-blue-500">✓</span>}
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">30p+ 정밀 분석 — Q&A로 목차 다듬기</p>
+                </button>
+              </div>
+            </div>
+
+            {/* 페이지 수 슬라이더 (모드별 범위 다름) */}
+            <div>
+              <div className="flex items-baseline justify-between mb-2">
+                <div className="text-sm font-semibold text-slate-700">목표 페이지 수</div>
+                <div className="text-2xl font-bold text-blue-600 tabular-nums">{targetPages}<span className="text-sm font-medium text-slate-400 ml-1">p</span></div>
+              </div>
+              {mode === 'teaser' ? (
+                <input type="range" min={5} max={15} step={1} value={teaserPages}
+                  onChange={e => setTeaserPages(parseInt(e.target.value))}
+                  className="w-full accent-blue-600" />
+              ) : (
+                <input type="range" min={20} max={50} step={5} value={imPages}
+                  onChange={e => setImPages(parseInt(e.target.value))}
+                  className="w-full accent-blue-600" />
+              )}
+              <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                <span>{mode === 'teaser' ? '5p' : '20p'}</span>
+                <span>{mode === 'teaser' ? '15p' : '50p'}</span>
+              </div>
+            </div>
+
             {/* 형식 */}
             <div>
               <div className="text-sm font-semibold text-slate-700 mb-3">형식</div>
@@ -308,7 +363,7 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
                     <span className="text-sm font-semibold text-slate-800">자세한 자료</span>
                     {format === 'detailed' && <span className="text-blue-500">✓</span>}
                   </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">전체 텍스트와 세부정보가 포함된 포괄적인 자료</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">전체 텍스트와 세부정보 포함</p>
                 </button>
                 <button onClick={() => setFormat('presentation')}
                   className={`p-4 rounded-xl border-2 text-left transition-all ${format === 'presentation' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}>
@@ -316,22 +371,8 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
                     <span className="text-sm font-semibold text-slate-800">발표자 슬라이드</span>
                     {format === 'presentation' && <span className="text-blue-500">✓</span>}
                   </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">핵심 내용을 담은 깔끔하고 시각적인 슬라이드</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">핵심 시각 위주로 깔끔하게</p>
                 </button>
-              </div>
-            </div>
-
-            {/* 길이 */}
-            <div>
-              <div className="text-sm font-semibold text-slate-700 mb-3">길이</div>
-              <div className="flex gap-2">
-                {LENGTH_OPTIONS.map(l => (
-                  <button key={l.id} onClick={() => setLength(l.id)}
-                    className={`flex-1 py-2.5 rounded-xl border text-center transition-all ${length === l.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
-                    <div className="text-sm font-medium">{l.label}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{l.pages}</div>
-                  </button>
-                ))}
               </div>
             </div>
 
