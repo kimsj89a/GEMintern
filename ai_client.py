@@ -238,7 +238,7 @@ def get_client(api_key: str) -> AIClient:
 
 # ── OpenAI client (RAG-Anything 전용, Phase 1에서는 Phase 2 이후 호출 대비 정의만) ──
 
-OPENAI_RAG_MODEL = "gpt-5.4-2026-03-05"
+OPENAI_RAG_MODEL = "gpt-5.5-2026-04-23"
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"
 
 
