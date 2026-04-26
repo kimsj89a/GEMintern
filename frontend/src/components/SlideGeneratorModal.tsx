@@ -22,6 +22,9 @@ interface PlanSection { title: string; key_message?: string; slide_count?: numbe
 interface DeckPlan { title?: string; audience?: string; tone?: string; estimated_total_slides?: number; sections: PlanSection[] }
 interface ChatTurn { role: 'assistant' | 'user'; text: string }
 
+// PR7: 슬라이드별 피드백 이력 (보존)
+interface SlideRevision { feedback: string; prevSlide: any; newSlide: any; at: string; }
+
 // PR3: outline 단계 template type 옵션 (planner type_hint + mckinsey 매핑 키 동일)
 const TYPE_HINT_OPTIONS: { value: string; label: string; group: string }[] = [
   { value: 'title', label: '표지', group: '구조' },
@@ -80,6 +83,12 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [feedback, setFeedback] = useState('');
   const [planLoading, setPlanLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // PR7: 페이지별 피드백 drawer
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [slideFeedback, setSlideFeedback] = useState('');
+  const [slideRegen, setSlideRegen] = useState(false);
+  const [revisionsByIdx, setRevisionsByIdx] = useState<Record<number, SlideRevision[]>>({});
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat, planLoading]);
 
@@ -262,6 +271,66 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
       return p;
     });
   }, [updatePlan]);
+
+  // ── PR7: 페이지별 피드백 → slideRegenerate → 슬라이드 교체 + 이력 저장 ──
+  const submitSlideFeedback = useCallback(async () => {
+    const fb = slideFeedback.trim();
+    if (!fb) return;
+    const cur = slides[selectedIdx];
+    if (!cur) return;
+    setSlideRegen(true);
+    try {
+      const { task_id } = await api.slideRegenerate({
+        current_slide: cur,
+        prev_slide: slides[selectedIdx - 1],
+        next_slide: slides[selectedIdx + 1],
+        instruction: fb,
+      });
+      const poll = async (): Promise<any> => {
+        const status = await api.getTaskStatus(task_id);
+        if (status.status === 'complete') {
+          const raw = typeof status.result === 'string' ? JSON.parse(status.result) : status.result;
+          // 결과는 { slide: {...} } 또는 단일 dict 형태
+          return raw?.slide || raw;
+        } else if (status.status === 'error') {
+          throw new Error(status.error || '재생성 오류');
+        }
+        await new Promise(r => setTimeout(r, 2000));
+        return poll();
+      };
+      const newSlide = await poll();
+      if (newSlide) {
+        const idx = selectedIdx;
+        setRevisionsByIdx(prev => ({
+          ...prev,
+          [idx]: [...(prev[idx] || []), {
+            feedback: fb, prevSlide: cur, newSlide, at: new Date().toISOString(),
+          }],
+        }));
+        setSlides(prev => prev.map((s, i) => i === idx ? newSlide : s));
+        setSlideFeedback('');
+      }
+    } catch (e: any) {
+      setError(`재생성 실패: ${e?.message || e}`);
+    } finally { setSlideRegen(false); }
+  }, [slideFeedback, slides, selectedIdx]);
+
+  const restoreRevision = useCallback((idx: number, revIdx: number) => {
+    if (!confirm('이 버전으로 되돌리시겠습니까?\n현재 버전도 이력에 남습니다.')) return;
+    const revs = revisionsByIdx[idx] || [];
+    const target = revs[revIdx];
+    if (!target) return;
+    const cur = slides[idx];
+    setRevisionsByIdx(prev => ({
+      ...prev,
+      [idx]: [...revs, {
+        feedback: '(되돌리기 전 버전 자동 보관)',
+        prevSlide: cur, newSlide: target.prevSlide,
+        at: new Date().toISOString(),
+      }],
+    }));
+    setSlides(prev => prev.map((s, i) => i === idx ? target.prevSlide : s));
+  }, [revisionsByIdx, slides]);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -650,19 +719,108 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
       <div className="flex flex-1 overflow-hidden">
         {/* 슬라이드 리스트 */}
         <div className="w-48 shrink-0 border-r border-slate-200 overflow-y-auto p-2 space-y-2">
-          {slides.map((slide, i) => (
-            <div key={i}>
-              <div className="text-[10px] text-slate-400 mb-0.5 pl-1">{i + 1}</div>
-              <SlidePreview slide={slide} selected={i === selectedIdx} onClick={() => setSelectedIdx(i)} width={160} />
-            </div>
-          ))}
+          {slides.map((slide, i) => {
+            const revCount = (revisionsByIdx[i] || []).length;
+            return (
+              <div key={i} className="relative">
+                <div className="flex items-center justify-between mb-0.5 pl-1">
+                  <span className="text-[10px] text-slate-400">{i + 1}</span>
+                  {revCount > 0 && (
+                    <button onClick={e => { e.stopPropagation(); setSelectedIdx(i); setFeedbackOpen(true); }}
+                      title={`수정 이력 ${revCount}회 — 드로어에서 보기`}
+                      className="text-[9px] px-1 py-0.5 bg-amber-100 text-amber-700 rounded hover:bg-amber-200">
+                      ✏️{revCount}
+                    </button>
+                  )}
+                </div>
+                <SlidePreview slide={slide} selected={i === selectedIdx} onClick={() => setSelectedIdx(i)} width={160} />
+              </div>
+            );
+          })}
         </div>
         {/* 메인 미리보기 */}
-        <div className="flex-1 flex items-center justify-center bg-slate-100 p-8">
+        <div className="flex-1 flex items-center justify-center bg-slate-100 p-8 relative">
           {slides[selectedIdx] && (
-            <SlidePreview slide={slides[selectedIdx]} width={Math.min(800, window.innerWidth - 300)} />
+            <SlidePreview slide={slides[selectedIdx]} width={Math.min(800, window.innerWidth - 300 - (feedbackOpen ? 380 : 0))} />
           )}
+          {/* [✏️ 피드백] 토글 */}
+          <button onClick={() => setFeedbackOpen(v => !v)}
+            title="이 슬라이드에 피드백"
+            className={`absolute top-4 right-4 px-3 py-2 text-xs rounded-lg shadow-md transition-all ${
+              feedbackOpen ? 'bg-amber-500 text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-amber-50'
+            }`}>
+            ✏️ 피드백
+          </button>
         </div>
+
+        {/* PR7: 페이지별 피드백 drawer (우측) */}
+        {feedbackOpen && (
+          <div className="w-[380px] shrink-0 border-l border-slate-200 flex flex-col bg-white">
+            <div className="px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-700">
+                ✏️ 슬라이드 {selectedIdx + 1} 피드백
+              </div>
+              <button onClick={() => setFeedbackOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm">✕</button>
+            </div>
+            {/* 이력 (있으면 상단에 collapsible) */}
+            {(revisionsByIdx[selectedIdx] || []).length > 0 && (
+              <div className="border-b border-slate-200 max-h-48 overflow-y-auto">
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 sticky top-0 bg-white">
+                  수정 이력 ({revisionsByIdx[selectedIdx].length}회)
+                </div>
+                {(revisionsByIdx[selectedIdx] || []).map((rev, ri) => (
+                  <div key={ri} className="group px-3 py-1.5 border-t border-slate-100 hover:bg-slate-50">
+                    <div className="text-[11px] text-slate-700 line-clamp-2">{rev.feedback}</div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-[9px] text-slate-400">
+                        {new Date(rev.at).toLocaleString('ko', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <button onClick={() => restoreRevision(selectedIdx, ri)}
+                        className="text-[10px] text-amber-600 hover:text-amber-800 opacity-0 group-hover:opacity-100">
+                        ↶ 이전 버전으로
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* 입력 영역 */}
+            <div className="flex-1 flex flex-col p-3 space-y-2">
+              <div className="text-[11px] text-slate-500 leading-relaxed">
+                예: "EBITDA margin 추가", "테이블을 차트로 바꿔줘",
+                "표지를 더 임팩트 있게"
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {['더 간결하게', '데이터 추가', '차트로 변환', '제목 다시'].map(s => (
+                  <button key={s} onClick={() => setSlideFeedback(s)}
+                    className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full hover:bg-amber-50">
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <textarea value={slideFeedback}
+                onChange={e => setSlideFeedback(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitSlideFeedback(); }
+                }}
+                placeholder="이 슬라이드를 어떻게 바꿀까요? (Ctrl+Enter 전송)"
+                rows={4}
+                disabled={slideRegen}
+                className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-amber-400 resize-none disabled:bg-slate-50" />
+              <button onClick={submitSlideFeedback}
+                disabled={!slideFeedback.trim() || slideRegen}
+                className="px-3 py-2 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40">
+                {slideRegen ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    재생성 중…
+                  </span>
+                ) : '🔁 이 페이지만 다시 만들기'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (
