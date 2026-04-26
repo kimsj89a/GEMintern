@@ -795,6 +795,36 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), folder: s
                 logger.warning(f"Auto BM25 index failed for '{name}': {e}")
         threading.Thread(target=_auto_index, daemon=True).start()
 
+        # USE_RAG_ANYTHING 활성 시 LightRAG/MinerU 인덱싱도 백그라운드로
+        try:
+            import core_rag_anything
+            if core_rag_anything.is_enabled():
+                # 원본 파일 임시 저장 후 ingest (parsed 텍스트가 아닌 원파일이 MinerU 입력)
+                # files 는 이미 read 되었으므로 parsed text 만 사용 (md 로 wrap)
+                pending = []
+                for fn, txt in texts.items():
+                    tf = tempfile.NamedTemporaryFile(
+                        delete=False, suffix=".md", prefix="rag_",
+                        dir=tempfile.gettempdir()
+                    )
+                    tf.write(txt.encode("utf-8")); tf.close()
+                    pending.append((fn, tf.name))
+
+                def _rag_anything_index():
+                    try:
+                        for orig_name, tmp_path in pending:
+                            try:
+                                core_rag_anything.ingest_file(name, user["id"], tmp_path)
+                                logger.info(f"[rag_anything] indexed: {orig_name}")
+                            finally:
+                                try: os.remove(tmp_path)
+                                except OSError: pass
+                    except Exception as e:
+                        logger.warning(f"[rag_anything] background index failed: {e}")
+                threading.Thread(target=_rag_anything_index, daemon=True).start()
+        except Exception as e:
+            logger.debug(f"[rag_anything] skipped: {e}")
+
     return result
 
 
@@ -2662,6 +2692,15 @@ def reindex_project(name: str, force: bool = False, user: dict = Depends(get_cur
     except Exception as e:
         results["gemini_files"] = {"success": False, "error": str(e)}
 
+    # 2.5. RAG-Anything (LightRAG/MinerU) 인덱싱 — USE_RAG_ANYTHING 활성 시
+    try:
+        import core_rag_anything
+        if core_rag_anything.is_enabled():
+            ra_result = core_rag_anything.reindex_project(name, user["id"])
+            results["rag_anything"] = ra_result
+    except Exception as e:
+        results["rag_anything"] = {"success": False, "error": str(e)}
+
     # 3. 벡터DB 인덱싱 (서브프로세스, segfault 격리)
     try:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -2703,6 +2742,45 @@ def vector_stats(name: str, user: dict = Depends(get_current_user)):
         return {"total_chunks": 0, "documents": 0, "indexed": False}
     except Exception as e:
         return {"total_chunks": 0, "documents": 0, "indexed": False, "error": str(e)}
+
+
+@router.get("/projects/{name}/rag-anything/status")
+def rag_anything_status(name: str, user: dict = Depends(get_current_user)):
+    """RAG-Anything (LightRAG) 인덱스 존재 여부와 working_dir 사이즈."""
+    _verify_project_ownership(name, user["id"])
+    import core_rag_anything
+    enabled = core_rag_anything.is_enabled()
+    wd = core_rag_anything._working_dir(name, user["id"])
+    info = {"enabled": enabled, "working_dir": wd, "exists": os.path.isdir(wd)}
+    if info["exists"]:
+        try:
+            files = []
+            total = 0
+            for root, _, fnames in os.walk(wd):
+                for fn in fnames:
+                    p = os.path.join(root, fn)
+                    sz = os.path.getsize(p)
+                    files.append({"name": os.path.relpath(p, wd), "size": sz})
+                    total += sz
+            info["file_count"] = len(files)
+            info["total_size"] = total
+            info["files"] = files[:30]  # cap
+        except Exception as e:
+            info["error"] = str(e)
+    return info
+
+
+@router.post("/projects/{name}/rag-anything/reindex")
+def rag_anything_reindex(name: str, user: dict = Depends(get_current_user)):
+    """프로젝트 docs 폴더 전체를 RAG-Anything (LightRAG/MinerU) 으로 재인덱싱."""
+    _verify_project_ownership(name, user["id"])
+    import core_rag_anything
+    if not core_rag_anything.is_enabled():
+        raise HTTPException(status_code=400, detail="USE_RAG_ANYTHING=false (env 활성 필요)")
+    try:
+        return core_rag_anything.reindex_project(name, user["id"])
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/projects/{name}/sync-status")

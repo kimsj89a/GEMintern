@@ -294,6 +294,14 @@ export const api = {
   // Vector RAG
   reindexProject: (project: string, force = false) =>
     request<any>(`/projects/${encodeURIComponent(project)}/reindex?force=${force}`, { method: 'POST' }),
+  ragAnythingStatus: (project: string) =>
+    request<{ enabled: boolean; working_dir: string; exists: boolean; file_count?: number; total_size?: number; files?: { name: string; size: number }[]; error?: string }>(
+      `/projects/${encodeURIComponent(project)}/rag-anything/status`
+    ),
+  ragAnythingReindex: (project: string) =>
+    request<{ success: boolean; indexed?: string[]; errors?: any[]; count?: number }>(
+      `/projects/${encodeURIComponent(project)}/rag-anything/reindex`, { method: 'POST' }
+    ),
   vectorStats: (project: string) =>
     request<any>(`/projects/${encodeURIComponent(project)}/vector-stats`),
   syncStatus: (project: string) =>

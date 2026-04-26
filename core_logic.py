@@ -57,8 +57,24 @@ def parse_all_files(uploaded_files, saved_files=None, read_content=True, api_key
     return all_text, file_list_str
 
 
-def get_rag_enriched_context(api_key, structure_text, context_text, project_name, template_option):
-    """RAG를 사용하여 보고서 생성에 필요한 추가 컨텍스트를 검색합니다."""
+def get_rag_enriched_context(api_key, structure_text, context_text, project_name, template_option, owner_id=None):
+    """RAG를 사용하여 보고서 생성에 필요한 추가 컨텍스트를 검색합니다.
+    USE_RAG_ANYTHING=true 면 LightRAG hybrid query, 아니면 기존 file-based.
+    owner_id 미전달 시 기존 경로로 자동 폴백 (회귀 보호).
+    """
+    try:
+        import core_rag_anything
+        if core_rag_anything.is_enabled() and owner_id is not None:
+            return core_rag_anything.enrich_context(
+                api_key=api_key,
+                structure_text=structure_text,
+                context_text=context_text,
+                project_name=project_name,
+                template_option=template_option,
+                owner_id=owner_id,
+            )
+    except Exception:
+        pass
     return core_rag.enrich_context_with_rag(
         api_key=api_key,
         structure_text=structure_text,
