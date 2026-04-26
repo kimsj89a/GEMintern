@@ -611,6 +611,66 @@ def _safe_parse_json(text):
     return {"sections": []}
 
 
+def generate_ppt_plan(
+    api_key, model_name,
+    file_context: str = "",
+    user_goal: str = "",
+    prior_plan: dict | None = None,
+    user_feedback: str = "",
+    **_kwargs,
+):
+    """Phase 0 인터랙티브 플래닝.
+
+    한 turn 마다 LLM 이 plan 제안 + 사용자에게 질문 메시지를 함께 반환한다.
+    사용자가 user_feedback 으로 수정 지시를 보내면 그 변경을 반영한 새 plan
+    을 다시 돌려준다. 사용자가 [확정] 누르면 호출자가 plan.sections 를
+    기존 outline 형식으로 변환해서 generate_slides_from_outline 으로 진입.
+
+    Returns: dict { "message": str, "plan": {...} }
+    """
+    import json as _json
+    client = get_client(api_key)
+
+    planner_prompt = prompts.LOGIC_PROMPTS.get('ppt_planner', '')
+
+    parts = []
+    if user_goal:
+        parts.append(f"[User Goal]\n{user_goal}")
+    if file_context:
+        # 자료가 너무 길면 잘라냄 (planner 단계는 개요만 필요)
+        ctx = file_context if len(file_context) < 30000 else file_context[:30000] + "\n[... 자료 일부 생략 ...]"
+        parts.append(f"[Source Materials]\n{ctx}")
+    if prior_plan:
+        parts.append(f"[Prior Plan]\n{_json.dumps(prior_plan, ensure_ascii=False, indent=2)}")
+    if user_feedback:
+        parts.append(f"[User Feedback]\n{user_feedback}")
+
+    user_content = "\n\n".join(parts) if parts else "자료 없이 일반적인 PE IM 덱 골격을 제안하세요."
+
+    config = types.GenerateContentConfig(
+        max_output_tokens=8192,
+        temperature=0.4,
+        system_instruction=planner_prompt,
+        response_mime_type="application/json",
+    )
+    resp = client.models.generate_content(
+        model=model_name, contents=user_content, config=config,
+    )
+    raw = (resp.text or "").strip()
+    parsed = _safe_parse_json(raw)
+    # _safe_parse_json 은 dict 또는 fallback {"sections":[]} 반환 → planner 형식 보정
+    if not isinstance(parsed, dict):
+        parsed = {}
+    if "plan" not in parsed:
+        # LLM이 sections 만 반환한 경우 보정
+        if "sections" in parsed:
+            parsed = {"message": "", "plan": parsed}
+        else:
+            parsed = {"message": raw[:200] if raw else "(빈 응답)", "plan": {"sections": []}}
+    parsed.setdefault("message", "")
+    return parsed
+
+
 def generate_slide_outline(api_key, model_name, file_context="", context_text="", **_kwargs):
     """2단계 PPT 아웃라인: Quick Review → 슬라이드 JSON.
     generate_slide_json과 동일 로직이지만 on_slide 콜백 없이 dict 반환.

@@ -1,8 +1,8 @@
 /**
  * SlideGeneratorModal — NotebookLM 스타일 슬라이드 맞춤설정 모달
- * 형식/템플릿/길이 선택 → 설명 입력 → 생성 → 미리보기 → 다운로드
+ * 형식/템플릿/길이 선택 → 인터랙티브 플래닝(채팅) → 생성 → 미리보기 → 다운로드
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { api } from '../api/client';
 import { generateFilename } from '../utils/clipboard';
@@ -15,6 +15,11 @@ interface Props {
 
 type Format = 'detailed' | 'presentation';
 type Length = 'short' | 'default' | 'detailed';
+
+interface PlanSlide { title: string; type_hint?: string; purpose?: string }
+interface PlanSection { title: string; key_message?: string; slide_count?: number; slides: PlanSlide[] }
+interface DeckPlan { title?: string; audience?: string; tone?: string; estimated_total_slides?: number; sections: PlanSection[] }
+interface ChatTurn { role: 'assistant' | 'user'; text: string }
 
 const LENGTH_OPTIONS: { id: Length; label: string; pages: string }[] = [
   { id: 'short', label: '짧게', pages: '5-8p' },
@@ -31,33 +36,99 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [error, setError] = useState('');
   const [slides, setSlides] = useState<any[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [step, setStep] = useState<'config' | 'preview'>('config');
+  const [step, setStep] = useState<'config' | 'planning' | 'preview'>('config');
+
+  // Planning state (Phase 0 인터랙티브 플래닝)
+  const [plan, setPlan] = useState<DeckPlan | null>(null);
+  const [chat, setChat] = useState<ChatTurn[]>([]);
+  const [feedback, setFeedback] = useState('');
+  const [planLoading, setPlanLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat, planLoading]);
 
   const lengthGuide = LENGTH_OPTIONS.find(l => l.id === length)?.pages || '10-15p';
 
-  const handleGenerate = useCallback(async () => {
-    if (!currentProject) { setError('프로젝트를 먼저 선택하세요'); return; }
-    setGenerating(true);
-    setError('');
-    setSlides([]);
-
-    const query = [
+  // 사용자 목적 1줄 — config 의 description + 형식·길이 메타를 합침
+  const buildUserGoal = useCallback(() => {
+    return [
       description || '발표자료',
       `형식: ${format === 'detailed' ? '자세한 자료 (보고서형)' : '발표자 슬라이드 (시각적)'}`,
       `길이: ${lengthGuide}`,
     ].join('\n');
+  }, [description, format, lengthGuide]);
 
+  // ── Phase 0: 인터랙티브 플래닝 시작 ──
+  const startPlanning = useCallback(async () => {
+    if (!currentProject) { setError('프로젝트를 먼저 선택하세요'); return; }
+    setError('');
+    setStep('planning');
+    setChat([{ role: 'user', text: buildUserGoal() }]);
+    setPlan(null);
+    setPlanLoading(true);
     try {
-      const { task_id } = await api.startAnalysis({
-        task_type: 'slide_json',
-        kwargs: {
-          project_name: currentProject,
-          selected_docs: selectedDocs,
-          context_text: query,
-        },
+      const r = await api.pptPlan({
+        project_name: currentProject,
+        selected_docs: selectedDocs,
+        user_goal: buildUserGoal(),
       });
+      setPlan(r.plan as DeckPlan);
+      setChat(prev => [...prev, { role: 'assistant', text: r.message || '제안한 플랜을 확인해주세요.' }]);
+    } catch (e: any) {
+      setError(`플래닝 실패: ${e?.message || e}`);
+    } finally {
+      setPlanLoading(false);
+    }
+  }, [currentProject, selectedDocs, buildUserGoal]);
 
-      // Poll
+  // ── 사용자 피드백으로 플랜 갱신 ──
+  const sendFeedback = useCallback(async () => {
+    const fb = feedback.trim();
+    if (!fb || !currentProject || !plan) return;
+    setChat(prev => [...prev, { role: 'user', text: fb }]);
+    setFeedback('');
+    setPlanLoading(true);
+    try {
+      const r = await api.pptPlan({
+        project_name: currentProject,
+        selected_docs: selectedDocs,
+        user_goal: buildUserGoal(),
+        prior_plan: plan,
+        user_feedback: fb,
+      });
+      setPlan(r.plan as DeckPlan);
+      setChat(prev => [...prev, { role: 'assistant', text: r.message || '플랜을 갱신했습니다.' }]);
+    } catch (e: any) {
+      setChat(prev => [...prev, { role: 'assistant', text: `오류: ${e?.message || e}` }]);
+    } finally {
+      setPlanLoading(false);
+    }
+  }, [feedback, currentProject, plan, selectedDocs, buildUserGoal]);
+
+  // ── Phase 1+2: 확정된 플랜 → 슬라이드 본문 생성 ──
+  const confirmPlan = useCallback(async () => {
+    if (!currentProject || !plan) return;
+    // plan(planner 형식) → outline(slidesFromOutline 입력 형식) 변환
+    const outline = {
+      sections: (plan.sections || []).map(s => ({
+        title: s.title,
+        slides: (s.slides || []).map(sl => ({
+          title: sl.title,
+          slide_type: sl.type_hint || 'two_column',
+          plan: sl.purpose || s.key_message || '',
+        })),
+      })),
+    };
+    setGenerating(true);
+    setError('');
+    setSlides([]);
+    try {
+      const { task_id } = await api.slidesFromOutline({
+        outline,
+        project_name: currentProject,
+        selected_docs: selectedDocs,
+        context_text: buildUserGoal(),
+      });
       const poll = async () => {
         try {
           const status = await api.getTaskStatus(task_id);
@@ -80,7 +151,9 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
       setError(err.message);
       setGenerating(false);
     }
-  }, [currentProject, description, format, length, selectedDocs, lengthGuide]);
+  }, [currentProject, plan, selectedDocs, buildUserGoal]);
+
+  const handleGenerate = startPlanning;
 
   const handleDownload = useCallback(async () => {
     try {
@@ -193,12 +266,154 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
               {generating ? (
                 <span className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  생성 중...
+                  플래닝 중...
                 </span>
-              ) : '생성'}
+              ) : '플래닝 시작 →'}
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // ── 인터랙티브 플래닝 화면 ──
+  if (step === 'planning') {
+    const totalSlides = plan?.estimated_total_slides
+      ?? (plan?.sections || []).reduce((acc, s) => acc + (s.slide_count || s.slides?.length || 0), 0);
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-white">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 shrink-0">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setStep('config')}
+              disabled={planLoading || generating}
+              className="text-slate-400 hover:text-slate-600 disabled:opacity-30">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span className="font-bold text-slate-800">📋 슬라이드 플래닝</span>
+            {plan && (
+              <span className="text-xs text-slate-500">
+                {plan.title || '(제목 미정)'} · 약 {totalSlides}장 · {plan.audience || '청중 미정'}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={confirmPlan}
+              disabled={!plan || planLoading || generating}
+              className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-emerald-300">
+              {generating ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  슬라이드 생성중…
+                </span>
+              ) : '✅ 플랜 확정 → 슬라이드 만들기'}
+            </button>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body: left = plan card, right = chat */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Plan card */}
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+            {!plan && planLoading && (
+              <div className="flex items-center justify-center h-full text-sm text-slate-400">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  자료를 분석하고 플랜을 작성하는 중…
+                </div>
+              </div>
+            )}
+            {plan && (
+              <div className="max-w-3xl mx-auto space-y-3">
+                {plan.tone && (
+                  <div className="text-[11px] text-slate-500 italic">톤·스타일: {plan.tone}</div>
+                )}
+                {(plan.sections || []).map((sec, i) => (
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <div className="flex items-baseline justify-between mb-1">
+                      <div className="text-sm font-bold text-slate-800">{sec.title}</div>
+                      <div className="text-[11px] text-slate-400">{sec.slide_count || sec.slides?.length || 0}장</div>
+                    </div>
+                    {sec.key_message && (
+                      <div className="text-xs text-indigo-600 mb-2 italic">↳ {sec.key_message}</div>
+                    )}
+                    <div className="space-y-1">
+                      {(sec.slides || []).map((sl, j) => (
+                        <div key={j} className="flex items-start gap-2 text-xs text-slate-600 py-0.5">
+                          <span className="text-slate-300 shrink-0 w-4">{j + 1}.</span>
+                          <div className="flex-1">
+                            <span className="font-medium text-slate-700">{sl.title}</span>
+                            {sl.type_hint && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">{sl.type_hint}</span>}
+                            {sl.purpose && <div className="text-[11px] text-slate-400 mt-0.5">{sl.purpose}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Chat */}
+          <div className="w-96 shrink-0 border-l border-slate-200 flex flex-col bg-white">
+            <div className="px-4 py-2.5 border-b border-slate-200 text-xs font-semibold text-slate-600">
+              💬 대화로 플랜 다듬기
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+              {chat.map((m, i) => (
+                <div key={i}
+                  className={`max-w-[90%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${
+                    m.role === 'user'
+                      ? 'ml-auto bg-blue-500 text-white'
+                      : 'mr-auto bg-slate-100 text-slate-800'
+                  }`}>
+                  {m.text}
+                </div>
+              ))}
+              {planLoading && (
+                <div className="mr-auto bg-slate-100 text-slate-500 rounded-2xl px-3 py-2 text-xs flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                  생각하는 중…
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="border-t border-slate-200 p-2">
+              <div className="flex flex-wrap gap-1 mb-2">
+                {['3장은 빼줘', '재무 슬라이드 추가', '더 짧게 (15장 이하)', 'Risk 섹션 강화'].map(s => (
+                  <button key={s} onClick={() => setFeedback(s)}
+                    className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full hover:bg-slate-200">
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <textarea value={feedback}
+                onChange={e => setFeedback(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendFeedback(); }
+                }}
+                placeholder="수정 지시를 입력하세요 (Ctrl+Enter 전송)"
+                rows={2}
+                disabled={planLoading || !plan}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none disabled:bg-slate-50" />
+              <div className="flex justify-end mt-1.5">
+                <button onClick={sendFeedback}
+                  disabled={!feedback.trim() || planLoading || !plan}
+                  className="px-3 py-1 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-40">
+                  보내기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="px-5 py-2 bg-red-50 text-red-600 text-sm border-t border-red-100">{error}</div>
+        )}
       </div>
     );
   }

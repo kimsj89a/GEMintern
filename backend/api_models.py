@@ -36,6 +36,14 @@ class NoteUpdate(BaseModel):
     tags: Optional[list[str]] = None
 
 
+class PptPlanRequest(BaseModel):
+    project_name: str = ""
+    selected_docs: list[str] = []
+    user_goal: str = ""
+    prior_plan: Optional[Dict[str, Any]] = None
+    user_feedback: str = ""
+
+
 class QuickCaptureRequest(BaseModel):
     content: str = ""
 

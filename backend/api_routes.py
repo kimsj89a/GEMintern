@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from backend.api_models import (
     ProjectCreate, ProjectRename, FolderCreate, FolderRename, DocMoveRequest, NoteCreate, NoteUpdate,
-    QuickCaptureRequest, PromoteInboxRequest, NoteTemplateUpsert, NoteFromTemplateRequest,
+    PptPlanRequest, QuickCaptureRequest, PromoteInboxRequest, NoteTemplateUpsert, NoteFromTemplateRequest,
     TimelineEventCreate, TimelineEventUpdate,
     GenerateRequest, QaRequest, AnalysisRequest,
     CreatePptxRequest, SlideRegenerateRequest, SlidesFromOutlineRequest,
@@ -2420,6 +2420,41 @@ def slide_regenerate(req: SlideRegenerateRequest, user: dict = Depends(get_curre
                       next_slide=next_str, instruction=req.instruction)
     log_usage(user["id"], "/slide-regenerate", model)
     return {"task_id": task_id}
+
+
+@router.post("/ppt/plan")
+def ppt_plan(req: PptPlanRequest, user: dict = Depends(get_current_user)):
+    """Phase 0 인터랙티브 플래닝. 동기 호출 — turn 마다 plan + 사용자 메시지 반환.
+    호출자는 prior_plan 과 user_feedback 을 누적해서 다시 호출하면 LLM이 반영.
+    """
+    api_key = _get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key가 설정되지 않았습니다. (GEMINI_API_KEY)")
+    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+
+    file_context = ""
+    if req.project_name and req.selected_docs:
+        try:
+            import core_rag
+            file_context = core_rag.load_selected_project_docs(
+                req.project_name, req.selected_docs, owner_id=user["id"],
+            )
+        except Exception:
+            file_context = ""
+
+    import core_logic
+    try:
+        result = core_logic.generate_ppt_plan(
+            api_key, model,
+            file_context=file_context,
+            user_goal=req.user_goal,
+            prior_plan=req.prior_plan,
+            user_feedback=req.user_feedback,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"플래닝 실패: {e}")
+    log_usage(user["id"], "/ppt/plan", model)
+    return result
 
 
 @router.post("/slide-outline")
