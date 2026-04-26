@@ -37,6 +37,7 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [slides, setSlides] = useState<any[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [step, setStep] = useState<'config' | 'planning' | 'preview'>('config');
+  const [useMckinsey, setUseMckinsey] = useState(false);
 
   // Planning state (Phase 0 인터랙티브 플래닝)
   const [plan, setPlan] = useState<DeckPlan | null>(null);
@@ -171,7 +172,7 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
               ],
             })),
           };
-      const blob = await api.createIbPptx(deckJson);
+      const blob = await api.createIbPptx(deckJson, { useMckinsey });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -248,6 +249,21 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
                 rows={3}
                 className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 resize-none"
               />
+            </div>
+
+            {/* McKinsey 스타일 토글 */}
+            <div>
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" checked={useMckinsey} onChange={e => setUseMckinsey(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-blue-600" />
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-slate-700">McKinsey 스타일로 빌드 (베타)</div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
+                    네이비/그레이 톤의 50종 템플릿 (BCG matrix · KPI dashboard · 차트 · 타임라인 등).
+                    매핑 실패한 슬라이드는 기존 빌더로 fallback.
+                  </p>
+                </div>
+              </label>
             </div>
 
             {/* 에러 */}

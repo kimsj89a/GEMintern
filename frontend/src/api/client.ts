@@ -248,11 +248,11 @@ export const api = {
     }
     return res.blob();
   },
-  createIbPptx: async (slideJson: any) => {
+  createIbPptx: async (slideJson: any, opts: { useMckinsey?: boolean } = {}) => {
     const res = await fetchWithAuth(`${BASE}/create-ib-pptx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slide_json: slideJson }),
+      body: JSON.stringify({ slide_json: slideJson, use_mckinsey: !!opts.useMckinsey }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'IB PPTX 생성 실패' }));

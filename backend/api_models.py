@@ -109,6 +109,7 @@ class AnalysisRequest(BaseModel):
 class CreatePptxRequest(BaseModel):
     slide_json: Any  # JSON string or dict
     template_path: Optional[str] = None  # optional .pptx template file path
+    use_mckinsey: bool = False  # True → vendored mckinsey-pptx PresentationBuilder
 
 
 class SlideRegenerateRequest(BaseModel):

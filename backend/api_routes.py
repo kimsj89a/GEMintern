@@ -5,7 +5,7 @@ import logging
 import os
 import uuid
 import tempfile
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import Response
@@ -1919,13 +1919,48 @@ def promote_inbox_route(name: str, slug: str, req: PromoteInboxRequest = None, u
 # PPT Generation
 # ========================================
 
+def _maybe_render_mckinsey(slide_json) -> Optional[bytes]:
+    """use_mckinsey=True 또는 USE_MCKINSEY_PPTX 환경변수 활성화 시 호출.
+    실패 시 None 반환 → 호출자가 기존 경로로 fallback.
+    """
+    import core_mckinsey_ppt
+    try:
+        if isinstance(slide_json, str):
+            slide_json = json.loads(slide_json)
+        slides = slide_json.get("slides") if isinstance(slide_json, dict) else slide_json
+        if not isinstance(slides, list) or not slides:
+            return None
+        out_path = core_mckinsey_ppt.build_pptx(slides)
+        with open(out_path, "rb") as f:
+            data = f.read()
+        try: os.remove(out_path)
+        except OSError: pass
+        return data
+    except Exception as e:
+        logger.warning(f"[mckinsey] 빌드 실패, 기존 경로로 fallback: {e}")
+        return None
+
+
 @router.post("/create-pptx")
 def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
     """JSON slide data → PPTX 파일 생성 및 다운로드."""
     import utils_ppt
+    import core_mckinsey_ppt
 
     slide_json = req.slide_json
     template_path = getattr(req, 'template_path', None)
+
+    # mckinsey 분기 — flag 또는 env 활성 시 우선 시도
+    if req.use_mckinsey or core_mckinsey_ppt.is_enabled_globally():
+        pptx_bytes = _maybe_render_mckinsey(slide_json)
+        if pptx_bytes:
+            return Response(
+                content=pptx_bytes,
+                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                headers={"Content-Disposition": "attachment; filename=mckinsey.pptx"},
+            )
+        # fallback to legacy
+
     pptx_bytes = utils_ppt.create_deck_from_json(slide_json, template_path=template_path)
     if not pptx_bytes:
         raise HTTPException(status_code=400, detail="PPTX 생성 실패: 유효하지 않은 슬라이드 데이터")
@@ -1939,12 +1974,25 @@ def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
 
 @router.post("/create-ib-pptx")
 def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
-    """좌표 기반 동적 PPT 생성. pptxgenjs 우선, 실패 시 python-pptx 폴백."""
+    """좌표 기반 동적 PPT 생성. pptxgenjs 우선, 실패 시 python-pptx 폴백.
+    use_mckinsey=True 또는 USE_MCKINSEY_PPTX 환경변수면 vendored mckinsey 우선.
+    """
     import subprocess, sys, tempfile
+    import core_mckinsey_ppt
 
     slide_json = req.slide_json
     if isinstance(slide_json, str):
         slide_json = json.loads(slide_json)
+
+    # mckinsey 분기
+    if req.use_mckinsey or core_mckinsey_ppt.is_enabled_globally():
+        pptx_bytes = _maybe_render_mckinsey(slide_json)
+        if pptx_bytes:
+            return Response(
+                content=pptx_bytes,
+                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                headers={"Content-Disposition": "attachment; filename=mckinsey.pptx"},
+            )
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

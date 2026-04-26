@@ -26,6 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt || \
 COPY backend/ ./backend/
 COPY dartwings/ ./dartwings/
 COPY docx_markup/ ./docx_markup/
+COPY vendor/ ./vendor/
 COPY *.py ./
 COPY template/ ./template/
 
