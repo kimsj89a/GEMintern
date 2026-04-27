@@ -35,8 +35,7 @@ msal
 # Google Sheets
 gspread
 
-# Vector DB (RAG)
-chromadb
+# Vector DB — Phase 3에서 chromadb 경로 제거. RAG-Anything (LightRAG) 가 storage 자체 관리.
 
 # Utilities
 python-dotenv
@@ -48,7 +47,6 @@ Pillow
 dart-fss
 pykrx
 httpx
-rank-bm25
 opendataloader-pdf
 
 # RAG-Anything (Phase 1: deps only, wired up in Phase 2+)

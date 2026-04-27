@@ -132,128 +132,31 @@ def _truncate_context(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
 
 def _select_relevant_docs(project_name: str, query: str, model: str = "",
                            selected_docs: list = None, owner_id: int | None = None) -> str:
-    """질문과 관련된 문서만 선별하여 컨텍스트 구성.
-    1순위: 하이브리드 검색 (BM25 + 벡터 + RRF + 리랭킹)
-    2순위: 기존 벡터 검색 폴백
-    3순위: 키워드 매칭 + 예산 분배
-    4순위: 전체 문서 로드
+    """질문과 관련된 컨텍스트 구성.
+
+    Phase 3 (질의 경로 완전 교체):
+    1순위 — RAG-Anything (LightRAG hybrid query, USE_RAG_ANYTHING=true 시)
+    2순위 — 선택된 docs 평문 로드 (예산 분배). RAG 미활성/실패 시 안전 폴백.
+
+    BM25/벡터/Gemini Files 경로는 Phase 3에서 제거됨 (core_rag_anything 단일화).
     """
     max_chars = _max_chars_for_model(model)
-    api_key = _get_api_key()
 
-    # 1. 하이브리드 검색
-    if query:
+    # 1. RAG-Anything (LightRAG)
+    if query and owner_id is not None:
         try:
-            import core_rag_hybrid
-            hybrid_ctx = core_rag_hybrid.search_and_build_context(
-                api_key, project_name, query,
-                top_k=15, max_chars=max_chars,
-                selected_docs=selected_docs,
-            )
-            if hybrid_ctx and len(hybrid_ctx.strip()) > 100:
-                logger.info(f"RAG: hybrid search OK for '{project_name}' (selected={len(selected_docs) if selected_docs else 'all'})")
-                return _truncate_context(hybrid_ctx, max_chars)
+            import core_rag_anything
+            if core_rag_anything.is_enabled():
+                ctx = core_rag_anything.query(project_name, owner_id, query, mode="hybrid")
+                if ctx and len(ctx.strip()) > 100:
+                    logger.info(f"RAG-Anything: query OK for '{project_name}' "
+                                f"(selected={len(selected_docs) if selected_docs else 'all'})")
+                    return _truncate_context(ctx, max_chars)
         except Exception as e:
-            logger.debug(f"RAG: hybrid search failed, falling back: {e}")
+            logger.warning(f"RAG-Anything query failed, falling back to plain doc load: {e}")
 
-    # 2. 기존 벡터 검색 폴백
-    if query:
-        vector_ctx = _get_vector_context(api_key, project_name, query, selected_docs, owner_id=owner_id)
-        if vector_ctx and len(vector_ctx.strip()) > 100:
-            return _truncate_context(vector_ctx, max_chars)
-
-    # 3. 문서 로드 + 키워드 스코어링
-    import core_rag
-    docs_dict = core_rag.load_project_docs_dict(project_name, owner_id=owner_id)
-    if not docs_dict:
-        return ""
-
-    # 선택된 문서만 필터링
-    if selected_docs:
-        sel_stems = {_strip_doc_stem(s) for s in selected_docs}
-        docs_dict = {k: v for k, v in docs_dict.items()
-                     if _strip_doc_stem(k) in sel_stems or k in selected_docs}
-
-    if not docs_dict:
-        return ""
-
-    if query and len(docs_dict) > 3:
-        import re as _re
-        query_lower = query.lower()
-        keywords = set(_re.findall(r'[\w가-힣]{2,}', query_lower))
-
-        scored = []
-        for name, content in docs_dict.items():
-            doc_lower = (name + " " + content[:2000]).lower()
-            score = sum(1 for kw in keywords if kw in doc_lower)
-            name_lower = name.lower()
-            score += sum(3 for kw in keywords if kw in name_lower)
-            scored.append((name, content, score))
-
-        scored.sort(key=lambda x: -x[2])
-        selected = []
-        total = 0
-        for name, content, score in scored:
-            if total + min(len(content), max_chars // max(len(scored), 1)) > max_chars and len(selected) >= 1:
-                break
-            selected.append((name, content))
-            total += len(content)
-        docs_dict = dict(selected)
-
-    return _load_context_with_budget_from_dict(docs_dict, max_chars)
-
-
-def _load_context_with_budget_from_dict(docs_dict: dict, max_chars: int) -> str:
-    """문서 dict에서 예산 분배하여 컨텍스트 구성."""
-    if not docs_dict:
-        return ""
-    n = len(docs_dict)
-    per_doc = max_chars // n
-    parts = []
-    for name, content in sorted(docs_dict.items()):
-        doc_name = name.replace('.md', '')
-        if len(content) > per_doc:
-            content = content[:per_doc] + f"\n\n[... '{doc_name}' 일부 생략]"
-        parts.append(f"===== 문서: {doc_name} =====\n{content}")
-    return '\n\n'.join(parts)
-
-
-def _get_vector_context(api_key: str, project_name: str, query: str,
-                        selected_docs: list = None, owner_id: int | None = None) -> str:
-    """Vector 검색으로 관련 청크 추출. ChromaDB segfault 방지를 위해 서브프로세스에서 실행."""
-    import subprocess, sys, json as _json
-    try:
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        vdb_dir = os.path.join(base, "rag_storage", "_vectordb")
-        if not os.path.isdir(vdb_dir):
-            raise FileNotFoundError("no vectordb")
-
-        # 서브프로세스에서 ChromaDB 검색 실행 (segfault 격리)
-        script = f"""
-import sys, json
-sys.path.insert(0, {repr(base)})
-import core_rag_vector
-result = core_rag_vector.build_context_from_search(
-    {repr(api_key)}, {repr(project_name)}, {repr(query)},
-    selected_docs={repr(selected_docs)})
-if result:
-    print("__VECTOR_OK__")
-    print(result)
-else:
-    print("__VECTOR_EMPTY__")
-"""
-        proc = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True, timeout=10, cwd=base,
-        )
-        if proc.returncode == 0 and "__VECTOR_OK__" in proc.stdout:
-            context = proc.stdout.split("__VECTOR_OK__\n", 1)[1]
-            if context.strip():
-                return context
-    except Exception:
-        logger.debug("Vector search subprocess failed, falling back to full doc load")
-    # Fallback: 전체 문서 로드 + 예산 분배
-    return _load_context_with_budget(project_name, selected_docs, owner_id=owner_id)
+    # 2. 폴백 — 선택된 문서 평문 로드 + 예산 분배
+    return _load_context_with_budget(project_name, selected_docs, owner_id=owner_id, max_chars=max_chars)
 
 # Settings file path
 SETTINGS_FILE = os.path.join(
@@ -781,26 +684,12 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), folder: s
                     (project["id"], folder or "__root__", fn, parsed_text, size),
                 )
 
-    # 자동 BM25 인덱싱 (백그라운드)
+    # 자동 인덱싱 — RAG-Anything 단일 경로 (USE_RAG_ANYTHING 활성 시)
     if texts:
-        import threading
-        def _auto_index():
-            try:
-                all_docs = core_rag.load_project_docs_dict(name, owner_id=user["id"])
-                if all_docs:
-                    import core_rag_bm25
-                    core_rag_bm25.build_index(name, all_docs)
-                    logger.info(f"Auto BM25 index built for '{name}'")
-            except Exception as e:
-                logger.warning(f"Auto BM25 index failed for '{name}': {e}")
-        threading.Thread(target=_auto_index, daemon=True).start()
-
-        # USE_RAG_ANYTHING 활성 시 LightRAG/MinerU 인덱싱도 백그라운드로
         try:
             import core_rag_anything
             if core_rag_anything.is_enabled():
-                # 원본 파일 임시 저장 후 ingest (parsed 텍스트가 아닌 원파일이 MinerU 입력)
-                # files 는 이미 read 되었으므로 parsed text 만 사용 (md 로 wrap)
+                import threading
                 pending = []
                 for fn, txt in texts.items():
                     tf = tempfile.NamedTemporaryFile(
@@ -2661,71 +2550,33 @@ def delete_history(gen_id: int, user: dict = Depends(get_current_user)):
 @router.post("/projects/{name}/reindex")
 def reindex_project(name: str, force: bool = False, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
-    """프로젝트 문서를 인덱싱 (BM25 + 벡터DB + Gemini Files).
+    """프로젝트 문서를 RAG-Anything (LightRAG/MinerU) 으로 재인덱싱.
 
-    force=True면 전체 재인덱싱, 기본은 변경분만 처리.
+    Phase 3에서 BM25/Vector/Gemini Files 경로 제거 — 단일 백엔드.
+    USE_RAG_ANYTHING=false 면 명확한 안내 반환.
     """
-    import subprocess, sys, json as _json
-    import core_rag
     api_key = _get_api_key()
     if not api_key:
         return {"success": False, "error": "API Key가 설정되지 않았습니다."}
 
-    results = {}
-
-    # 1. BM25 인덱싱 (인프로세스, 빠름)
-    try:
-        import core_rag_bm25
-        docs_dict = core_rag.load_project_docs_dict(name, owner_id=user["id"])
-        if docs_dict:
-            bm25_result = core_rag_bm25.build_index(name, docs_dict)
-            results["bm25"] = {"success": True, **bm25_result}
-        else:
-            results["bm25"] = {"success": False, "error": "문서 없음"}
-    except Exception as e:
-        results["bm25"] = {"success": False, "error": str(e)}
-
-    # 2. Gemini File Search 업로드 (선택적)
-    try:
-        import core_rag_gemini
-        if docs_dict:
-            gemini_result = core_rag_gemini.upload_project_docs(api_key, name, docs_dict)
-            results["gemini_files"] = {"success": True, **gemini_result}
-    except Exception as e:
-        results["gemini_files"] = {"success": False, "error": str(e)}
-
-    # 2.5. RAG-Anything (LightRAG/MinerU) 인덱싱 — USE_RAG_ANYTHING 활성 시
     try:
         import core_rag_anything
-        if core_rag_anything.is_enabled():
-            ra_result = core_rag_anything.reindex_project(name, user["id"])
-            results["rag_anything"] = ra_result
-    except Exception as e:
-        results["rag_anything"] = {"success": False, "error": str(e)}
+    except ImportError as e:
+        return {"success": False, "error": f"core_rag_anything import 실패: {e}"}
 
-    # 3. 벡터DB 인덱싱 (서브프로세스, segfault 격리)
+    if not core_rag_anything.is_enabled():
+        return {
+            "success": False,
+            "error": "USE_RAG_ANYTHING 환경변수가 활성화되지 않았습니다. Railway env에 USE_RAG_ANYTHING=true 추가 필요.",
+            "hint": "force 파라미터는 더 이상 사용되지 않음 (raganything 자체가 변경분 감지)",
+        }
+
     try:
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        script = f"""
-import sys, json
-sys.path.insert(0, {repr(base)})
-import core_rag_vector
-result = core_rag_vector.index_project_all({repr(api_key)}, {repr(name)}, force={repr(force)})
-print(json.dumps(result, ensure_ascii=False))
-"""
-        proc = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True, timeout=300, cwd=base,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            results["vector"] = _json.loads(proc.stdout.strip().split("\n")[-1])
-        else:
-            error_msg = proc.stderr.strip() if proc.stderr else f"exit code {proc.returncode}"
-            results["vector"] = {"success": False, "error": error_msg}
-    except Exception as e:
-        results["vector"] = {"success": False, "error": str(e)}
-
-    return {"success": True, "results": results}
+        result = core_rag_anything.reindex_project(name, user["id"])
+        return {"success": result.get("success", False), "results": {"rag_anything": result}}
+    except RuntimeError as e:
+        # raganything/lightrag-hku 미설치 — 명확한 메시지
+        return {"success": False, "error": str(e)}
 
 
 @router.get("/projects/{name}/vector-stats")

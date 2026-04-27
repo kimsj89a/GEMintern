@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt || \
     (echo "Some packages failed, installing core only..." && \
      pip install --no-cache-dir fastapi uvicorn[standard] websockets python-multipart PyJWT \
        google-genai openai anthropic python-docx python-pptx pypdf PyMuPDF pandas openpyxl \
-       XlsxWriter python-dotenv requests beautifulsoup4 lxml Pillow httpx rank-bm25)
+       XlsxWriter python-dotenv requests beautifulsoup4 lxml Pillow httpx)
 
 # Copy backend and core modules
 COPY backend/ ./backend/
