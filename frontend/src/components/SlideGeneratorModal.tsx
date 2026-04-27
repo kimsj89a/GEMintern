@@ -14,7 +14,6 @@ interface Props {
 }
 
 type Format = 'detailed' | 'presentation';
-type Length = 'short' | 'default' | 'detailed';
 type DeckMode = 'teaser' | 'im';
 
 interface PlanSlide { title: string; type_hint?: string; purpose?: string }
@@ -54,16 +53,9 @@ const TYPE_HINT_OPTIONS: { value: string; label: string; group: string }[] = [
   { value: 'grid_cards', label: '그리드 카드', group: '일반' },
 ];
 
-const LENGTH_OPTIONS: { id: Length; label: string; pages: string }[] = [
-  { id: 'short', label: '짧게', pages: '5-8p' },
-  { id: 'default', label: '기본값', pages: '10-15p' },
-  { id: 'detailed', label: '상세', pages: '20-30p' },
-];
-
 export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const { currentProject } = useAppStore();
   const [format, setFormat] = useState<Format>('presentation');
-  const [length, setLength] = useState<Length>('default');
   const [description, setDescription] = useState('');
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -91,8 +83,6 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [revisionsByIdx, setRevisionsByIdx] = useState<Record<number, SlideRevision[]>>({});
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat, planLoading]);
-
-  const lengthGuide = LENGTH_OPTIONS.find(l => l.id === length)?.pages || '10-15p';
 
   // 사용자 목적 1줄 — config 의 description + 모드·페이지수 메타를 합침
   const buildUserGoal = useCallback(() => {
