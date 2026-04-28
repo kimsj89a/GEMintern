@@ -62,7 +62,6 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   const [slides, setSlides] = useState<any[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [step, setStep] = useState<'config' | 'planning' | 'preview'>('config');
-  const [useMckinsey, setUseMckinsey] = useState(false);
   const [mode, setMode] = useState<DeckMode>('teaser');
   // PR4: 모드별 페이지 수 슬라이더 (Teaser 5~15, IM 20~50)
   const [teaserPages, setTeaserPages] = useState(10);
@@ -323,6 +322,10 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
   }, [revisionsByIdx, slides]);
 
   const handleDownload = useCallback(async () => {
+    if (!slides || slides.length === 0) {
+      setError('슬라이드가 0장입니다. 플래닝부터 다시 진행해주세요.');
+      return;
+    }
     try {
       const hasElements = slides.some((s: any) => s.elements);
       const deckJson = hasElements
@@ -338,7 +341,8 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
               ],
             })),
           };
-      const blob = await api.createIbPptx(deckJson, { useMckinsey });
+      // mckinsey 템플릿 빌더 항상 사용 (자유 layout 제거)
+      const blob = await api.createIbPptx(deckJson, { useMckinsey: true });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -447,19 +451,12 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
               />
             </div>
 
-            {/* McKinsey 스타일 토글 */}
-            <div>
-              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                <input type="checkbox" checked={useMckinsey} onChange={e => setUseMckinsey(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 accent-blue-600" />
-                <div className="flex-1">
-                  <div className="text-sm font-semibold text-slate-700">McKinsey 스타일로 빌드 (베타)</div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
-                    네이비/그레이 톤의 50종 템플릿 (BCG matrix · KPI dashboard · 차트 · 타임라인 등).
-                    매핑 실패한 슬라이드는 기존 빌더로 fallback.
-                  </p>
-                </div>
-              </label>
+            {/* 빌드 정보 */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-[11px] text-slate-500 leading-relaxed">
+                📐 <strong className="text-slate-700">McKinsey 템플릿</strong>으로 빌드됩니다 (50종 사전 정의된 서식).
+                LLM은 내용만 생성하고 layout은 템플릿 고정.
+              </div>
             </div>
 
             {/* 에러 */}

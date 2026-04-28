@@ -1903,8 +1903,13 @@ def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user
     if isinstance(slide_json, str):
         slide_json = json.loads(slide_json)
 
-    # mckinsey 분기
+    # mckinsey 분기 — 빈 슬라이드 입력 가드 + 빌드 실패 시 명확한 에러
     if req.use_mckinsey or core_mckinsey_ppt.is_enabled_globally():
+        # 빈 입력 차단
+        slides_check = slide_json.get("slides") if isinstance(slide_json, dict) else slide_json
+        if not isinstance(slides_check, list) or len(slides_check) == 0:
+            raise HTTPException(status_code=400,
+                                detail="슬라이드가 0장입니다. 플래닝/생성 단계로 돌아가서 다시 시도해주세요.")
         pptx_bytes = _maybe_render_mckinsey(slide_json)
         if pptx_bytes:
             return Response(
@@ -1912,6 +1917,9 @@ def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user
                 media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 headers={"Content-Disposition": "attachment; filename=mckinsey.pptx"},
             )
+        # mckinsey 빌더가 None 반환 = 모든 슬라이드 렌더링 실패
+        raise HTTPException(status_code=500,
+                            detail="mckinsey-pptx 빌드 실패. 서버 로그에서 [mckinsey] 항목 확인 필요.")
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

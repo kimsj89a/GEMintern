@@ -69,17 +69,63 @@ _TYPE_MAP: Dict[str, str] = {
 }
 
 
-def _coerce_to_spec(slide: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _flatten_to_text(obj, max_chars: int = 1200) -> str:
+    """슬라이드 본문에서 의미 있는 모든 텍스트 추출 → bullet-style markdown.
+    fallback (dark_navy_summary) 본문 생성용. 절대 빈 문자열 반환 금지.
+    """
+    parts: list[str] = []
+
+    def walk(o, depth=0):
+        if depth > 5:
+            return
+        if isinstance(o, str):
+            s = o.strip()
+            if s and s not in parts:
+                parts.append(s)
+        elif isinstance(o, (int, float)):
+            parts.append(str(o))
+        elif isinstance(o, dict):
+            for k, v in o.items():
+                if k in ("slide_type", "type", "type_hint", "color", "chart_type"):
+                    continue
+                walk(v, depth + 1)
+        elif isinstance(o, list):
+            for it in o:
+                walk(it, depth + 1)
+
+    walk(obj)
+    text = "\n• " + "\n• ".join(parts) if parts else ""
+    return text[:max_chars] if len(text) > max_chars else text
+
+
+def _table_to_specs(t: Dict[str, Any]) -> Dict[str, Any] | None:
+    """LLM table {headers, rows} → mckinsey assessment_table {categories[{rows}]} 변환."""
+    if not isinstance(t, dict):
+        return None
+    headers = t.get("headers") or []
+    rows = t.get("rows") or []
+    if not rows:
+        return None
+    return {"headers": [str(h) for h in headers], "rows": rows}
+
+
+def _coerce_to_spec(slide: Dict[str, Any]) -> Dict[str, Any]:
     """LLM 슬라이드 dict → mckinsey spec dict 변환.
 
-    슬라이드 본문 JSON 형식이 매우 다양하기 때문에, 안전하게 매핑되는
-    필드만 옮기고 나머지는 텍스트로 압축해서 dark_navy_summary 등의
-    fallback 으로 보낸다. 매핑 실패 시 None 반환 (호출자가 skip).
+    절대 None 반환 금지 — 매핑 실패 시 dark_navy_summary 로 폴백해서
+    빈 PPT가 되지 않도록 보장. (이전 버전: 매핑 실패 시 슬라이드 skip 했음)
     """
     raw_type = (slide.get("slide_type") or slide.get("type_hint") or slide.get("type") or "").strip()
     mapped = _TYPE_MAP.get(raw_type)
-    title = slide.get("title", "") or ""
+    title = (slide.get("title") or "").strip()
     summary = slide.get("summary") or slide.get("subtitle") or slide.get("plan") or ""
+
+    def _fallback() -> Dict[str, Any]:
+        # dark_navy_summary 는 title 인자가 없음 — body 에 prefix 형태로 합침
+        body = _flatten_to_text(slide) or summary or "(내용 없음)"
+        if title:
+            body = f"{title}\n{body}"
+        return {"type": "dark_navy_summary", "body": body, "eyebrow": title or None}
 
     # 표지
     if mapped == "cover_slide":
@@ -90,145 +136,171 @@ def _coerce_to_spec(slide: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return {"type": "section_divider",
                 "section_number": slide.get("section_number", ""),
                 "section_title": title}
-    # Agenda — items 가 문자열 리스트여야 함
+    # Agenda
     if mapped == "agenda":
         items = slide.get("items") or [s.get("title", "") for s in slide.get("slides", []) if isinstance(s, dict)]
         items = [str(i) for i in items if i]
         if not items:
-            items = ["(빈 목차)"]
+            return _fallback()
         return {"type": "agenda", "title": title or "목차", "items": items}
     # Quote
     if mapped == "quote_slide":
-        return {"type": "quote_slide",
-                "title": title or "",
-                "quote": slide.get("quote", summary or title),
-                "author": slide.get("author", "")}
+        q = slide.get("quote") or summary or title
+        if not q:
+            return _fallback()
+        return {"type": "quote_slide", "title": title,
+                "quote": q, "author": slide.get("author", "")}
     # Stat hero
     if mapped == "stat_hero":
-        return {"type": "stat_hero",
-                "title": title or "",
-                "stat": str(slide.get("stat") or slide.get("number") or ""),
+        stat = str(slide.get("stat") or slide.get("number") or "")
+        if not stat:
+            return _fallback()
+        return {"type": "stat_hero", "title": title, "stat": stat,
                 "stat_label": slide.get("stat_label") or summary or ""}
     # Pros/Cons
     if mapped == "pros_cons":
-        return {"type": "pros_cons", "title": title,
-                "pros": slide.get("pros", []), "cons": slide.get("cons", [])}
-    # Two column compare / before-after
+        pros = slide.get("pros") or []
+        cons = slide.get("cons") or []
+        if not (pros or cons):
+            return _fallback()
+        return {"type": "pros_cons", "title": title, "pros": pros, "cons": cons}
+    # Two column compare / before-after — mckinsey 인자: left_label/right_label/left_items/right_items
     if mapped in ("two_column_compare", "before_after"):
-        spec = {"type": mapped, "title": title}
-        if "left_items" in slide and "right_items" in slide:
+        spec: Dict[str, Any] = {"type": mapped, "title": title}
+        L, R = slide.get("left"), slide.get("right")
+        if isinstance(L, dict) and isinstance(R, dict):
+            spec["left_label"] = L.get("title", "")
+            spec["right_label"] = R.get("title", "")
+            spec["left_items"] = L.get("items") or [
+                " | ".join(str(c) for c in r) for r in (L.get("table", {}).get("rows") or [])
+            ]
+            spec["right_items"] = R.get("items") or [
+                " | ".join(str(c) for c in r) for r in (R.get("table", {}).get("rows") or [])
+            ]
+        elif "left_items" in slide and "right_items" in slide:
             spec["left_items"] = slide["left_items"]
             spec["right_items"] = slide["right_items"]
-            spec.setdefault("left_title", slide.get("left_title", ""))
-            spec.setdefault("right_title", slide.get("right_title", ""))
+            spec["left_label"] = slide.get("left_label") or slide.get("left_title", "")
+            spec["right_label"] = slide.get("right_label") or slide.get("right_title", "")
         else:
-            # blocks/columns 류에서 추출
             blocks = slide.get("blocks") or slide.get("columns") or []
-            if len(blocks) >= 2:
-                spec["left_title"] = blocks[0].get("title", "Before") if isinstance(blocks[0], dict) else ""
-                spec["right_title"] = blocks[1].get("title", "After") if isinstance(blocks[1], dict) else ""
-                spec["left_items"] = blocks[0].get("items", []) if isinstance(blocks[0], dict) else []
-                spec["right_items"] = blocks[1].get("items", []) if isinstance(blocks[1], dict) else []
+            if len(blocks) >= 2 and all(isinstance(b, dict) for b in blocks[:2]):
+                spec["left_label"] = blocks[0].get("title", "")
+                spec["right_label"] = blocks[1].get("title", "")
+                spec["left_items"] = blocks[0].get("items", [])
+                spec["right_items"] = blocks[1].get("items", [])
             else:
-                return None
+                return _fallback()
+        if not (spec.get("left_items") or spec.get("right_items")):
+            return _fallback()
         return spec
-    # KPI dashboard
+    # KPI dashboard — kpis 가 정확한 형식 ([{label,value,...}]) 일 때만, 아니면 fallback
     if mapped == "kpi_dashboard":
         kpis = slide.get("kpis") or slide.get("metrics") or []
-        if not kpis:
-            return None
-        return {"type": "kpi_dashboard", "title": title, "kpis": kpis}
-    # Comparison table
+        if isinstance(kpis, list) and kpis and all(isinstance(k, dict) for k in kpis):
+            return {"type": "kpi_dashboard", "title": title, "kpis": kpis}
+        return _fallback()
+    # Comparison table — options/criteria 가 없으면 left/right 또는 table.rows 도 시도
     if mapped == "comparison_table":
         opts = slide.get("options") or []
         crit = slide.get("criteria") or []
-        if not (opts and crit):
-            return None
-        return {"type": "comparison_table", "title": title, "options": opts, "criteria": crit}
-    # Assessment / data table
+        if opts and crit:
+            return {"type": "comparison_table", "title": title, "options": opts, "criteria": crit}
+        # left/right{items} 있으면 pros_cons 로 다운그레이드 매핑
+        L, R = slide.get("left"), slide.get("right")
+        if isinstance(L, dict) and isinstance(R, dict) and (L.get("items") or R.get("items")):
+            return {"type": "pros_cons", "title": title,
+                    "pros": L.get("items", []), "cons": R.get("items", [])}
+        return _fallback()
+    # Assessment table — mckinsey 는 KPI/target/actual/status 라는 매우 특수한 형식만 받음.
+    # LLM 의 일반 table {headers, rows} 와 schema 충돌 → dark_navy_summary 로 안전하게 폴백.
+    # categories 가 mckinsey 형식 그대로일 때만 직접 사용.
     if mapped == "assessment_table":
-        cats = slide.get("categories") or slide.get("rows") or []
-        if not cats:
-            return None
-        return {"type": "assessment_table", "title": title, "categories": cats}
-    # Chart 류 — categories + values 필수
+        cats = slide.get("categories")
+        if (isinstance(cats, list) and cats and isinstance(cats[0], dict)
+                and "rows" in cats[0] and isinstance(cats[0]["rows"], list)
+                and cats[0]["rows"] and isinstance(cats[0]["rows"][0], dict)
+                and "kpi" in cats[0]["rows"][0]):
+            return {"type": "assessment_table", "title": title, "categories": cats}
+        return _fallback()
+    # Chart 류 — categories + values/series 흡수 (chart.{categories,series} 도)
     if mapped in ("column_comparison", "line_chart", "stacked_column_chart", "grouped_column_chart"):
-        if "categories" not in slide:
-            return None
-        spec = {"type": mapped, "title": title, "categories": slide["categories"]}
-        if "values" in slide: spec["values"] = slide["values"]
-        if "series" in slide: spec["series"] = slide["series"]
+        chart = slide.get("chart") if isinstance(slide.get("chart"), dict) else slide
+        cats = chart.get("categories")
+        if not cats:
+            return _fallback()
+        spec = {"type": mapped, "title": title, "categories": cats}
+        if "values" in chart: spec["values"] = chart["values"]
+        if "series" in chart: spec["series"] = chart["series"]
         return spec
     # Bubble
     if mapped in ("bubble_chart", "bcg_matrix"):
         if "bubbles" not in slide and "bus" not in slide:
-            return None
+            return _fallback()
         return {"type": mapped, "title": title,
                 **{k: slide[k] for k in ("bubbles", "bus", "x_label", "y_label") if k in slide}}
-    # Prioritization (risk matrix)
+    # Prioritization / risk matrix — risks[] 도 흡수
     if mapped == "prioritization_matrix":
-        items = slide.get("items") or []
+        items = slide.get("items") or slide.get("risks") or []
         if not items:
-            return None
+            return _fallback()
         return {"type": "prioritization_matrix", "title": title, "items": items}
-    # Phases / process
+    # Phases / process — nodes[] 도 흡수
     if mapped == "phases_chevron_3":
-        phases = slide.get("phases") or slide.get("steps") or []
+        phases = slide.get("phases") or slide.get("steps") or slide.get("nodes") or []
         if not phases:
-            return None
+            return _fallback()
         return {"type": "phases_chevron_3", "title": title, "phases": phases}
     if mapped == "process_flow_horizontal":
-        steps = slide.get("steps") or slide.get("phases") or []
+        steps = slide.get("steps") or slide.get("phases") or slide.get("nodes") or []
         if not steps:
-            return None
+            return _fallback()
         return {"type": "process_flow_horizontal", "title": title, "steps": steps}
     if mapped == "funnel":
         stages = slide.get("stages") or []
         if not stages:
-            return None
+            return _fallback()
         return {"type": "funnel", "title": title, "stages": stages}
     if mapped == "gantt_timeline":
         if "weeks" not in slide or "workstreams" not in slide:
-            return None
+            return _fallback()
         return {"type": "gantt_timeline", "title": title,
                 "weeks": slide["weeks"], "workstreams": slide["workstreams"]}
     # Org / team
     if mapped == "org_chart":
         if "branches" not in slide:
-            return None
+            return _fallback()
         return {"type": "org_chart", "title": title, "branches": slide["branches"]}
     if mapped == "team_chart":
         if "functions" not in slide:
-            return None
+            return _fallback()
         return {"type": "team_chart", "title": title, "functions": slide["functions"]}
     if mapped == "project_team_circles":
         if "leader" not in slide and "members" not in slide:
-            return None
+            return _fallback()
         return {"type": "project_team_circles", "title": title,
                 "leader": slide.get("leader", {}), "members": slide.get("members", [])}
-    # Numbered / grid (자유 박스)
+    # Numbered / grid — blocks[{number,title,description}] 또는 cards[]
     if mapped in ("three_trends_numbered", "five_key_areas"):
-        items = slide.get("trends") or slide.get("areas") or slide.get("items") or slide.get("blocks") or []
+        items = (slide.get("trends") or slide.get("areas") or
+                 slide.get("items") or slide.get("blocks") or slide.get("cards") or [])
         if not items:
-            return None
+            return _fallback()
         key = "trends" if mapped == "three_trends_numbered" else "areas"
         return {"type": mapped, "title": title, key: items}
-    # Executive summary paragraph
+    # Executive summary
     if mapped == "executive_summary_paragraph":
         paras = slide.get("paragraphs") or ([summary] if summary else [])
         if not paras:
-            return None
+            return _fallback()
         return {"type": "executive_summary_paragraph", "title": title, "paragraphs": paras}
-    # Dark navy summary (fallback)
+    # Dark navy summary
     if mapped == "dark_navy_summary":
-        body = slide.get("body") or summary or title
-        return {"type": "dark_navy_summary", "title": title, "body": body}
+        body = slide.get("body") or summary or _flatten_to_text(slide) or title
+        return {"type": "dark_navy_summary", "title": title or "Untitled", "body": body}
 
-    # 매핑 실패 → 짧은 텍스트면 dark_navy_summary 로 살림, 아니면 skip
-    text = summary or slide.get("body") or ""
-    if title and text:
-        return {"type": "dark_navy_summary", "title": title, "body": text}
-    return None
+    # 매핑 자체가 실패 → 항상 fallback (절대 None 반환 X)
+    return _fallback()
 
 
 def build_pptx(slides: List[Dict[str, Any]], output_path: Optional[str] = None,
@@ -246,20 +318,26 @@ def build_pptx(slides: List[Dict[str, Any]], output_path: Optional[str] = None,
         os.close(fd)
 
     b = PresentationBuilder()
-    skipped: List[int] = []
+    rendered = 0
     for i, sl in enumerate(slides):
-        spec = _coerce_to_spec(sl)
-        if spec is None:
-            skipped.append(i)
-            continue
+        spec = _coerce_to_spec(sl)  # never None now
         try:
             b.add_spec(spec)
+            rendered += 1
         except Exception as e:
-            logger.warning(f"[mckinsey] slide {i} 건너뜀 ({spec.get('type')}): {e}")
-            skipped.append(i)
-    if skipped:
-        logger.info(f"[mckinsey] 매핑 실패 {len(skipped)}장 skip: {skipped[:10]}")
+            # mckinsey 템플릿 자체에서 reject — 최후의 fallback (반드시 dark_navy_summary)
+            logger.warning(f"[mckinsey] slide {i} ({spec.get('type')}) failed: {e} — rendering as dark_navy_summary")
+            try:
+                b.add_spec({"type": "dark_navy_summary",
+                            "title": str(sl.get("title") or f"Slide {i+1}")[:80],
+                            "body": _flatten_to_text(sl) or "(렌더링 실패)"})
+                rendered += 1
+            except Exception as e2:
+                logger.error(f"[mckinsey] slide {i} dark_navy_summary fallback도 실패: {e2}")
+    if rendered == 0:
+        raise RuntimeError("렌더링된 슬라이드 0장 — mckinsey-pptx 템플릿 호출이 모두 실패했습니다.")
     b.save(output_path)
+    logger.info(f"[mckinsey] {rendered}/{len(slides)} 슬라이드 빌드 완료 → {output_path}")
     return output_path
 
 
