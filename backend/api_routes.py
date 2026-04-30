@@ -1838,52 +1838,44 @@ def promote_inbox_route(name: str, slug: str, req: PromoteInboxRequest = None, u
 # PPT Generation
 # ========================================
 
-def _maybe_render_mckinsey(slide_json) -> Optional[bytes]:
-    """use_mckinsey=True 또는 USE_MCKINSEY_PPTX 환경변수 활성화 시 호출.
-    실패 시 None 반환 → 호출자가 기존 경로로 fallback.
-    """
-    import core_mckinsey_ppt
+def _render_content_ppt(slide_json, deck_title: str = "") -> Optional[bytes]:
+    """Content-first 4:3 빌더 — sentences/tables/charts 블록을 받아 layout 자동 결정."""
+    import core_content_ppt
     try:
         if isinstance(slide_json, str):
             slide_json = json.loads(slide_json)
-        slides = slide_json.get("slides") if isinstance(slide_json, dict) else slide_json
+        if isinstance(slide_json, dict):
+            slides = slide_json.get("slides") or []
+            deck_title = slide_json.get("deck_title") or deck_title or ""
+        else:
+            slides = slide_json or []
         if not isinstance(slides, list) or not slides:
             return None
-        out_path = core_mckinsey_ppt.build_pptx(slides)
+        out_path = core_content_ppt.build_pptx(slides, deck_title=deck_title)
         with open(out_path, "rb") as f:
             data = f.read()
         try: os.remove(out_path)
         except OSError: pass
         return data
     except Exception as e:
-        logger.warning(f"[mckinsey] 빌드 실패, 기존 경로로 fallback: {e}")
+        logger.exception(f"[content_ppt] 빌드 실패: {e}")
         return None
 
 
 @router.post("/create-pptx")
 def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
-    """JSON slide data → PPTX 파일 생성 및 다운로드."""
-    import utils_ppt
-    import core_mckinsey_ppt
-
+    """Content-first 4:3 PPTX 생성 (노앤 PE 톤). 빈 슬라이드 차단."""
     slide_json = req.slide_json
-    template_path = getattr(req, 'template_path', None)
-
-    # mckinsey 분기 — flag 또는 env 활성 시 우선 시도
-    if req.use_mckinsey or core_mckinsey_ppt.is_enabled_globally():
-        pptx_bytes = _maybe_render_mckinsey(slide_json)
-        if pptx_bytes:
-            return Response(
-                content=pptx_bytes,
-                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                headers={"Content-Disposition": "attachment; filename=mckinsey.pptx"},
-            )
-        # fallback to legacy
-
-    pptx_bytes = utils_ppt.create_deck_from_json(slide_json, template_path=template_path)
+    if isinstance(slide_json, str):
+        slide_json = json.loads(slide_json)
+    slides_check = slide_json.get("slides") if isinstance(slide_json, dict) else slide_json
+    if not isinstance(slides_check, list) or len(slides_check) == 0:
+        raise HTTPException(status_code=400,
+                            detail="슬라이드가 0장입니다. 플래닝/생성 단계로 돌아가서 다시 시도해주세요.")
+    pptx_bytes = _render_content_ppt(slide_json)
     if not pptx_bytes:
-        raise HTTPException(status_code=400, detail="PPTX 생성 실패: 유효하지 않은 슬라이드 데이터")
-
+        raise HTTPException(status_code=500,
+                            detail="PPTX 생성 실패. 서버 로그에서 [content_ppt] 항목 확인.")
     return Response(
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -1893,73 +1885,23 @@ def create_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
 
 @router.post("/create-ib-pptx")
 def create_ib_pptx(req: CreatePptxRequest, user: dict = Depends(get_current_user)):
-    """좌표 기반 동적 PPT 생성. pptxgenjs 우선, 실패 시 python-pptx 폴백.
-    use_mckinsey=True 또는 USE_MCKINSEY_PPTX 환경변수면 vendored mckinsey 우선.
+    """Content-first 4:3 PPTX 생성. /create-pptx 와 동일 빌더 사용 (라우트 호환).
+    use_mckinsey 플래그는 무시됨 (PR A 에서 mckinsey 분기 제거).
     """
-    import subprocess, sys, tempfile
-    import core_mckinsey_ppt
-
     slide_json = req.slide_json
     if isinstance(slide_json, str):
         slide_json = json.loads(slide_json)
-
-    # mckinsey 분기 — 빈 슬라이드 입력 가드 + 빌드 실패 시 명확한 에러
-    if req.use_mckinsey or core_mckinsey_ppt.is_enabled_globally():
-        # 빈 입력 차단
-        slides_check = slide_json.get("slides") if isinstance(slide_json, dict) else slide_json
-        if not isinstance(slides_check, list) or len(slides_check) == 0:
-            raise HTTPException(status_code=400,
-                                detail="슬라이드가 0장입니다. 플래닝/생성 단계로 돌아가서 다시 시도해주세요.")
-        pptx_bytes = _maybe_render_mckinsey(slide_json)
-        if pptx_bytes:
-            return Response(
-                content=pptx_bytes,
-                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                headers={"Content-Disposition": "attachment; filename=mckinsey.pptx"},
-            )
-        # mckinsey 빌더가 None 반환 = 모든 슬라이드 렌더링 실패
-        raise HTTPException(status_code=500,
-                            detail="mckinsey-pptx 빌드 실패. 서버 로그에서 [mckinsey] 항목 확인 필요.")
-
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    # 1차: pptxgenjs (Node.js) 시도
-    pptx_bytes = None
-    json_path = None
-    pptx_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", dir=base, delete=False, encoding="utf-8"
-        ) as f:
-            json.dump(slide_json, f, ensure_ascii=False, indent=2)
-            json_path = f.name
-        pptx_path = json_path.replace(".json", ".pptx")
-
-        result = subprocess.run(
-            ["node", os.path.join(base, "generate_pptx_dynamic.js"), json_path, pptx_path],
-            capture_output=True, text=True, timeout=30, cwd=base,
-        )
-        if result.returncode == 0 and os.path.exists(pptx_path):
-            with open(pptx_path, "rb") as f:
-                pptx_bytes = f.read()
-            logger.info("PPT generated via pptxgenjs (Node.js)")
-    except Exception as e:
-        logger.warning(f"pptxgenjs failed, falling back to python-pptx: {e}")
-    finally:
-        for p in [json_path, pptx_path]:
-            if p and os.path.exists(p):
-                try: os.remove(p)
-                except OSError: pass
-
-    # 2차: python-pptx 폴백
+    slides_check = slide_json.get("slides") if isinstance(slide_json, dict) else slide_json
+    if not isinstance(slides_check, list) or len(slides_check) == 0:
+        raise HTTPException(status_code=400,
+                            detail="슬라이드가 0장입니다. 플래닝/생성 단계로 돌아가서 다시 시도해주세요.")
+    deck_title = ""
+    if isinstance(slide_json, dict):
+        deck_title = slide_json.get("deck_title") or ""
+    pptx_bytes = _render_content_ppt(slide_json, deck_title=deck_title)
     if not pptx_bytes:
-        try:
-            pptx_bytes = _render_dynamic_pptx_python(slide_json)
-            logger.info("PPT generated via python-pptx fallback")
-        except Exception as e:
-            logger.error(f"python-pptx fallback also failed: {e}")
-            raise HTTPException(status_code=500, detail=f"PPT 생성 실패: {e}")
-
+        raise HTTPException(status_code=500,
+                            detail="PPTX 생성 실패. 서버 로그에서 [content_ppt] 항목 확인 필요.")
     return Response(
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",

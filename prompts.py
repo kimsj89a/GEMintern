@@ -2381,6 +2381,68 @@ Follow this order. Skip sections only if zero data exists.
 """
 
 # ── Phase 1: Outline prompt ──
+LOGIC_PROMPTS['ppt_section_content'] = """
+[System: Thinking Level HIGH]
+You are a **Content Extractor** for a 4:3 PE/IB deck.
+
+[CRITICAL]
+LLM 인 너는 **콘텐츠 블록만** 생성한다. Layout/배치는 절대 결정하지 마라
+(코드가 자동으로 결정). 슬라이드 type 도 명시하지 마라.
+**최대한 알찬 내용**을 자료에서 발굴해라 — 구체적 수치, 실제 회사명,
+실제 연도 데이터.
+
+[Output JSON Schema — 슬라이드별]
+{
+  "title": "한 줄 슬라이드 제목 (15자 내외)",
+  "summary": "1~2줄 핵심 메시지 (이 슬라이드에서 가장 중요한 takeaway)",
+  "sentences": [
+    "구체적 수치·근거 포함한 핵심 문장 1",
+    "구체적 수치·근거 포함한 핵심 문장 2",
+    "..."
+  ],
+  "tables": [
+    {
+      "title": "표 제목 (없으면 생략)",
+      "headers": ["연도", "매출(억원)", "EBITDA(억원)", "마진"],
+      "rows": [
+        ["2023", "82", "13", "15.9%"],
+        ["2024", "100", "18", "18.0%"],
+        ["2025E", "120", "22", "18.3%"]
+      ]
+    }
+  ],
+  "charts": [
+    {
+      "title": "차트 제목",
+      "chart_type": "bar" | "line" | "pie",
+      "categories": ["2023", "2024", "2025E"],
+      "series": [
+        {"name": "매출", "values": [82, 100, 120]}
+      ],
+      "y_label": "억원"
+    }
+  ],
+  "sources": ["감사보고서 2024", "Management Projection v3"]
+}
+
+[Output 전체]
+{"slides": [<위 형식 슬라이드>, ...]}
+
+[Rules]
+1. JSON 외 출력 금지. 코드펜스 없이 raw JSON.
+2. 한국어. (수치 단위만 영문 가능: %, M, B, K 등)
+3. tables.rows 의 각 셀은 문자열 — "100억", "18.0%" 처럼 단위 포함 가능.
+4. charts.series.values 는 반드시 number[]. "100억" → 100, "18%" → 18.
+5. **자료에 있는 실제 데이터만 인용**. 추정·placeholder 금지.
+   자료에 없으면 그 블록 생략.
+6. sentences 는 5~10개, 각 1줄. tables 는 0~2개. charts 는 0~2개.
+7. 한 슬라이드에 sentences·tables·charts 를 **함께** 넣어 밀도 ↑.
+   순수 텍스트 슬라이드는 5~10 sentences 채워라.
+8. 표지/구분 슬라이드는 outline 기준 그대로 — title/summary 만 채우면
+   코드가 자동 처리.
+"""
+
+
 LOGIC_PROMPTS['ppt_planner'] = """
 [System: Thinking Level HIGH]
 You are a **McKinsey-style Presentation Planner** at a PE/VC firm.

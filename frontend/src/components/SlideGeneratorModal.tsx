@@ -341,8 +341,8 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
               ],
             })),
           };
-      // mckinsey 템플릿 빌더 항상 사용 (자유 layout 제거)
-      const blob = await api.createIbPptx(deckJson, { useMckinsey: true });
+      // PR A: content-first 4:3 빌더 (서버에서 useMckinsey 무시됨)
+      const blob = await api.createIbPptx(deckJson);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -454,8 +454,9 @@ export default function SlideGeneratorModal({ onClose, selectedDocs }: Props) {
             {/* 빌드 정보 */}
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
               <div className="text-[11px] text-slate-500 leading-relaxed">
-                📐 <strong className="text-slate-700">McKinsey 템플릿</strong>으로 빌드됩니다 (50종 사전 정의된 서식).
-                LLM은 내용만 생성하고 layout은 템플릿 고정.
+                📐 <strong className="text-slate-700">노앤 PE 4:3 양식</strong>으로 빌드됩니다.
+                LLM은 문장·표·차트 내용만 생성하고, layout은 코드가 자동 결정 (블록 수·종류 기반).
+                차트는 matplotlib → PNG 임베드.
               </div>
             </div>
 

@@ -48,6 +48,7 @@ dart-fss
 pykrx
 httpx
 opendataloader-pdf
+matplotlib
 
 # RAG-Anything (Phase 1: deps only, wired up in Phase 2+)
 raganything

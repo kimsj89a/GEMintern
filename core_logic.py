@@ -738,7 +738,9 @@ def generate_slides_from_outline(api_key, model_name, outline, file_context="",
     if not sections:
         return _json.dumps({"slides": []}, ensure_ascii=False)
 
-    section_prompt = prompts.LOGIC_PROMPTS.get('ppt_section_detail', '')
+    # PR A: ppt_section_content (4:3 layout-agnostic) 우선 사용
+    section_prompt = (prompts.LOGIC_PROMPTS.get('ppt_section_content')
+                      or prompts.LOGIC_PROMPTS.get('ppt_section_detail', ''))
     all_slides = []
 
     for sec_idx, section in enumerate(sections):
