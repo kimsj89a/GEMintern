@@ -156,8 +156,36 @@ def _find_excerpt(content: str, excerpt: str) -> tuple[int, int]:
     return -1, 0
 
 
+_NOISE_LINE_PATTERNS = [
+    re.compile(r'^\s*#{1,6}?\s*\[?\s*파일명\s*[:：].*?\]?\s*$', re.IGNORECASE),
+    re.compile(r'^\s*Strictly\s+Private\s*&?\s*Confidential\s*$', re.IGNORECASE),
+    re.compile(r'^\s*\[파일명\s*[:：].*?\]\s*$', re.IGNORECASE),
+    re.compile(r'^\s*-{3,}\s*$'),  # 구분선
+    re.compile(r'^\s*={3,}\s*$'),
+]
+
+
+def _strip_noise(text: str) -> tuple[str, int]:
+    """본문에서 파일명/머리말 같은 메타라인 제거. (cleaned, removed_chars_before).
+    removed_chars_before 는 인용 위치 보정용 — 인용이 시작되기 전에 제거된 글자수.
+    여기서는 보수적으로 0 반환 (라인 단위 strip 만, 위치 보정은 호출자에 위임).
+    """
+    lines = text.split('\n')
+    kept = []
+    for line in lines:
+        if any(p.match(line) for p in _NOISE_LINE_PATTERNS):
+            continue
+        kept.append(line)
+    cleaned = '\n'.join(kept)
+    # 연속 빈 줄 압축
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+    return cleaned, 0
+
+
 def _build_citation_context(content: str, idx: int, excerpt_len: int) -> dict:
-    """Build context dict: surrounding text, heading, position, page."""
+    """Build context dict: surrounding text, heading, position, page.
+    파일명·머리말 같은 noise 라인은 표시 컨텍스트에서 제거.
+    """
     ctx_start = max(0, idx - 500)
     ctx_end = min(len(content), idx + excerpt_len + 500)
     if ctx_start > 0:
@@ -169,17 +197,35 @@ def _build_citation_context(content: str, idx: int, excerpt_len: int) -> dict:
         if nl >= 0:
             ctx_end = nl
 
-    context = content[ctx_start:ctx_end]
+    raw_context = content[ctx_start:ctx_end]
     excerpt_start = idx - ctx_start
     excerpt_end = excerpt_start + excerpt_len
+    raw_excerpt = raw_context[excerpt_start:excerpt_end]
+
+    # noise 라인 제거 후, 인용 본문이 cleaned 컨텍스트 어디에 있는지 재탐색
+    cleaned_context, _ = _strip_noise(raw_context)
+    new_start = -1
+    if raw_excerpt.strip():
+        new_start = cleaned_context.find(raw_excerpt)
+    if new_start < 0:
+        # cleaned 에 인용이 없으면 (인용 자체가 noise 였거나) raw 사용
+        cleaned_context = raw_context
+        new_start = excerpt_start
+    new_end = new_start + len(raw_excerpt)
 
     heading = None
     text_before = content[:idx]
     headings = list(re.finditer(r'^#+\s+(.+)$', text_before, re.MULTILINE))
     if headings:
-        heading = headings[-1].group(1).strip()
+        h = headings[-1].group(1).strip()
+        # heading 자체가 파일명 라인이면 무시
+        if not any(p.match('# ' + h) or '파일명' in h for p in _NOISE_LINE_PATTERNS):
+            if '파일명' not in h:
+                heading = h
 
-    position = round(idx / max(len(content), 1) * 100)
+    # position: 0%/100%처럼 의미 없는 극단값은 노출 안 함 (1~99% 만)
+    raw_pos = round(idx / max(len(content), 1) * 100)
+    position = raw_pos if 1 <= raw_pos <= 99 else None
 
     page = None
     page_matches = list(re.finditer(
@@ -191,8 +237,8 @@ def _build_citation_context(content: str, idx: int, excerpt_len: int) -> dict:
         page = int(next(g for g in m.groups() if g))
 
     return {
-        "context": context,
-        "context_excerpt_range": [excerpt_start, excerpt_end],
+        "context": cleaned_context,
+        "context_excerpt_range": [new_start, new_end],
         "heading": heading,
         "position": position,
         "page": page,

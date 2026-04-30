@@ -106,7 +106,7 @@ function CitationPreview({
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <span className="text-lg">📄</span>
-            <span className="font-bold text-slate-800">{citation.source_doc.replace('.md', '')}</span>
+            <span className="font-bold text-slate-800">{citation.source_doc.replace(/\.(md|pdf|docx?|pptx?|xlsx?|txt)$/i, '')}</span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
         </div>
