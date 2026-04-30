@@ -475,6 +475,110 @@ def generate_wiki(
     return wiki_data
 
 
+def preview_wiki_update(
+    api_key: str,
+    project_name: str,
+    owner_id: int | None = None,
+    selected_docs: list | None = None,
+) -> dict:
+    """기존 위키 + 선택된 자료 → 어떤 섹션을 어떻게 갱신할지 LLM 이 미리 제안.
+    실제 위키 변경 없음 (사용자 컨펌용).
+
+    Returns: {
+        "proposals": [
+            {"id": "...", "title": "...", "action": "update"|"add"|"keep",
+             "reason": "왜 변경하는지", "preview_summary": "1~2줄 변경 요약"},
+            ...
+        ],
+        "doc_count": N
+    }
+    """
+    from ai_client import AIClient
+    from google.genai import types
+    import json as _json
+
+    if not selected_docs:
+        return {"error": "갱신에 사용할 자료를 1개 이상 선택해주세요."}
+
+    docs = load_project_docs_dict(project_name, owner_id=owner_id)
+    sel_set = set(selected_docs)
+    sel_stems = set()
+    for s in selected_docs:
+        sel_stems.add(s)
+        sel_stems.add(os.path.splitext(s)[0])
+        base = os.path.splitext(s)[0]
+        if base.endswith('.md'):
+            sel_stems.add(base[:-3])
+    filtered = {}
+    for k, v in docs.items():
+        k_stem = os.path.splitext(k)[0]
+        k_base = k_stem[:-3] if k_stem.endswith('.md') else k_stem
+        if k in sel_set or k_stem in sel_stems or k_base in sel_stems or k in sel_stems:
+            filtered[k] = v
+    if not filtered:
+        return {"error": "선택된 자료를 프로젝트에서 찾을 수 없습니다."}
+
+    existing = load_wiki(project_name, owner_id=owner_id)
+    existing_sections = (existing or {}).get("sections", [])
+    existing_compact = [
+        {"id": s["id"], "title": s["title"],
+         "preview": (s.get("content") or "")[:300]}
+        for s in existing_sections
+    ]
+
+    source_text, _ = _build_source_context(filtered)
+    if len(source_text) > 25000:
+        source_text = source_text[:25000] + "\n[... 자료 일부 생략 ...]"
+
+    prompt = f"""당신은 투자 분석 전문가입니다. 기존 위키를 새 자료로 어떻게 갱신할지 제안해주세요.
+
+## 새로 추가된 자료 (선택됨)
+{source_text}
+
+## 기존 위키 섹션 (id / title / 앞부분 미리보기)
+{_json.dumps(existing_compact, ensure_ascii=False, indent=2)}
+
+## 작업
+선택된 자료를 검토하고, 각 기존 섹션에 대해 다음 중 하나를 선택:
+- "update": 새 자료로 인해 내용을 갱신해야 함 (변경 이유 + 어떤 내용이 추가/변경될지 요약)
+- "keep": 새 자료가 이 섹션과 무관, 기존 내용 유지
+- "add": (해당 자료가 새 섹션을 필요로 할 때만) 신규 섹션 제안
+
+## 출력 (JSON 만)
+{{
+  "proposals": [
+    {{"id": "section_id", "title": "...", "action": "update"|"keep"|"add",
+      "reason": "1줄 — 왜 이 액션", "preview_summary": "1~2줄 — 어떤 변화"}},
+    ...
+  ]
+}}
+
+규칙:
+1. JSON 외 출력 금지. raw JSON, 코드펜스 없이.
+2. 한국어.
+3. action="add" 의 경우 id 는 새로 짓고 (소문자/언더스코어), 기존과 중복 금지.
+4. 모든 기존 섹션을 한 번씩 다뤄라 (update/keep 둘 중 하나).
+5. preview_summary 는 짧고 구체적으로 — "매출 2024년 데이터 추가" 처럼.
+"""
+    client = AIClient(api_key)
+    model = _get_model()
+    config = types.GenerateContentConfig(
+        max_output_tokens=4096,
+        temperature=0.2,
+        response_mime_type="application/json",
+    )
+    try:
+        resp = client.models.generate_content(model=model, contents=prompt, config=config)
+        raw = (getattr(resp, "text", "") or "").strip()
+        parsed = _json.loads(raw) if raw else {}
+        proposals = parsed.get("proposals") if isinstance(parsed, dict) else None
+        if not isinstance(proposals, list):
+            proposals = []
+        return {"proposals": proposals, "doc_count": len(filtered)}
+    except Exception as e:
+        return {"error": f"미리보기 생성 실패: {e}"}
+
+
 def update_wiki(
     api_key: str,
     project_name: str,

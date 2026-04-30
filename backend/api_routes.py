@@ -755,6 +755,28 @@ def generate_wiki_endpoint(name: str, body: dict = None, user: dict = Depends(ge
     return {"task_id": task_id}
 
 
+@router.post("/projects/{name}/wiki/preview-update")
+def preview_wiki_update_endpoint(name: str, body: dict = None,
+                                   user: dict = Depends(get_current_user)):
+    """갱신 전 단계: 선택된 자료로 어떤 섹션이 어떻게 바뀔지 LLM 이 미리 제안.
+    실제 위키 변경 없음. 사용자 컨펌용. (동기 호출 — 빠르게 결과 반환)
+    """
+    _verify_project_ownership(name, user["id"])
+    api_key = _get_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key가 설정되지 않았습니다.")
+    selected_docs = (body or {}).get("selected_docs") or []
+    if not selected_docs:
+        raise HTTPException(status_code=400, detail="갱신에 사용할 자료를 1개 이상 선택해주세요.")
+    import core_wiki
+    result = core_wiki.preview_wiki_update(
+        api_key, name, owner_id=user["id"], selected_docs=selected_docs,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=502, detail=result["error"])
+    return result
+
+
 @router.post("/projects/{name}/wiki/update")
 def update_wiki_endpoint(name: str, body: dict = None, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])

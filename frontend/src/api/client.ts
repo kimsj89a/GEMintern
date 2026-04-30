@@ -119,6 +119,14 @@ export const api = {
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/update`, {
       method: 'POST', body: JSON.stringify({ selected_docs: selectedDocs }),
     }),
+  previewWikiUpdate: (project: string, selectedDocs: string[]) =>
+    request<{
+      proposals: { id: string; title: string; action: 'update' | 'keep' | 'add';
+                   reason: string; preview_summary: string }[];
+      doc_count: number;
+    }>(`/projects/${encodeURIComponent(project)}/wiki/preview-update`, {
+      method: 'POST', body: JSON.stringify({ selected_docs: selectedDocs }),
+    }),
   suggestWikiSections: (project: string) =>
     request<any>(`/projects/${encodeURIComponent(project)}/wiki/suggest-sections`, { method: 'POST' }),
   patchWikiSection: (project: string, sectionId: string, body: any) =>
