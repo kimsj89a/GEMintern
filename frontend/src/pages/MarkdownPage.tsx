@@ -142,12 +142,35 @@ export default function MarkdownPage() {
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-        <div>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 gap-3 flex-wrap">
+        <div className="min-w-0">
           <h1 className="text-base font-bold text-slate-800">Markdown 편집기</h1>
           <p className="text-xs text-slate-400 mt-0.5">마크다운 편집 + 실시간 미리보기 + 서식 복사 / Word 변환</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleCopy}
+            disabled={!markdown}
+            className="px-4 py-1.5 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
+          >
+            서식 복사
+          </button>
+          {copyMsg && <span className="text-xs text-emerald-600">{copyMsg}</span>}
+          <input
+            type="text"
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+            placeholder="파일명"
+            className="px-2 py-1 text-xs border border-slate-200 rounded-lg w-36 focus:outline-none focus:ring-1 focus:ring-blue-300"
+          />
+          <button
+            onClick={handleWord}
+            disabled={!markdown}
+            className="px-4 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
+          >
+            Word 변환
+          </button>
+          <span className="w-px h-4 bg-slate-200 mx-1" />
           <button
             onClick={handleFileOpen}
             className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
@@ -211,32 +234,6 @@ export default function MarkdownPage() {
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             <MarkdownViewer content={markdown} />
-          </div>
-          {/* Action buttons under preview */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
-            <button
-              onClick={handleCopy}
-              disabled={!markdown}
-              className="px-4 py-1.5 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
-            >
-              서식 복사
-            </button>
-            {copyMsg && <span className="text-xs text-emerald-600">{copyMsg}</span>}
-            <span className="w-px h-4 bg-slate-200" />
-            <input
-              type="text"
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-              placeholder="파일명"
-              className="px-2 py-1 text-xs border border-slate-200 rounded-lg w-36 focus:outline-none focus:ring-1 focus:ring-blue-300"
-            />
-            <button
-              onClick={handleWord}
-              disabled={!markdown}
-              className="px-4 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white rounded-lg transition-colors"
-            >
-              Word 변환
-            </button>
           </div>
         </div>
       </div>

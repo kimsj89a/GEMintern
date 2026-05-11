@@ -405,25 +405,394 @@ def add_list_paragraph(doc, content, level, is_bullet=True):
 
     return p
 
+def _md_add_hyperlink(paragraph, text, url, font_name='맑은 고딕'):
+    from docx.oxml import OxmlElement
+    part = paragraph.part
+    r_id = part.relate_to(
+        url,
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink',
+        is_external=True,
+    )
+    hyperlink = OxmlElement('w:hyperlink')
+    hyperlink.set(qn('r:id'), r_id)
+    new_run = OxmlElement('w:r')
+    rPr = OxmlElement('w:rPr')
+    rFonts = OxmlElement('w:rFonts')
+    rFonts.set(qn('w:ascii'), font_name)
+    rFonts.set(qn('w:hAnsi'), font_name)
+    rFonts.set(qn('w:eastAsia'), font_name)
+    rPr.append(rFonts)
+    color = OxmlElement('w:color'); color.set(qn('w:val'), '0563C1'); rPr.append(color)
+    u = OxmlElement('w:u'); u.set(qn('w:val'), 'single'); rPr.append(u)
+    new_run.append(rPr)
+    t = OxmlElement('w:t'); t.text = text; t.set(qn('xml:space'), 'preserve')
+    new_run.append(t)
+    hyperlink.append(new_run)
+    paragraph._p.append(hyperlink)
+
+
+def _md_render_inline(paragraph, inline_token, *, font_name='맑은 고딕', mono_font='Consolas'):
+    """inline 토큰의 children을 단락에 렌더링. bold/italic/strike/code/link/softbreak/hardbreak 지원."""
+    marks = {'bold': False, 'italic': False, 'strike': False, 'code': False}
+    link_stack = []  # [(text_buffer, url)]
+    children = getattr(inline_token, 'children', None) or []
+
+    def emit_run(text):
+        if not text:
+            return
+        if link_stack:
+            link_stack[-1][0].append(text)
+            return
+        if marks['code']:
+            run = paragraph.add_run(text)
+            run.font.name = mono_font
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), mono_font)
+        else:
+            run = paragraph.add_run(text)
+            run.font.name = font_name
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+        if marks['bold']:
+            run.bold = True
+        if marks['italic']:
+            run.italic = True
+        if marks['strike']:
+            run.font.strike = True
+
+    for tok in children:
+        t = tok.type
+        if t == 'text':
+            emit_run(tok.content)
+        elif t == 'strong_open':
+            marks['bold'] = True
+        elif t == 'strong_close':
+            marks['bold'] = False
+        elif t == 'em_open':
+            marks['italic'] = True
+        elif t == 'em_close':
+            marks['italic'] = False
+        elif t == 's_open':
+            marks['strike'] = True
+        elif t == 's_close':
+            marks['strike'] = False
+        elif t == 'code_inline':
+            marks['code'] = True
+            emit_run(tok.content)
+            marks['code'] = False
+        elif t == 'link_open':
+            url = tok.attrGet('href') or ''
+            link_stack.append(([], url))
+        elif t == 'link_close':
+            buf, url = link_stack.pop()
+            text = ''.join(buf) or url
+            if url:
+                _md_add_hyperlink(paragraph, text, url, font_name=font_name)
+            else:
+                emit_run(text)
+        elif t == 'softbreak':
+            emit_run(' ')
+        elif t == 'hardbreak':
+            paragraph.add_run().add_break()
+        elif t == 'image':
+            alt = tok.attrGet('alt') or tok.content or ''
+            src = tok.attrGet('src') or ''
+            emit_run(f"[이미지: {alt or src}]")
+        else:
+            inner = getattr(tok, 'content', '')
+            if inner:
+                emit_run(inner)
+
+
+def _md_set_paragraph_shading(paragraph, fill_hex):
+    from docx.oxml import OxmlElement
+    pPr = paragraph._p.get_or_add_pPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), fill_hex)
+    pPr.append(shd)
+
+
+def _md_set_left_border(paragraph, color_hex='808080', size=24):
+    from docx.oxml import OxmlElement
+    pPr = paragraph._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    left = OxmlElement('w:left')
+    left.set(qn('w:val'), 'single')
+    left.set(qn('w:sz'), str(size))
+    left.set(qn('w:space'), '4')
+    left.set(qn('w:color'), color_hex)
+    pBdr.append(left)
+    pPr.append(pBdr)
+
+
+def _md_add_hr(doc):
+    from docx.oxml import OxmlElement
+    p = doc.add_paragraph()
+    pPr = p._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    bottom = OxmlElement('w:bottom')
+    bottom.set(qn('w:val'), 'single')
+    bottom.set(qn('w:sz'), '6')
+    bottom.set(qn('w:space'), '1')
+    bottom.set(qn('w:color'), 'auto')
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+
 def create_docx(markdown_text):
+    """markdown-it-py AST 기반 Markdown → DOCX 변환.
+
+    지원: heading 1~6, paragraph(bold/italic/strike/code/link),
+          bullet/ordered list(nested), table(GFM), blockquote, code block(fence),
+          hr, softbreak/hardbreak.
+    """
+    if os.environ.get('MD_TO_DOCX_LEGACY') == '1':
+        return _create_docx_legacy(markdown_text)
+
+    try:
+        from markdown_it import MarkdownIt
+    except Exception:
+        return _create_docx_legacy(markdown_text)
+
+    font_name = '맑은 고딕'
+    mono_font = 'Consolas'
+
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'template', 'Normal.docx')
+    if os.path.exists(template_path):
+        try:
+            doc = Document(template_path)
+            for el in list(doc.element.body):
+                if el.tag.endswith('}p') or el.tag.endswith('}tbl'):
+                    doc.element.body.remove(el)
+        except Exception:
+            doc = Document()
+    else:
+        doc = Document()
+
+    md = MarkdownIt('commonmark', {'breaks': False, 'html': False})
+    for plugin in ('table', 'strikethrough'):
+        try:
+            md.enable(plugin)
+        except Exception:
+            pass
+
+    tokens = md.parse(markdown_text or '')
+
+    # Token stream walker with stacks
+    list_stack = []  # list of dicts: {'type': 'ul'|'ol', 'level': int, 'index': int}
+    blockquote_depth = 0
+
+    def current_list_level():
+        return len(list_stack) - 1
+
+    i = 0
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i]
+        t = tok.type
+
+        if t == 'heading_open':
+            level = int(tok.tag[1])  # h1 → 1
+            inline = tokens[i + 1] if i + 1 < n else None
+            heading = doc.add_heading('', level=min(level, 9))
+            if inline is not None and inline.type == 'inline':
+                _md_render_inline(heading, inline, font_name=font_name, mono_font=mono_font)
+            i += 3  # heading_open, inline, heading_close
+            continue
+
+        if t == 'paragraph_open':
+            inline = tokens[i + 1] if i + 1 < n else None
+            if list_stack:
+                lvl = current_list_level()
+                is_bullet = list_stack[-1]['type'] == 'ul'
+                p = doc.add_paragraph()
+                indent = Inches(0.25 * (lvl + 1))
+                p.paragraph_format.left_indent = indent
+                p.paragraph_format.first_line_indent = Inches(-0.2)
+                if is_bullet:
+                    bullets = ['•', '◦', '▪']
+                    prefix = bullets[lvl % len(bullets)] + ' '
+                else:
+                    list_stack[-1]['index'] += 1
+                    prefix = f"{list_stack[-1]['index']}. "
+                run = p.add_run(prefix)
+                run.font.name = font_name
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+                if inline is not None and inline.type == 'inline':
+                    _md_render_inline(p, inline, font_name=font_name, mono_font=mono_font)
+            elif blockquote_depth > 0:
+                p = doc.add_paragraph()
+                p.paragraph_format.left_indent = Inches(0.3 * blockquote_depth)
+                _md_set_left_border(p)
+                if inline is not None and inline.type == 'inline':
+                    _md_render_inline(p, inline, font_name=font_name, mono_font=mono_font)
+            else:
+                p = doc.add_paragraph()
+                if inline is not None and inline.type == 'inline':
+                    _md_render_inline(p, inline, font_name=font_name, mono_font=mono_font)
+            i += 3
+            continue
+
+        if t == 'bullet_list_open':
+            list_stack.append({'type': 'ul', 'level': current_list_level() + 1, 'index': 0})
+            i += 1
+            continue
+        if t == 'ordered_list_open':
+            start = 1
+            try:
+                start = int(tok.attrGet('start') or 1)
+            except Exception:
+                start = 1
+            list_stack.append({'type': 'ol', 'level': current_list_level() + 1, 'index': start - 1})
+            i += 1
+            continue
+        if t in ('bullet_list_close', 'ordered_list_close'):
+            if list_stack:
+                list_stack.pop()
+            i += 1
+            continue
+
+        if t in ('list_item_open', 'list_item_close'):
+            i += 1
+            continue
+
+        if t == 'blockquote_open':
+            blockquote_depth += 1
+            i += 1
+            continue
+        if t == 'blockquote_close':
+            blockquote_depth = max(0, blockquote_depth - 1)
+            i += 1
+            continue
+
+        if t == 'fence' or t == 'code_block':
+            code = tok.content or ''
+            for line in code.rstrip('\n').split('\n'):
+                p = doc.add_paragraph()
+                _md_set_paragraph_shading(p, 'F2F2F2')
+                p.paragraph_format.left_indent = Inches(0.1)
+                run = p.add_run(line if line else ' ')
+                run.font.name = mono_font
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), mono_font)
+                run.font.size = Pt(9.5)
+            i += 1
+            continue
+
+        if t == 'hr':
+            _md_add_hr(doc)
+            i += 1
+            continue
+
+        if t == 'table_open':
+            # Collect table tokens
+            j = i
+            depth = 1
+            while j + 1 < n and depth > 0:
+                j += 1
+                if tokens[j].type == 'table_open':
+                    depth += 1
+                elif tokens[j].type == 'table_close':
+                    depth -= 1
+            table_tokens = tokens[i:j + 1]
+            # Parse rows
+            rows = []  # list of list of (inline_token, is_header)
+            cur_row = None
+            in_header = False
+            for tt in table_tokens:
+                tp = tt.type
+                if tp == 'thead_open':
+                    in_header = True
+                elif tp == 'thead_close':
+                    in_header = False
+                elif tp == 'tr_open':
+                    cur_row = []
+                elif tp == 'tr_close':
+                    if cur_row is not None:
+                        rows.append(cur_row)
+                    cur_row = None
+                elif tp in ('th_open', 'td_open'):
+                    # next token should be inline
+                    pass
+                elif tp == 'inline':
+                    if cur_row is not None:
+                        cur_row.append((tt, in_header))
+            if rows:
+                cols = max(len(r) for r in rows)
+                table = doc.add_table(rows=len(rows), cols=cols)
+                table.style = 'Table Grid'
+                for r_idx, row in enumerate(rows):
+                    for c_idx in range(cols):
+                        cell = table.rows[r_idx].cells[c_idx]
+                        cell.text = ''  # clear default paragraph content
+                        para = cell.paragraphs[0]
+                        if c_idx < len(row):
+                            inline_tok, is_header = row[c_idx]
+                            _md_render_inline(para, inline_tok, font_name=font_name, mono_font=mono_font)
+                            if is_header:
+                                for run in para.runs:
+                                    run.bold = True
+                                _md_set_paragraph_shading(para, 'F2F2F2')
+            i = j + 1
+            continue
+
+        # Skip unhandled
+        i += 1
+
+    # --- 후처리: 폰트/간격 일괄 ---
+    normal = doc.styles['Normal']
+    normal.font.name = font_name
+    normal.font.size = Pt(10)
+    normal.element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+    normal.paragraph_format.space_after = Pt(0)
+
+    heading_sizes = {1: Pt(16), 2: Pt(13), 3: Pt(11), 4: Pt(10.5), 5: Pt(10), 6: Pt(10)}
+    for level, size in heading_sizes.items():
+        style_name = f'Heading {level}'
+        if style_name in doc.styles:
+            hs = doc.styles[style_name]
+            hs.font.name = font_name
+            hs.font.size = size
+            hs.element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+            hs.paragraph_format.space_after = Pt(0)
+
+    for paragraph in doc.paragraphs:
+        paragraph.paragraph_format.space_after = Pt(0)
+        for run in paragraph.runs:
+            if not run.font.name:
+                run.font.name = font_name
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    paragraph.paragraph_format.space_after = Pt(0)
+                    for run in paragraph.runs:
+                        if not run.font.name:
+                            run.font.name = font_name
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+
+
+def _create_docx_legacy(markdown_text):
+    """레거시 regex 기반 MD→DOCX (fallback). MD_TO_DOCX_LEGACY=1 환경변수로 강제 사용 가능."""
     doc = Document()
     lines = markdown_text.split('\n')
     i = 0
 
-    # 로마 숫자 헤더 패턴 (I., II., III., IV., V., VI., VII., VIII.)
     roman_header_pattern = re.compile(r'^(I{1,3}|IV|VI{0,3}|V|IX|X)\.\s+(.+)$')
-
-    # 리스트 level 추적 (들여쓰기 상속)
-    indent_stack = [0]  # 각 level의 들여쓰기 칸 수
+    indent_stack = [0]
 
     while i < len(lines):
         raw_line = lines[i]
         line = raw_line.strip()
 
-        # Markdown 헤더 처리 (#### 추가)
         if line.startswith('##### '):
             doc.add_heading(line.replace('##### ', ''), level=5)
-            indent_stack = [0]  # 리스트 상속 리셋
+            indent_stack = [0]
             i += 1
         elif line.startswith('#### '):
             doc.add_heading(line.replace('#### ', ''), level=4)
@@ -441,7 +810,6 @@ def create_docx(markdown_text):
             doc.add_heading(line.replace('# ', ''), level=1)
             indent_stack = [0]
             i += 1
-        # 로마 숫자 헤더 처리 (I. Executive Summary 등)
         elif roman_header_pattern.match(line):
             doc.add_heading(line, level=1)
             indent_stack = [0]
@@ -476,23 +844,18 @@ def create_docx(markdown_text):
             match = re.match(r'^(\s*)([-*•]|\d+\.)\s+(.*)', raw_line)
             if match:
                 indent_str, marker, content = match.groups()
-                spaces = indent_str.replace('\t', '    ')  # 탭을 4칸으로
+                spaces = indent_str.replace('\t', '    ')
                 indent_len = len(spaces)
-
-                # 들여쓰기 기반 level 계산 (시작점으로 1, 2, 3...)
                 if indent_len == 0:
                     level = 0
                     indent_stack = [0]
                 elif indent_len > indent_stack[-1]:
-                    # 들여쓰기 증가 시 level 증가
                     level = len(indent_stack)
                     indent_stack.append(indent_len)
                 else:
-                    # 들여쓰기 감소 또는 유지 시 해당 level 찾기
                     while len(indent_stack) > 1 and indent_stack[-1] > indent_len:
                         indent_stack.pop()
                     level = len(indent_stack) - 1
-
                 if level > 8: level = 8
                 is_bullet = marker in ['-', '*', '•']
                 add_list_paragraph(doc, content, level, is_bullet)
@@ -508,17 +871,13 @@ def create_docx(markdown_text):
                     else: p.add_run(part)
             i += 1
 
-    # --- 후처리: 한글 폰트 + 단락 뒤 공백 제거 ---
     font_name = '맑은 고딕'
-
-    # Normal 스타일
     normal = doc.styles['Normal']
     normal.font.name = font_name
     normal.font.size = Pt(10)
     normal.element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
     normal.paragraph_format.space_after = Pt(0)
 
-    # Heading 스타일 (제목 1~3)
     heading_sizes = {1: Pt(16), 2: Pt(13), 3: Pt(11), 4: Pt(10.5), 5: Pt(10)}
     for level, size in heading_sizes.items():
         style_name = f'Heading {level}'
@@ -529,14 +888,12 @@ def create_docx(markdown_text):
             hs.element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
             hs.paragraph_format.space_after = Pt(0)
 
-    # 모든 run에 한글 폰트 적용
     for paragraph in doc.paragraphs:
         paragraph.paragraph_format.space_after = Pt(0)
         for run in paragraph.runs:
             run.font.name = font_name
             run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
-    # 테이블 셀에도 적용
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
