@@ -21,6 +21,7 @@ from backend.api_models import (
     FolderScanRequest, FolderScanFileInfo, FolderScanPreviewResponse,
     FolderIngestRequest,
     WikiSectionUpdate, WikiSectionCreate,
+    DealStructurePayload,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -870,6 +871,51 @@ def citation_context(name: str, body: dict, user: dict = Depends(get_current_use
         name, body.get("source_doc", ""), body.get("excerpt", ""),
         owner_id=user["id"],
     )
+
+
+# ========================================
+# Deal Structure (React Flow canvas)
+# ========================================
+
+DEAL_STRUCTURE_FILE = "deal_structure.json"
+
+
+def _deal_structure_path(name: str) -> str:
+    return os.path.join("rag_storage", name, DEAL_STRUCTURE_FILE)
+
+
+def _load_deal_structure(name: str) -> dict:
+    path = _deal_structure_path(name)
+    if not os.path.exists(path):
+        return {"nodes": [], "edges": [], "viewport": None, "version": 1, "updated_at": None}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"nodes": [], "edges": [], "viewport": None, "version": 1, "updated_at": None}
+
+
+def _save_deal_structure(name: str, payload: DealStructurePayload) -> dict:
+    import datetime
+    project_dir = os.path.join("rag_storage", name)
+    os.makedirs(project_dir, exist_ok=True)
+    data = payload.model_dump()
+    data["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    with open(_deal_structure_path(name), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return data
+
+
+@router.get("/projects/{name}/deal-structure")
+def get_deal_structure(name: str, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    return _load_deal_structure(name)
+
+
+@router.put("/projects/{name}/deal-structure")
+def save_deal_structure(name: str, payload: DealStructurePayload, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    return _save_deal_structure(name, payload)
 
 
 # ========================================

@@ -8,6 +8,7 @@ export const PAGE_REGISTRY: Record<
   settings: { label: '⚙️ 설정', component: lazy(() => import('./SettingsPage')) },
   project: { label: '📂 프로젝트', component: lazy(() => import('./ProjectPage')) },
   phase1: { label: '📥 사전 정보 수집', component: lazy(() => import('./WorkflowPage')) },
+  deal_structure: { label: '🏗️ 딜 구조', component: lazy(() => import('./DealStructurePage')) },
   phase2: { label: '📝 문서 작성', component: lazy(() => import('./WorkflowPage')) },
   freedoc: { label: '📝 자유양식 문서', component: lazy(() => import('./FreeDocPage')) },
   lp_qa: { label: '🙋‍♂️ LP Q&A', component: lazy(() => import('./LpQaPage')) },

@@ -172,3 +172,36 @@ class WikiSectionCreate(BaseModel):
     id: str
     title: str
     content: str = ""
+
+
+# ── Deal Structure ──
+
+class DealStructureNode(BaseModel):
+    id: str
+    type: str
+    position: Dict[str, float]
+    data: Dict
+    width: Optional[float] = None
+    height: Optional[float] = None
+    parentId: Optional[str] = None
+    style: Optional[Dict] = None
+
+
+class DealStructureEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    sourceHandle: Optional[str] = None
+    targetHandle: Optional[str] = None
+    label: Optional[str] = None
+    type: Optional[str] = None
+    animated: Optional[bool] = False
+    style: Optional[Dict] = None
+    data: Optional[Dict] = None
+
+
+class DealStructurePayload(BaseModel):
+    nodes: List[DealStructureNode] = []
+    edges: List[DealStructureEdge] = []
+    viewport: Optional[Dict] = None
+    version: int = 1

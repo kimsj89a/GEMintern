@@ -108,6 +108,15 @@ export const api = {
       body: JSON.stringify({ docs }),
     }),
 
+  // Deal Structure
+  getDealStructure: (project: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/deal-structure`),
+  saveDealStructure: (project: string, payload: any) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/deal-structure`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
   // Wiki
   getWiki: (project: string) =>
     request<any>(`/projects/${encodeURIComponent(project)}/wiki`),

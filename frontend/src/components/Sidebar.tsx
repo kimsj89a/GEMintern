@@ -25,6 +25,7 @@ const NAV_SECTIONS = [
     title: 'Workflow',
     items: [
       { label: '사전 정보 수집', id: 'phase1', icon: '📥' },
+      { label: '딜 구조', id: 'deal_structure', icon: '🏗️' },
       { label: '문서 작성', id: 'phase2', icon: '📝' },
       { label: 'LP Q&A 대응', id: 'lp_qa', icon: '🙋' },
       { label: '자료기반 Q&A', id: 'qa_session', icon: '💬' },
