@@ -16,6 +16,7 @@ anthropic
 python-docx
 python-pptx
 markitdown
+markdown-it-py
 pypdf
 PyMuPDF
 
