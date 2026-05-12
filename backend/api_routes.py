@@ -74,6 +74,11 @@ def _get_anthropic_api_key() -> str:
     """Return Anthropic API key: env var first, then settings.json fallback."""
     return _get_config("anthropic_api_key", "ANTHROPIC_API_KEY")
 
+
+def _get_openai_api_key() -> str:
+    """Return OpenAI API key: env var first, then settings.json fallback."""
+    return _get_config("openai_api_key", "OPENAI_API_KEY")
+
 # Max context size per model family
 MAX_CONTEXT_CHARS_GEMINI = 800_000   # ~200K tokens
 MAX_CONTEXT_CHARS_CLAUDE = 50_000    # ~25K tokens (Claude 분당 30K 토큰 제한 대응)
@@ -230,8 +235,10 @@ def get_settings(user: dict = Depends(get_current_user)):
     # Never expose full API keys
     masked.pop("api_key", None)
     masked.pop("anthropic_api_key", None)
+    masked.pop("openai_api_key", None)
     masked["api_key_configured"] = bool(_get_api_key())
     masked["anthropic_api_key_configured"] = bool(_get_anthropic_api_key())
+    masked["openai_api_key_configured"] = bool(_get_openai_api_key())
     # Overlay per-user settings
     user_settings = get_user_settings(user["id"])
     masked.update(user_settings)
@@ -243,6 +250,7 @@ def update_settings(settings: dict, user: dict = Depends(get_current_user)):
     from backend.database import save_user_settings, get_user_settings
     settings.pop("api_key", None)  # API key managed via env var
     settings.pop("anthropic_api_key", None)  # Anthropic key managed via env var
+    settings.pop("openai_api_key", None)  # OpenAI key managed via env var
     # Save per-user settings to DB
     current_user_settings = get_user_settings(user["id"])
     current_user_settings.update(settings)

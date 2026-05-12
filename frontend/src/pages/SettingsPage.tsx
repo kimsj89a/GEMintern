@@ -11,6 +11,7 @@ const MODELS = [
   'gemini-2.0-flash',
   'claude-opus-4-7',
   'claude-sonnet-4-6',
+  'gpt-5.5-2026-04-23',
 ];
 
 const THINKING_LEVELS = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
@@ -21,10 +22,12 @@ export default function SettingsPage() {
   const [thinking, setThinking] = useState('MEDIUM');
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [anthropicKeyConfigured, setAnthropicKeyConfigured] = useState(false);
+  const [openaiKeyConfigured, setOpenaiKeyConfigured] = useState(false);
   const [status, setStatus] = useState<{ type: string; msg: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const isClaude = model.startsWith('claude-');
+  const isGpt = model.startsWith('gpt-');
 
   useEffect(() => {
     api.getSettings().then((data) => {
@@ -32,6 +35,7 @@ export default function SettingsPage() {
       if (data.thinking_level) setThinking(data.thinking_level);
       setApiKeyConfigured(!!data.api_key_configured);
       setAnthropicKeyConfigured(!!data.anthropic_api_key_configured);
+      setOpenaiKeyConfigured(!!data.openai_api_key_configured);
     }).catch(() => {});
   }, []);
 
@@ -84,16 +88,29 @@ export default function SettingsPage() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg">
+        <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-[#F7F6F3] rounded-lg">
           <div className={`w-2 h-2 rounded-full ${anthropicKeyConfigured ? 'bg-emerald-500' : 'bg-amber-400'}`} />
           <span className="text-sm text-[#787774]">
             Anthropic API Key: {anthropicKeyConfigured ? '설정됨' : '미설정 (Claude 모델 사용 시 필요)'}
           </span>
         </div>
 
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#F7F6F3] rounded-lg">
+          <div className={`w-2 h-2 rounded-full ${openaiKeyConfigured ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+          <span className="text-sm text-[#787774]">
+            OpenAI API Key: {openaiKeyConfigured ? '설정됨' : '미설정 (GPT 모델 사용 시 필요)'}
+          </span>
+        </div>
+
         {isClaude && !anthropicKeyConfigured && (
           <div className="mb-4 px-4 py-3 rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200">
             Claude 모델을 사용하려면 .env 파일에 ANTHROPIC_API_KEY를 설정해주세요.
+          </div>
+        )}
+
+        {isGpt && !openaiKeyConfigured && (
+          <div className="mb-4 px-4 py-3 rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200">
+            GPT 모델을 사용하려면 .env 파일에 OPENAI_API_KEY를 설정해주세요.
           </div>
         )}
 

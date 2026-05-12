@@ -39,8 +39,28 @@ def _get_anthropic_key() -> str:
     return ""
 
 
+def _get_openai_key() -> str:
+    """OpenAI API key: env var → settings.json fallback."""
+    key = os.environ.get("OPENAI_API_KEY", "")
+    if key:
+        return key
+    try:
+        import json
+        settings_path = os.path.join(os.path.dirname(__file__), "settings.json")
+        if os.path.exists(settings_path):
+            with open(settings_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("openai_api_key", "")
+    except Exception:
+        logger.debug("Failed to load openai_api_key from settings.json")
+    return ""
+
+
 def _is_claude(model: str) -> bool:
     return model.startswith("claude-")
+
+
+def _is_gpt(model: str) -> bool:
+    return model.startswith("gpt-")
 
 
 # ── Anthropic 응답 → Gemini 호환 래퍼 ──
@@ -53,6 +73,18 @@ class _AnthropicTextResponse:
 
 class _AnthropicStreamChunk:
     """Anthropic 스트리밍 청크를 .text 로 접근 가능하게 래핑."""
+    def __init__(self, text: str):
+        self.text = text
+
+
+class _OpenAITextResponse:
+    """OpenAI 응답을 genai 응답처럼 .text 로 접근 가능하게 래핑."""
+    def __init__(self, text: str):
+        self.text = text
+
+
+class _OpenAIStreamChunk:
+    """OpenAI 스트리밍 청크를 .text 로 접근 가능하게 래핑."""
     def __init__(self, text: str):
         self.text = text
 
@@ -109,10 +141,12 @@ def _translate_config(config, prompt_text: str):
 class _ModelsNamespace:
     """client.models.generate_content() / generate_content_stream() 인터페이스 제공."""
 
-    def __init__(self, gemini_client, anthropic_key: str):
+    def __init__(self, gemini_client, anthropic_key: str, openai_key: str = ""):
         self._gemini = gemini_client
         self._anthropic_key = anthropic_key
         self._anthropic_client = None
+        self._openai_key = openai_key
+        self._openai_client = None
 
     def _get_anthropic(self):
         if self._anthropic_client is None:
@@ -120,7 +154,13 @@ class _ModelsNamespace:
             self._anthropic_client = anthropic.Anthropic(api_key=self._anthropic_key)
         return self._anthropic_client
 
-    # Gemini 폴백 모델 (Claude 429 시 사용)
+    def _get_openai(self):
+        if self._openai_client is None:
+            import openai
+            self._openai_client = openai.OpenAI(api_key=self._openai_key)
+        return self._openai_client
+
+    # Gemini 폴백 모델 (Claude/GPT 429 시 사용)
     GEMINI_FALLBACK = "gemini-2.5-flash"
 
     def generate_content(self, model: str, contents, config=None):
@@ -130,6 +170,15 @@ class _ModelsNamespace:
             except Exception as e:
                 if '429' in str(e) or 'rate_limit' in str(e):
                     logger.warning(f"Claude 429 rate limit — Gemini 폴백 사용")
+                    return self._gemini.models.generate_content(
+                        model=self.GEMINI_FALLBACK, contents=contents, config=config)
+                raise
+        if _is_gpt(model):
+            try:
+                return self._openai_generate(model, contents, config)
+            except Exception as e:
+                if '429' in str(e) or 'rate_limit' in str(e):
+                    logger.warning(f"OpenAI 429 rate limit — Gemini 폴백 사용")
                     return self._gemini.models.generate_content(
                         model=self.GEMINI_FALLBACK, contents=contents, config=config)
                 raise
@@ -147,6 +196,8 @@ class _ModelsNamespace:
     def generate_content_stream(self, model: str, contents, config=None):
         if _is_claude(model):
             return self._claude_stream_with_fallback(model, contents, config)
+        if _is_gpt(model):
+            return self._openai_stream_with_fallback(model, contents, config)
         for attempt in range(MAX_RETRIES):
             try:
                 return self._gemini.models.generate_content_stream(model=model, contents=contents, config=config)
@@ -213,6 +264,54 @@ class _ModelsNamespace:
             for text in stream.text_stream:
                 yield _AnthropicStreamChunk(text)
 
+    # ── OpenAI 구현 ──
+
+    def _openai_stream_with_fallback(self, model, contents, config):
+        """OpenAI 스트리밍 시도, 429면 Gemini 폴백."""
+        try:
+            gen = self._openai_stream(model, contents, config)
+            first = next(gen)
+            yield first
+            yield from gen
+        except Exception as e:
+            if '429' in str(e) or 'rate_limit' in str(e):
+                logger.warning(f"OpenAI 429 rate limit (stream) — Gemini 폴백 사용")
+                yield from self._gemini.models.generate_content_stream(
+                    model=self.GEMINI_FALLBACK, contents=contents, config=config)
+            else:
+                raise
+
+    def _openai_messages(self, contents, config):
+        """Gemini contents+config → OpenAI messages 변환."""
+        prompt_text = contents if isinstance(contents, str) else str(contents)
+        params, system_msg, prompt_text = _translate_config(config, prompt_text)
+        messages = []
+        if system_msg:
+            messages.append({"role": "system", "content": system_msg})
+        messages.append({"role": "user", "content": prompt_text})
+        # OpenAI는 max_tokens 키 그대로 사용 (Anthropic과 동일 키)
+        return messages, params
+
+    def _openai_generate(self, model: str, contents, config=None):
+        client = self._get_openai()
+        messages, params = self._openai_messages(contents, config)
+        kwargs = {"model": model, "messages": messages, **params}
+        resp = client.chat.completions.create(**kwargs)
+        text = resp.choices[0].message.content or ""
+        return _OpenAITextResponse(text)
+
+    def _openai_stream(self, model: str, contents, config=None):
+        client = self._get_openai()
+        messages, params = self._openai_messages(contents, config)
+        kwargs = {"model": model, "messages": messages, "stream": True, **params}
+        for chunk in client.chat.completions.create(**kwargs):
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            text = getattr(delta, 'content', None) or ''
+            if text:
+                yield _OpenAIStreamChunk(text)
+
 
 # ── 메인 AIClient ──
 
@@ -222,11 +321,12 @@ class AIClient:
     def __init__(self, api_key: str):
         """
         Args:
-            api_key: Gemini API key. Anthropic key는 env/settings에서 자동 로드.
+            api_key: Gemini API key. Anthropic/OpenAI key는 env/settings에서 자동 로드.
         """
         self._gemini_client = genai.Client(api_key=api_key)
         anthropic_key = _get_anthropic_key()
-        self.models = _ModelsNamespace(self._gemini_client, anthropic_key)
+        openai_key = _get_openai_key()
+        self.models = _ModelsNamespace(self._gemini_client, anthropic_key, openai_key)
 
 
 def get_client(api_key: str) -> AIClient:
