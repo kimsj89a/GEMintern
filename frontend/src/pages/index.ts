@@ -19,6 +19,7 @@ export const PAGE_REGISTRY: Record<
   markdown: { label: '📝 MD to Word', component: lazy(() => import('./MarkdownPage')) },
   doctemplate: { label: '📋 문서양식', component: lazy(() => import('./DocTemplatePage')) },
   text_organizer: { label: '✏️ 문장 정리기', component: lazy(() => import('./TextOrganizerPage')) },
+  doc_format: { label: '🗂️ 서식 자동정리', component: lazy(() => import('./DocFormatPage')) },
   doc_updater: { label: '🔄 문서 업데이트', component: lazy(() => import('./DocUpdaterPage')) },
   nps: { label: '🏢 국민연금 사업장', component: lazy(() => import('./NpsPage')) },
   quickmail: { label: '✉️ QuickMail', component: lazy(() => import('./QuickMailPage')) },

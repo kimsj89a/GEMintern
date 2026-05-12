@@ -19,6 +19,7 @@ const STANDALONE_TOOLS = [
   { id: 'markdown', label: 'MD → Word', icon: '📄', desc: '마크다운 변환' },
   { id: 'doctemplate', label: '문서양식', icon: '📋', desc: '표준 템플릿' },
   { id: 'text_organizer', label: '문장 정리기', icon: '✂️', desc: '텍스트 정리' },
+  { id: 'doc_format', label: '서식 자동정리', icon: '🗂️', desc: '비정형 → 표·불릿 정리' },
   { id: 'quickmail', label: '메일 작성', icon: '📧', desc: '이메일 생성' },
 ];
 
