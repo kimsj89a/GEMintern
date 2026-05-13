@@ -254,7 +254,7 @@ def generate_material_summary(api_key, model_name, file_context, mode=None):
     mode='text_organize' → 비정형 텍스트를 마크다운 불릿 구조로 정리하는 변형.
     mode='doc_format'   → 비정형 텍스트를 표준 서식 마크다운(헤딩+표+불릿)으로 정리. Claude Haiku 강제.
     """
-    if mode == 'doc_format':
+    if mode in ('doc_format', 'text_organize'):
         model_name = 'claude-haiku-4-5-20251001'
     client = get_client(api_key)
     if mode == 'text_organize':

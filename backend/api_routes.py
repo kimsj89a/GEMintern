@@ -934,7 +934,7 @@ def save_deal_structure(name: str, payload: DealStructurePayload, user: dict = D
 def extract_rfi_endpoint(name: str, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     api_key = _get_api_key()
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    model = "claude-haiku-4-5-20251001"  # RFI 추출: 구조화 추출, Haiku 강제
     owner_id = user["id"]
 
     from backend.api_ws import _tasks
@@ -989,7 +989,7 @@ def crosscheck_rfi_endpoint(name: str, body: dict, user: dict = Depends(get_curr
 def generate_external_rfi_endpoint(name: str, body: dict, user: dict = Depends(get_current_user)):
     _verify_project_ownership(name, user["id"])
     api_key = _get_api_key()
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    model = "claude-haiku-4-5-20251001"  # 외부 RFI 생성: 구조화 추출, Haiku 강제
     owner_id = user["id"]
     gap_items = body.get("gap_items", [])
 
@@ -2423,7 +2423,7 @@ def ppt_plan(req: PptPlanRequest, user: dict = Depends(get_current_user)):
     api_key = _get_api_key()
     if not api_key:
         raise HTTPException(status_code=400, detail="API Key가 설정되지 않았습니다. (GEMINI_API_KEY)")
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    model = "claude-haiku-4-5-20251001"  # PPT 플래닝: 덱 구조 카드 생성, Haiku 강제
 
     file_context = ""
     if req.project_name and req.selected_docs:
@@ -2456,7 +2456,7 @@ def ppt_plan(req: PptPlanRequest, user: dict = Depends(get_current_user)):
 def slide_outline(req: AnalysisRequest, user: dict = Depends(get_current_user)):
     """PPT 아웃라인만 생성 (Phase 1). 사용자가 편집 후 /slides-from-outline으로 상세 생성."""
     api_key = _get_api_key()
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    model = "claude-haiku-4-5-20251001"  # 슬라이드 아웃라인: 짧은 구조 출력, Haiku 강제
 
     task_id = create_task(
         user_id=user["id"], endpoint="/slide-outline", model=model,
@@ -2504,7 +2504,7 @@ async def update_pptx_history(file: UploadFile = File(...), user: dict = Depends
 
     content = await file.read()
     api_key = _get_api_key()
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    model = "claude-haiku-4-5-20251001"  # PPT 이력 업데이트: 단순 정리, Haiku 강제
 
     try:
         updated_bytes = core_im.update_pptx_history(content, api_key, model)
@@ -3098,7 +3098,7 @@ class DraftDocRequest(BaseModel):
 def draftdoc_generate(req: DraftDocRequest, user: dict = Depends(get_current_user)):
     """기안문 작성: 파싱된 텍스트 → AI 기안문 생성 (task)."""
     api_key = _get_api_key()
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    model = "claude-haiku-4-5-20251001"  # 기안문: 비즈니스 정형 문서, Haiku 강제
     log_usage(user["id"], "/draftdoc/generate", model)
 
     combined = req.file_text
