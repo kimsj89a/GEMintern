@@ -3538,7 +3538,8 @@ def quickmail_generate(req: QuickMailRequest, user: dict = Depends(get_current_u
     api_key = _get_api_key()
     if not api_key:
         return {"error": "API key not configured"}
-    model = _load_settings_for_user(user["id"]).get("model_name", "gemini-2.5-flash")
+    # QuickMail은 비교적 가벼운 텍스트 생성이라 Haiku 강제 (빠르고 저렴)
+    model = "claude-haiku-4-5-20251001"
     is_reply = bool(req.context.strip())
     tone_label = _TONE_MAP.get(req.tone, "비즈니스 (합니다체)")
     length_label = _LENGTH_MAP.get(req.length, _LENGTH_MAP["medium"])
