@@ -14,6 +14,26 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 
+# Claude 모델별 출력 토큰 상한 (API가 강제). 초과 시 400 invalid_request_error 발생.
+# Gemini는 65536까지 허용하지만 Claude는 모델별로 다르므로 라우팅 직전 클램프 필요.
+CLAUDE_MAX_OUTPUT = {
+    "claude-haiku-4-5": 64000,
+    "claude-sonnet-4-5": 64000,
+    "claude-sonnet-4-6": 64000,
+    "claude-opus-4-5": 64000,
+    "claude-opus-4-6": 32000,
+    "claude-opus-4-7": 32000,
+}
+CLAUDE_DEFAULT_MAX_OUTPUT = 32000  # 알 수 없는 Claude 모델용 보수적 fallback
+
+
+def _claude_output_cap(model: str) -> int:
+    """모델명 prefix 매칭으로 출력 상한 조회."""
+    for prefix, cap in CLAUDE_MAX_OUTPUT.items():
+        if model.startswith(prefix):
+            return cap
+    return CLAUDE_DEFAULT_MAX_OUTPUT
+
 
 def _parse_retry_delay(error_msg: str) -> float:
     """429 에러 메시지에서 retryDelay 추출. 없으면 기본 15초."""
@@ -91,12 +111,13 @@ class _OpenAIStreamChunk:
 
 # ── Gemini GenerateContentConfig → Anthropic 파라미터 변환 ──
 
-def _translate_config(config, prompt_text: str):
+def _translate_config(config, prompt_text: str, model: str = ""):
     """GenerateContentConfig 객체를 Anthropic API 파라미터로 변환."""
     params = {}
+    cap = _claude_output_cap(model) if model else CLAUDE_DEFAULT_MAX_OUTPUT
 
     if config is None:
-        return {"max_tokens": 8192}, None, prompt_text
+        return {"max_tokens": min(8192, cap)}, None, prompt_text
 
     system_msg = None
 
@@ -112,11 +133,16 @@ def _translate_config(config, prompt_text: str):
     if hasattr(config, "temperature") and config.temperature is not None:
         params["temperature"] = config.temperature
 
-    # max_output_tokens
+    # max_output_tokens — Claude 모델별 상한 초과 시 클램프 (Gemini 65536 → Claude 64000 등)
     if hasattr(config, "max_output_tokens") and config.max_output_tokens:
-        params["max_tokens"] = config.max_output_tokens
+        requested = config.max_output_tokens
+        if requested > cap:
+            logger.warning(f"max_tokens {requested} > Claude {model} cap {cap}, clamping")
+            params["max_tokens"] = cap
+        else:
+            params["max_tokens"] = requested
     else:
-        params["max_tokens"] = 8192
+        params["max_tokens"] = min(8192, cap)
 
     # response_mime_type="application/json" → 시스템 프롬프트에 JSON 지시 추가
     if hasattr(config, "response_mime_type") and config.response_mime_type == "application/json":
@@ -231,7 +257,7 @@ class _ModelsNamespace:
         """비스트리밍 호출 — 내부적으로 스트리밍으로 수집 (Anthropic 10분 제한 회피)."""
         client = self._get_anthropic()
         prompt_text = contents if isinstance(contents, str) else str(contents)
-        params, system_msg, prompt_text = _translate_config(config, prompt_text)
+        params, system_msg, prompt_text = _translate_config(config, prompt_text, model)
 
         kwargs = {
             "model": model,
@@ -250,7 +276,7 @@ class _ModelsNamespace:
     def _claude_stream(self, model: str, contents, config=None):
         client = self._get_anthropic()
         prompt_text = contents if isinstance(contents, str) else str(contents)
-        params, system_msg, prompt_text = _translate_config(config, prompt_text)
+        params, system_msg, prompt_text = _translate_config(config, prompt_text, model)
 
         kwargs = {
             "model": model,
