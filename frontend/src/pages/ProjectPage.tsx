@@ -167,6 +167,21 @@ export default function ProjectPage() {
     } catch { setStatus('업로드 실패'); } finally { setUploading(false); }
   };
 
+  const handleCrawlUrl = async () => {
+    if (!currentProject) { setStatus('프로젝트를 먼저 선택하세요.'); return; }
+    const url = prompt('수집할 웹페이지 URL을 입력하세요:');
+    if (!url || !url.trim()) return;
+    setUploading(true);
+    setStatus('웹페이지 수집 중...');
+    try {
+      const result = await api.crawlUrl(currentProject, url.trim());
+      setStatus(`웹자료 수집 완료: ${result.filename || url.trim()}`);
+      loadDocs();
+    } catch (err: any) {
+      setStatus(`웹자료 수집 실패: ${err.message || ''}`);
+    } finally { setUploading(false); }
+  };
+
   const handleForceSync = async () => {
     if (!currentProject) return;
     setSyncing(true);
@@ -318,6 +333,8 @@ export default function ProjectPage() {
                   className="px-2.5 py-1 text-[12px] text-[#787774] border border-[#E9E9E7] rounded-lg hover:bg-[#F7F6F3] hover:text-[#37352F] transition-colors whitespace-nowrap">+ 폴더</button>
                 <button onClick={() => setShowFolderScan(true)}
                   className="px-2.5 py-1 text-[12px] text-violet-600 border border-violet-200 rounded-lg bg-violet-50 hover:bg-violet-100 transition-colors whitespace-nowrap">📁 폴더 스캔</button>
+                <button onClick={handleCrawlUrl} disabled={uploading}
+                  className="px-2.5 py-1 text-[12px] text-sky-600 border border-sky-200 rounded-lg bg-sky-50 hover:bg-sky-100 disabled:opacity-40 transition-colors whitespace-nowrap">🌐 URL 수집</button>
               </div>
 
               {/* File Tree */}

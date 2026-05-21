@@ -22,6 +22,7 @@ from backend.api_models import (
     FolderIngestRequest,
     WikiSectionUpdate, WikiSectionCreate,
     DealStructurePayload,
+    CrawlRequest, CrawlUrlRequest,
 )
 from backend.api_ws import create_task, run_generate_task, run_analysis_task, get_task
 from backend.auth import get_current_user
@@ -29,6 +30,13 @@ from backend.database import log_usage, save_generation
 from ai_client import AIClient
 
 logger = logging.getLogger(__name__)
+
+try:
+    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+    from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
+    _CRAWL4AI_AVAILABLE = True
+except ImportError:
+    _CRAWL4AI_AVAILABLE = False
 
 router = APIRouter()
 
@@ -722,6 +730,83 @@ async def upload_files(name: str, files: List[UploadFile] = File(...), folder: s
                 threading.Thread(target=_rag_anything_index, daemon=True).start()
         except Exception as e:
             logger.debug(f"[rag_anything] skipped: {e}")
+
+    return result
+
+
+def _safe_crawl_filename(url: str, title: str) -> str:
+    """크롤한 URL/제목으로 안전한 .md 파일명 생성."""
+    import re
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc or "web"
+    base = f"{domain}_{title}".strip()
+    base = re.sub(r"[^0-9A-Za-z가-힣 _.\-]", "", base).strip()
+    base = re.sub(r"\s+", " ", base)
+    if not base:
+        base = "web"
+    return f"{base[:120].rstrip()}.md"
+
+
+@router.post("/projects/{name}/crawl-url")
+async def crawl_url_to_project(name: str, payload: CrawlUrlRequest, user: dict = Depends(get_current_user)):
+    _verify_project_ownership(name, user["id"])
+    import core_rag
+    import utils_crawl
+    from backend.database import get_db
+
+    if not utils_crawl.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="웹 크롤링 기능이 설치되어 있지 않습니다. 로컬에서 'pip install crawl4ai && crawl4ai-setup'을 실행하세요.",
+        )
+
+    url = (payload.url or "").strip()
+    if not url or not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="유효한 URL(http:// 또는 https://)을 입력하세요.")
+
+    try:
+        crawled = await utils_crawl.crawl_url(url)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    filename = _safe_crawl_filename(url, crawled["title"])
+    markdown = crawled["markdown"]
+    texts = {filename: markdown}
+
+    api_key = _get_api_key()
+    result = core_rag.index_texts(api_key, texts, name, owner_id=user["id"])
+    result["parsed_texts"] = texts
+    result["crawled_url"] = url
+    result["filename"] = filename
+
+    # Store in SQLite documents table
+    with get_db() as conn:
+        project = conn.execute(
+            "SELECT id FROM projects WHERE name = ? AND owner_id = ?",
+            (name, user["id"])
+        ).fetchone()
+        if project:
+            size = len(markdown.encode("utf-8"))
+            conn.execute(
+                """INSERT INTO documents (project_id, folder, filename, parsed_text, size)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(project_id, folder, filename) DO UPDATE SET
+                     parsed_text = excluded.parsed_text, size = excluded.size""",
+                (project["id"], "__root__", filename, markdown, size),
+            )
+
+    # 자동 BM25 인덱싱 (백그라운드)
+    import threading
+    def _auto_index():
+        try:
+            all_docs = core_rag.load_project_docs_dict(name, owner_id=user["id"])
+            if all_docs:
+                import core_rag_bm25
+                core_rag_bm25.build_index(name, all_docs)
+                logger.info(f"Auto BM25 index built for '{name}'")
+        except Exception as e:
+            logger.warning(f"Auto BM25 index failed for '{name}': {e}")
+    threading.Thread(target=_auto_index, daemon=True).start()
 
     return result
 
@@ -1524,6 +1609,57 @@ def start_generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     )
     log_usage(user["id"], "/generate", model)
     return {"task_id": task_id}
+
+
+@router.post("/crawl")
+async def crawl_urls(req: CrawlRequest, user: dict = Depends(get_current_user)):
+    if not _CRAWL4AI_AVAILABLE:
+        return {
+            "results": [],
+            "disabled": True,
+            "message": "crawl4ai 미설치 — 로컬 환경에서 'pip install crawl4ai && crawl4ai-setup' 후 사용 가능합니다",
+        }
+
+    results = []
+    config = CrawlerRunConfig(
+        deep_crawl_strategy=BFSDeepCrawlStrategy(
+            max_depth=max(0, req.depth - 1),
+            max_pages=req.max_pages,
+            include_external=False,
+        )
+    )
+
+    try:
+        async with AsyncWebCrawler() as crawler:
+            for url in req.urls:
+                crawled = await crawler.arun(url, config=config)
+                items = crawled if isinstance(crawled, list) else [crawled]
+
+                for r in items:
+                    if not getattr(r, "success", False):
+                        continue
+
+                    text = str(getattr(r, "markdown", "") or "")
+                    metadata = getattr(r, "metadata", {}) or {}
+                    title = metadata.get("title", "") if isinstance(metadata, dict) else ""
+
+                    results.append({
+                        "url": r.url,
+                        "title": title,
+                        "preview": text[:200],
+                        "text": text,
+                    })
+
+                    if len(results) >= req.max_pages:
+                        break
+
+                if len(results) >= req.max_pages:
+                    break
+    except Exception as e:
+        logger.error(f"[crawl] error: {e}")
+
+    log_usage(user["id"], "/crawl", "crawl4ai")
+    return {"results": results, "disabled": False}
 
 
 @router.post("/qa")

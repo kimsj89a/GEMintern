@@ -18,6 +18,7 @@ export default function CrawlerPage() {
   const [results, setResults] = useState<CrawlResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
+  const [disabledMsg, setDisabledMsg] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
   const handleCrawl = async () => {
@@ -25,6 +26,7 @@ export default function CrawlerPage() {
     if (urlList.length === 0) return;
     setLoading(true);
     setResults([]);
+    setDisabledMsg('');
     setProgress('크롤링 시작...');
     const controller = new AbortController();
     abortRef.current = controller;
@@ -40,8 +42,15 @@ export default function CrawlerPage() {
         signal: controller.signal,
       });
       const data = await res.json();
-      setResults(data.results || []);
-      setProgress(`${data.results?.length || 0}개 페이지 수집 완료`);
+      if (data.disabled) {
+        setDisabledMsg(data.message || 'crawl4ai 미설치');
+        setResults([]);
+        setProgress('');
+      } else {
+        setDisabledMsg('');
+        setResults(data.results || []);
+        setProgress(`${data.results?.length || 0}개 페이지 수집 완료`);
+      }
     } catch (err: any) {
       if (err.name !== 'AbortError') setProgress(`오류: ${err.message}`);
       else setProgress('크롤링 중지됨');
@@ -121,6 +130,12 @@ export default function CrawlerPage() {
       )}
 
       {progress && <div className="text-sm text-[#787774] mb-4">{progress}</div>}
+
+      {disabledMsg && (
+        <div className="mb-4 rounded-xl border border-[#E9D8A6] bg-[#FFF8E1] px-4 py-3 text-sm text-[#37352F]">
+          {disabledMsg}
+        </div>
+      )}
 
       {results.length > 0 && (
         <div className="bg-white border border-[#E9E9E7] rounded-xl overflow-hidden">

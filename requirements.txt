@@ -54,3 +54,5 @@ matplotlib
 # RAG-Anything (Phase 1: deps only, wired up in Phase 2+)
 raganything
 lightrag-hku
+
+# 웹 크롤러(옵션): requirements-crawl.txt 참조 — Railway 빌드에는 미포함

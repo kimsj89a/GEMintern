@@ -205,3 +205,15 @@ class DealStructurePayload(BaseModel):
     edges: List[DealStructureEdge] = []
     viewport: Optional[Dict] = None
     version: int = 1
+
+
+# ── Crawler ──
+
+class CrawlRequest(BaseModel):
+    urls: list[str]
+    depth: int = 1
+    max_pages: int = 10
+
+
+class CrawlUrlRequest(BaseModel):
+    url: str

@@ -102,6 +102,11 @@ export const api = {
     });
     return res.json();
   },
+  crawlUrl: (project: string, url: string) =>
+    request<any>(`/projects/${encodeURIComponent(project)}/crawl-url`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
   syncTextsToServer: (project: string, docs: { filename: string; parsedText: string }[]) =>
     request<any>(`/projects/${encodeURIComponent(project)}/sync-texts`, {
       method: 'POST',
