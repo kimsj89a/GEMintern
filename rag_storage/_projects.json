@@ -25,6 +25,14 @@
       "created": "2026-03-19T12:58:19.051606",
       "last_accessed": "2026-03-19T12:58:19.051993",
       "doc_count": 2
+    },
+    {
+      "name": "wiki_test_loop4",
+      "storage_name": "wiki_test_loop4",
+      "owner_id": null,
+      "created": "2026-03-25T00:11:10.340819",
+      "last_accessed": "2026-03-25T00:11:10.340833",
+      "doc_count": 2
     }
   ]
 }

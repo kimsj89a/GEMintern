@@ -1,0 +1,22 @@
+{
+  "sections": [
+    {
+      "id": "deal_overview",
+      "title": "Deal Overview",
+      "content": "RCPS 150b KRW investment",
+      "citations": []
+    },
+    {
+      "id": "company",
+      "title": "Company Overview",
+      "content": "Founded 2005, electronics",
+      "citations": []
+    },
+    {
+      "id": "financials",
+      "title": "Financial Overview",
+      "content": "Revenue 850b (2024A)",
+      "citations": []
+    }
+  ]
+}
